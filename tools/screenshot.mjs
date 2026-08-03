@@ -61,7 +61,7 @@ try {
     await page.evaluate(script);
     await page.waitForTimeout(parseInt(args.postwait || '2500', 10));
   }
-  await page.screenshot({ path: out });
+  await page.screenshot({ path: out, timeout: 180000 });
   console.log(`保存: ${out}`);
 } catch (e) {
   console.error('エラー:', e.message);

@@ -20,10 +20,17 @@ export const CompositeShader = {
     uVignette:      { value: 0.34 },
     uGrain:         { value: 0.016 },
     uSharpen:       { value: 0.20 },
-    uSaturation:    { value: 1.16 },
-    uContrast:      { value: 1.07 },
+    uSaturation:    { value: 1.24 },
+    uContrast:      { value: 1.10 },
     uLift:          { value: new THREE.Vector3(0.000, 0.003, 0.012) },
     uGain:          { value: new THREE.Vector3(1.015, 1.0, 0.995) },
+    // スプリットトーン: 影に寒色・ハイライトに暖色を乗せて色の分離を作る
+    uShadowTint:    { value: new THREE.Vector3(0.16, 0.30, 0.62) },
+    uHighlightTint: { value: new THREE.Vector3(1.00, 0.80, 0.46) },
+    uSplitStrength: { value: 0.20 },
+    uSplitBalance:  { value: 0.30 },
+    // 彩度の伸ばし方（低彩度部をより強く持ち上げる vibrance）
+    uVibrance:      { value: 0.34 },
     uDamage:        { value: 0.0 },   // 0..1 被弾フラッシュ
     uLowHealth:     { value: 0.0 },   // 0..1 低体力
     uFlash:         { value: 0.0 },   // 0..1 スタングレネード等
@@ -41,9 +48,12 @@ export const CompositeShader = {
     uniform sampler2D tDiffuse;
     uniform float uTime, uAberration, uVignette, uGrain, uSharpen;
     uniform float uSaturation, uContrast, uDamage, uLowHealth, uFlash, uScopeVignette;
+    uniform float uSplitStrength, uSplitBalance, uVibrance;
     uniform vec2  uResolution;
-    uniform vec3  uLift, uGain;
+    uniform vec3  uLift, uGain, uShadowTint, uHighlightTint;
     varying vec2 vUv;
+
+    const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
 
     float hash(vec2 p) {
       p = fract(p * vec2(443.897, 441.423));
@@ -77,14 +87,37 @@ export const CompositeShader = {
       }
 
       // --- カラーグレーディング ---
+      col = max(col, 0.0);
       col = col * uGain + uLift;
-      float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+
+      // スプリットトーン: 輝度を境に影へ寒色・ハイライトへ暖色を加算する。
+      // AAA タイトルの「色が豊か」に見える最大の要因がこの色相分離。
+      {
+        float l = dot(col, LUMA);
+        float hi = smoothstep(uSplitBalance, 1.0, l);
+        float lo = 1.0 - smoothstep(0.0, uSplitBalance, l);
+        vec3 sh = (uShadowTint * 2.0 - 1.0) * lo;
+        vec3 hl = (uHighlightTint * 2.0 - 1.0) * hi;
+        col += (sh + hl) * uSplitStrength * 0.5;
+        col = max(col, 0.0);
+      }
+
+      // バイブランス: 既に鮮やかな色は据え置き、くすんだ色だけを持ち上げる
+      {
+        float l = dot(col, LUMA);
+        float mx = max(col.r, max(col.g, col.b));
+        float mn = min(col.r, min(col.g, col.b));
+        float sat = mx - mn;
+        col = mix(vec3(l), col, 1.0 + uVibrance * (1.0 - smoothstep(0.0, 0.55, sat)));
+      }
+
+      float luma = dot(col, LUMA);
       col = mix(vec3(luma), col, uSaturation);
       col = (col - 0.5) * uContrast + 0.5;
 
       // --- 低体力: 彩度を落として赤みを残す ---
       if (uLowHealth > 0.001) {
-        float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+        float l = dot(col, LUMA);
         vec3 desat = mix(col, vec3(l), 0.55);
         desat.r += 0.045;
         float pulse = 0.5 + 0.5 * sin(uTime * 4.2);

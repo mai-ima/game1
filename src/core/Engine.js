@@ -190,7 +190,9 @@ export class Engine {
     const q = QUALITY[this.quality];
 
     // 太陽（ディレクショナルライト + シャドウ）
-    const sun = new THREE.DirectionalLight(0xfff4e0, 3.1);
+    // 空の青いフィルと対比させるため、キーライトははっきり暖色にする。
+    // この暖⇔寒の分離が「色が豊かに見える」最大の要因。
+    const sun = new THREE.DirectionalLight(0xffdcae, 3.1);
     sun.position.copy(this.sunPosition).multiplyScalar(160);
     sun.castShadow = true;
     sun.shadow.mapSize.set(q.shadowMap, q.shadowMap);
@@ -209,10 +211,17 @@ export class Engine {
     this.scene.add(sun.target);
     this.sun = sun;
 
-    // 空由来の環境光（IBL の補助）
-    const hemi = new THREE.HemisphereLight(0xa8c4e0, 0x4a4034, 0.55);
+    // 半球光: 上は空の寒色、下は地面からの暖色バウンス。
+    // IBL だけだと影が単調な青一色になるため、地面反射の暖色を明示的に足す。
+    const hemi = new THREE.HemisphereLight(0x93b8e8, 0x6b5334, 0.55);
     this.scene.add(hemi);
     this.hemi = hemi;
+
+    // 太陽と反対側からの弱い寒色フィル。輪郭が黒く潰れるのを防ぐ。
+    const fill = new THREE.DirectionalLight(0x86a9d6, 0.5);
+    fill.position.set(-0.6, 0.45, 0.7).multiplyScalar(80);
+    this.scene.add(fill);
+    this.fill = fill;
 
     // ビューモデル用の専用ライティング（常に手元が見えるように）
     const vKey = new THREE.DirectionalLight(0xfff2dd, 2.1);
@@ -362,6 +371,8 @@ export class Engine {
     if (o.exposure !== undefined) this.renderer.toneMappingExposure = o.exposure;
     if (o.sunIntensity !== undefined) this.sun.intensity = o.sunIntensity;
     if (o.hemiIntensity !== undefined) this.hemi.intensity = o.hemiIntensity;
+    if (o.fillIntensity !== undefined) this.fill.intensity = o.fillIntensity;
+    if (o.sunColor !== undefined) this.sun.color.set(o.sunColor);
     if (o.envIntensity !== undefined) this.scene.environmentIntensity = o.envIntensity;
     if (o.regenEnv) this.refreshEnvironment();
     if (o.envIntensity !== undefined) this.scene.environmentIntensity = o.envIntensity;
@@ -370,6 +381,7 @@ export class Engine {
       exposure: this.renderer.toneMappingExposure,
       sunIntensity: this.sun.intensity,
       hemiIntensity: this.hemi.intensity,
+      fillIntensity: this.fill.intensity,
       envIntensity: this.scene.environmentIntensity,
     };
   }
