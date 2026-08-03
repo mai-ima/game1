@@ -1,0 +1,490 @@
+import * as THREE from 'three';
+
+/**
+ * FPS 向けの軽量コリジョンシステム。
+ *
+ * - 静的コライダは AABB もしくは Y 軸回転ボックス (OBB) として保持
+ * - ブロードフェーズは一様グリッド（セルサイズ既定 4m）
+ * - プレイヤーは垂直カプセル（実装上は円柱 + 軸別解決 + 段差乗り越え）
+ * - 弾はレイキャスト（スラブ法）で解決
+ */
+
+const _v1 = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
+const _v3 = new THREE.Vector3();
+
+/** 表面種別（着弾エフェクト・足音の切り替えに使う） */
+export const SURFACE = {
+  CONCRETE: 'concrete', METAL: 'metal', WOOD: 'wood', DIRT: 'dirt',
+  SAND: 'sand', GLASS: 'glass', FABRIC: 'fabric', WATER: 'water',
+  FLESH: 'flesh', GRAVEL: 'gravel', RUBBER: 'rubber',
+};
+
+export class Collider {
+  /**
+   * @param {THREE.Vector3} center 中心座標
+   * @param {THREE.Vector3} half   半径ベクトル（ローカル）
+   * @param {number} yaw           Y 軸回転（ラジアン）
+   * @param {object} opt           {surface, blocksBullets, blocksMovement, breakable, mesh}
+   */
+  constructor(center, half, yaw = 0, opt = {}) {
+    this.center = center.clone();
+    this.half = half.clone();
+    this.yaw = yaw;
+    this.rotated = Math.abs(yaw) > 1e-4;
+    this.cos = Math.cos(yaw);
+    this.sin = Math.sin(yaw);
+    this.surface = opt.surface || SURFACE.CONCRETE;
+    this.blocksBullets = opt.blocksBullets !== false;
+    this.blocksMovement = opt.blocksMovement !== false;
+    this.penetration = opt.penetration ?? 0;   // 0=貫通不可, 1=薄板（貫通で減衰）
+    this.mesh = opt.mesh || null;
+    this.tag = opt.tag || null;
+    this.active = true;
+
+    // ワールド AABB（ブロードフェーズ用）
+    this.min = new THREE.Vector3();
+    this.max = new THREE.Vector3();
+    this._updateBounds();
+  }
+
+  _updateBounds() {
+    if (!this.rotated) {
+      this.min.copy(this.center).sub(this.half);
+      this.max.copy(this.center).add(this.half);
+    } else {
+      const ex = Math.abs(this.cos) * this.half.x + Math.abs(this.sin) * this.half.z;
+      const ez = Math.abs(this.sin) * this.half.x + Math.abs(this.cos) * this.half.z;
+      this.min.set(this.center.x - ex, this.center.y - this.half.y, this.center.z - ez);
+      this.max.set(this.center.x + ex, this.center.y + this.half.y, this.center.z + ez);
+    }
+  }
+
+  /** ワールド座標 → ボックスローカル座標 */
+  toLocal(p, out) {
+    out.copy(p).sub(this.center);
+    if (this.rotated) {
+      const x = out.x * this.cos + out.z * this.sin;
+      const z = -out.x * this.sin + out.z * this.cos;
+      out.x = x; out.z = z;
+    }
+    return out;
+  }
+
+  /** ボックスローカル方向 → ワールド方向 */
+  dirToWorld(d, out) {
+    out.copy(d);
+    if (this.rotated) {
+      const x = out.x * this.cos - out.z * this.sin;
+      const z = out.x * this.sin + out.z * this.cos;
+      out.x = x; out.z = z;
+    }
+    return out;
+  }
+}
+
+export class Physics {
+  constructor(cellSize = 4) {
+    this.cellSize = cellSize;
+    this.colliders = [];
+    this.grid = new Map();
+    this.gravity = -19.6;   // ゲーム的に重めの重力（COD 系の落下感）
+  }
+
+  /* ================= 構築 ================= */
+
+  /**
+   * ボックスコライダを追加。
+   * @returns {Collider}
+   */
+  addBox(cx, cy, cz, hx, hy, hz, yaw = 0, opt = {}) {
+    const c = new Collider(_v1.set(cx, cy, cz), _v2.set(hx, hy, hz), yaw, opt);
+    this.colliders.push(c);
+    this._insert(c);
+    return c;
+  }
+
+  /** Mesh (BoxGeometry 前提) からコライダを生成 */
+  addFromMesh(mesh, opt = {}) {
+    mesh.updateWorldMatrix(true, false);
+    const geo = mesh.geometry;
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    const size = _v1.copy(bb.max).sub(bb.min);
+    const localCenter = _v2.copy(bb.max).add(bb.min).multiplyScalar(0.5);
+
+    const worldCenter = localCenter.clone().applyMatrix4(mesh.matrixWorld);
+    const scale = new THREE.Vector3();
+    const quat = new THREE.Quaternion();
+    mesh.matrixWorld.decompose(new THREE.Vector3(), quat, scale);
+    const euler = new THREE.Euler().setFromQuaternion(quat, 'YXZ');
+
+    return this.addBox(
+      worldCenter.x, worldCenter.y, worldCenter.z,
+      Math.abs(size.x * scale.x) / 2, Math.abs(size.y * scale.y) / 2, Math.abs(size.z * scale.z) / 2,
+      euler.y, { mesh, ...opt }
+    );
+  }
+
+  _cellKey(ix, iz) { return ix * 73856093 ^ iz * 19349663; }
+
+  _insert(c) {
+    const cs = this.cellSize;
+    const x0 = Math.floor(c.min.x / cs), x1 = Math.floor(c.max.x / cs);
+    const z0 = Math.floor(c.min.z / cs), z1 = Math.floor(c.max.z / cs);
+    for (let x = x0; x <= x1; x++) {
+      for (let z = z0; z <= z1; z++) {
+        const k = this._cellKey(x, z);
+        let arr = this.grid.get(k);
+        if (!arr) { arr = []; this.grid.set(k, arr); }
+        arr.push(c);
+      }
+    }
+  }
+
+  /** 指定 AABB と重なる可能性のあるコライダを集める */
+  query(min, max, out = []) {
+    out.length = 0;
+    const cs = this.cellSize;
+    const x0 = Math.floor(min.x / cs), x1 = Math.floor(max.x / cs);
+    const z0 = Math.floor(min.z / cs), z1 = Math.floor(max.z / cs);
+    const seen = this._seen ??= new Set();
+    seen.clear();
+    for (let x = x0; x <= x1; x++) {
+      for (let z = z0; z <= z1; z++) {
+        const arr = this.grid.get(this._cellKey(x, z));
+        if (!arr) continue;
+        for (const c of arr) {
+          if (!c.active || seen.has(c)) continue;
+          seen.add(c);
+          if (c.max.x < min.x || c.min.x > max.x) continue;
+          if (c.max.y < min.y || c.min.y > max.y) continue;
+          if (c.max.z < min.z || c.min.z > max.z) continue;
+          out.push(c);
+        }
+      }
+    }
+    return out;
+  }
+
+  clear() {
+    this.colliders.length = 0;
+    this.grid.clear();
+  }
+
+  /* ================= キャラクタ移動 ================= */
+
+  /**
+   * 円柱状のキャラクタを移動させ、衝突を解決する。
+   * @param {THREE.Vector3} pos    足元の位置（in/out）
+   * @param {number} radius
+   * @param {number} height
+   * @param {THREE.Vector3} delta  このフレームの移動量
+   * @param {object} opt {stepHeight}
+   * @returns {{grounded:boolean, hitWall:boolean, groundY:number, wallNormal:THREE.Vector3|null}}
+   */
+  moveCharacter(pos, radius, height, delta, opt = {}) {
+    const stepHeight = opt.stepHeight ?? 0.42;
+    const result = { grounded: false, hitWall: false, groundY: -Infinity, wallNormal: null, ceiling: false };
+
+    // ---- Y 軸（重力・ジャンプ）----
+    if (delta.y !== 0) {
+      pos.y += delta.y;
+      const r = this._resolveY(pos, radius, height, delta.y);
+      if (r.hit) {
+        if (delta.y < 0) { result.grounded = true; result.groundY = r.y; result.surface = r.surface; }
+        else result.ceiling = true;
+      }
+    }
+
+    // ---- 水平（X → Z の順で軸別解決、段差乗り越え付き）----
+    const tryAxis = (axis, amount) => {
+      if (amount === 0) return;
+      const before = pos[axis];
+      pos[axis] += amount;
+      const hit = this._resolveAxis(pos, radius, height, axis, amount);
+      if (hit) {
+        // 段差を昇れるか試す
+        const savedY = pos.y;
+        pos.y += stepHeight;
+        const stillHit = this._overlaps(pos, radius, height);
+        if (!stillHit) {
+          // 昇った先で地面があるか確認（無ければ元に戻す）
+          const drop = this._groundBelow(pos, radius, stepHeight + 0.06);
+          if (drop !== null) {
+            pos.y = drop;
+            return;
+          }
+        }
+        pos.y = savedY;
+        pos[axis] = before;
+        result.hitWall = true;
+      }
+    };
+    tryAxis('x', delta.x);
+    tryAxis('z', delta.z);
+
+    // 接地判定（わずかに下を見る）
+    if (!result.grounded && delta.y <= 0) {
+      const g = this._groundBelow(pos, radius, 0.09);
+      if (g !== null && pos.y - g < 0.09) {
+        result.grounded = true;
+        result.groundY = g;
+        pos.y = g;
+      }
+    }
+    return result;
+  }
+
+  _bounds(pos, radius, height, min, max) {
+    min.set(pos.x - radius, pos.y, pos.z - radius);
+    max.set(pos.x + radius, pos.y + height, pos.z + radius);
+  }
+
+  _overlaps(pos, radius, height) {
+    const min = _v1, max = _v2;
+    this._bounds(pos, radius, height, min, max);
+    const list = this.query(min, max, this._q ??= []);
+    for (const c of list) {
+      if (!c.blocksMovement) continue;
+      if (this._boxOverlap(c, pos, radius, height)) return true;
+    }
+    return false;
+  }
+
+  _boxOverlap(c, pos, radius, height) {
+    // 円柱 vs ボックス（ローカル空間で AABB 近似）
+    const p = _v3.set(pos.x, pos.y + height / 2, pos.z);
+    c.toLocal(p, p);
+    const hy = height / 2;
+    if (Math.abs(p.y) > c.half.y + hy) return false;
+    // XZ 平面で円 vs 矩形
+    const dx = Math.max(Math.abs(p.x) - c.half.x, 0);
+    const dz = Math.max(Math.abs(p.z) - c.half.z, 0);
+    return dx * dx + dz * dz < radius * radius;
+  }
+
+  _resolveAxis(pos, radius, height, axis, amount) {
+    const min = _v1, max = _v2;
+    this._bounds(pos, radius, height, min, max);
+    const list = this.query(min, max, this._q ??= []);
+    let hit = false;
+    for (const c of list) {
+      if (!c.blocksMovement) continue;
+      if (this._boxOverlap(c, pos, radius, height)) { hit = true; break; }
+    }
+    return hit;
+  }
+
+  _resolveY(pos, radius, height, amount) {
+    const min = _v1, max = _v2;
+    this._bounds(pos, radius, height, min, max);
+    const list = this.query(min, max, this._q ??= []);
+    let best = null, bestY = amount < 0 ? -Infinity : Infinity;
+    for (const c of list) {
+      if (!c.blocksMovement) continue;
+      if (!this._boxOverlap(c, pos, radius, height)) continue;
+      if (amount < 0) {
+        const top = c.max.y;
+        if (top > bestY) { bestY = top; best = c; }
+      } else {
+        const bot = c.min.y;
+        if (bot < bestY) { bestY = bot; best = c; }
+      }
+    }
+    if (!best) return { hit: false };
+    if (amount < 0) { pos.y = bestY; return { hit: true, y: bestY, surface: best.surface }; }
+    pos.y = bestY - height;
+    return { hit: true, y: bestY, surface: best.surface };
+  }
+
+  /** 足元から maxDrop まで下方に地面を探す */
+  _groundBelow(pos, radius, maxDrop) {
+    const min = _v1.set(pos.x - radius, pos.y - maxDrop, pos.z - radius);
+    const max = _v2.set(pos.x + radius, pos.y + 0.02, pos.z + radius);
+    const list = this.query(min, max, this._q2 ??= []);
+    let bestY = null;
+    for (const c of list) {
+      if (!c.blocksMovement) continue;
+      const top = c.max.y;
+      if (top > pos.y + 0.02 || top < pos.y - maxDrop) continue;
+      // XZ 内包チェック
+      const p = _v3.set(pos.x, top, pos.z);
+      c.toLocal(p, p);
+      const dx = Math.max(Math.abs(p.x) - c.half.x, 0);
+      const dz = Math.max(Math.abs(p.z) - c.half.z, 0);
+      if (dx * dx + dz * dz > radius * radius) continue;
+      if (bestY === null || top > bestY) bestY = top;
+    }
+    return bestY;
+  }
+
+  /** 指定位置の直下の表面種別を返す */
+  surfaceBelow(pos, radius = 0.3) {
+    const min = _v1.set(pos.x - radius, pos.y - 0.3, pos.z - radius);
+    const max = _v2.set(pos.x + radius, pos.y + 0.05, pos.z + radius);
+    const list = this.query(min, max, this._q2 ??= []);
+    let bestY = -Infinity, s = SURFACE.CONCRETE;
+    for (const c of list) {
+      if (c.max.y <= pos.y + 0.05 && c.max.y > bestY) { bestY = c.max.y; s = c.surface; }
+    }
+    return s;
+  }
+
+  /* ================= レイキャスト ================= */
+
+  /**
+   * ワールドに対するレイキャスト。
+   * @returns {{hit:boolean, dist:number, point:THREE.Vector3, normal:THREE.Vector3, collider:Collider}|null}
+   */
+  raycast(origin, dir, maxDist = 200, opt = {}) {
+    const forBullets = opt.forBullets !== false;
+    let best = null, bestT = maxDist;
+
+    // レイの AABB でブロードフェーズ
+    const min = _v1.set(
+      Math.min(origin.x, origin.x + dir.x * maxDist),
+      Math.min(origin.y, origin.y + dir.y * maxDist),
+      Math.min(origin.z, origin.z + dir.z * maxDist)
+    );
+    const max = _v2.set(
+      Math.max(origin.x, origin.x + dir.x * maxDist),
+      Math.max(origin.y, origin.y + dir.y * maxDist),
+      Math.max(origin.z, origin.z + dir.z * maxDist)
+    );
+    const list = this.query(min, max, this._qr ??= []);
+
+    for (const c of list) {
+      if (forBullets && !c.blocksBullets) continue;
+      if (!forBullets && !c.blocksMovement) continue;
+      const r = this._rayBox(c, origin, dir, bestT);
+      if (r && r.t < bestT) { bestT = r.t; best = { t: r.t, nx: r.nx, ny: r.ny, nz: r.nz, collider: c }; }
+    }
+
+    if (!best) return null;
+    const point = new THREE.Vector3().copy(dir).multiplyScalar(best.t).add(origin);
+    const normal = new THREE.Vector3(best.nx, best.ny, best.nz);
+    if (best.collider.rotated) best.collider.dirToWorld(normal, normal);
+    return { hit: true, dist: best.t, point, normal, collider: best.collider };
+  }
+
+  /** スラブ法によるレイ vs ボックス。ローカル空間で判定する。 */
+  _rayBox(c, origin, dir, maxT) {
+    // ローカル空間へ
+    const o = _v3.copy(origin);
+    c.toLocal(o, o);
+    let dx = dir.x, dy = dir.y, dz = dir.z;
+    if (c.rotated) {
+      const x = dx * c.cos + dz * c.sin;
+      const z = -dx * c.sin + dz * c.cos;
+      dx = x; dz = z;
+    }
+
+    let tmin = 0, tmax = maxT;
+    let nAxis = 0, nSign = 0;
+
+    // X
+    if (Math.abs(dx) < 1e-8) { if (Math.abs(o.x) > c.half.x) return null; }
+    else {
+      const inv = 1 / dx;
+      let t1 = (-c.half.x - o.x) * inv, t2 = (c.half.x - o.x) * inv;
+      let sgn = -1;
+      if (t1 > t2) { const tt = t1; t1 = t2; t2 = tt; sgn = 1; }
+      if (t1 > tmin) { tmin = t1; nAxis = 0; nSign = sgn; }
+      if (t2 < tmax) tmax = t2;
+      if (tmin > tmax) return null;
+    }
+    // Y
+    if (Math.abs(dy) < 1e-8) { if (Math.abs(o.y) > c.half.y) return null; }
+    else {
+      const inv = 1 / dy;
+      let t1 = (-c.half.y - o.y) * inv, t2 = (c.half.y - o.y) * inv;
+      let sgn = -1;
+      if (t1 > t2) { const tt = t1; t1 = t2; t2 = tt; sgn = 1; }
+      if (t1 > tmin) { tmin = t1; nAxis = 1; nSign = sgn; }
+      if (t2 < tmax) tmax = t2;
+      if (tmin > tmax) return null;
+    }
+    // Z
+    if (Math.abs(dz) < 1e-8) { if (Math.abs(o.z) > c.half.z) return null; }
+    else {
+      const inv = 1 / dz;
+      let t1 = (-c.half.z - o.z) * inv, t2 = (c.half.z - o.z) * inv;
+      let sgn = -1;
+      if (t1 > t2) { const tt = t1; t1 = t2; t2 = tt; sgn = 1; }
+      if (t1 > tmin) { tmin = t1; nAxis = 2; nSign = sgn; }
+      if (t2 < tmax) tmax = t2;
+      if (tmin > tmax) return null;
+    }
+
+    if (tmin < 0.0001) return null;
+    return {
+      t: tmin,
+      nx: nAxis === 0 ? nSign : 0,
+      ny: nAxis === 1 ? nSign : 0,
+      nz: nAxis === 2 ? nSign : 0,
+    };
+  }
+
+  /**
+   * 2点間に遮蔽物があるか（AI の視線判定用・高速版）
+   */
+  losBlocked(from, to) {
+    const dir = _v1.copy(to).sub(from);
+    const dist = dir.length();
+    if (dist < 0.01) return false;
+    dir.divideScalar(dist);
+    const hit = this.raycast(from, dir, dist - 0.02);
+    return !!hit;
+  }
+}
+
+/**
+ * 簡易剛体（薬莢・破片用）。ワールドとの球衝突のみ扱う。
+ */
+export class DebrisBody {
+  constructor(pos, vel, radius = 0.02) {
+    this.pos = pos.clone();
+    this.vel = vel.clone();
+    this.radius = radius;
+    this.angVel = new THREE.Vector3(
+      (Math.random() - 0.5) * 28, (Math.random() - 0.5) * 28, (Math.random() - 0.5) * 28
+    );
+    this.rot = new THREE.Euler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
+    this.life = 0;
+    this.resting = false;
+    this.restitution = 0.32;
+    this.friction = 0.72;
+  }
+
+  step(physics, dt) {
+    if (this.resting) return;
+    this.life += dt;
+    this.vel.y += physics.gravity * dt;
+
+    const move = _v1.copy(this.vel).multiplyScalar(dt);
+    const dist = move.length();
+    if (dist > 1e-5) {
+      const dir = _v2.copy(move).divideScalar(dist);
+      const hit = physics.raycast(this.pos, dir, dist + this.radius, { forBullets: false });
+      if (hit) {
+        // 反射
+        this.pos.copy(hit.point).addScaledVector(hit.normal, this.radius);
+        const vn = this.vel.dot(hit.normal);
+        this.vel.addScaledVector(hit.normal, -vn * (1 + this.restitution));
+        this.vel.multiplyScalar(this.friction);
+        this.angVel.multiplyScalar(0.55);
+        if (this.vel.lengthSq() < 0.18 && Math.abs(hit.normal.y) > 0.6) {
+          this.resting = true;
+          this.vel.set(0, 0, 0);
+        }
+        return true; // バウンド発生（音を鳴らす合図）
+      }
+    }
+    this.pos.add(move);
+    this.rot.x += this.angVel.x * dt;
+    this.rot.y += this.angVel.y * dt;
+    this.rot.z += this.angVel.z * dt;
+    return false;
+  }
+}

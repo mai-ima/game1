@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>マテリアル・ショーケース | OPERATION CRIMSON</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0a0b0d;
+    font-family:"Helvetica Neue",-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;color:#f2efe9}
+  canvas{display:block}
+  #app{position:fixed;inset:0}
+  #boot{position:fixed;inset:0;z-index:99;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;background:#0a0b0d;transition:opacity .5s}
+  #boot.gone{opacity:0;pointer-events:none}
+  #bootPct{font-size:12px;letter-spacing:.2em;color:#8a9096;margin-top:16px}
+  #bootBar{width:220px;height:2px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden}
+  #bootFill{height:100%;width:0;background:linear-gradient(90deg,#d97757,#d9482f);transition:width .3s}
+  #hud{position:fixed;left:12px;top:12px;font-size:11px;letter-spacing:.06em;
+    color:#9aa0a6;background:rgba(0,0,0,.45);padding:8px 12px;border-radius:6px;line-height:1.8}
+</style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="boot">
+    <div id="bootBar"><div id="bootFill"></div></div>
+    <div id="bootPct">マテリアル生成中 0%</div>
+  </div>
+  <div id="hud">マテリアル・ショーケース（開発用）</div>
+<script>
+  window.__boot = {
+    set(p, label){
+      const f=document.getElementById('bootFill'), t=document.getElementById('bootPct');
+      if(f) f.style.width=Math.max(0,Math.min(100,p))+'%';
+      if(t) t.textContent=(label||'生成中')+' '+Math.round(p)+'%';
+    },
+    done(){ const b=document.getElementById('boot'); if(b){b.classList.add('gone');setTimeout(()=>b.remove(),600);} },
+    fail(m){ const t=document.getElementById('bootPct'); if(t) t.textContent='エラー: '+m; }
+  };
+</script>
+<script type="module" src="/src/showcase.js"></script>
+</body>
+</html>

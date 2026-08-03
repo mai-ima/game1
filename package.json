@@ -1,0 +1,25 @@
+{
+  "name": "operation-crimson",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OPERATION CRIMSON - AAA級 ブラウザFPS (Three.js)",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "shot": "node tools/screenshot.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:41729/git/mai-ima/game1"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1",
+    "vite": "^8.2.0"
+  }
+}
