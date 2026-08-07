@@ -95,6 +95,14 @@ export class Bot {
     this.respawnTimer = 0;
   }
 
+  /*
+   * ターゲットとしての共通インタフェース。
+   * Game / 他のボットは「プレイヤーもボットも同じ形」で扱えることを前提に
+   * position / getEyePosition を参照するため、char へ委譲しておく。
+   */
+  get position() { return this.char.position; }
+  getEyePosition(out) { return this.char.getEyePosition(out); }
+
   /* ================= 生死 ================= */
 
   spawn(pos, yaw = 0) {

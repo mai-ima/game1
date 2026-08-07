@@ -331,7 +331,7 @@ export function chargingHandle(len = 0.055, knobR = 0.0058) {
  * 全て非インデックス化し、属性を position / normal / uv の 3 つに揃える。
  */
 /** ボックス投影 UV の 1 タイルあたりのワールド長（メートル） */
-export const UV_TILE = 0.085;
+export const UV_TILE = 0.16;
 
 /**
  * ボックス（トライプラナー）投影で UV を貼り直す。

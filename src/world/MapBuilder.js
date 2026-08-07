@@ -331,7 +331,7 @@ export class MapBuilder {
       // repeat を 1 にしたマテリアルを使う（UV 側でワールドスケール済み）。
       // テクスチャ無しの単色マテリアル（brass / copper 等）も同じキー空間で扱う。
       const material = PRESETS[matKey]
-        ? this.mats.get(matKey, { repeat: [1, 1] })
+        ? this.mats.get(matKey, { repeat: [1, 1], normalScale: new THREE.Vector2(0.72, 0.72) })
         : this.mats.solid(matKey);
       const mesh = new THREE.Mesh(merged, material);
       mesh.name = `batch:${matKey}`;

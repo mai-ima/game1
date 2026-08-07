@@ -24,7 +24,8 @@ const DEFS = {
     const pit = worley(u * 14, v * 14, 14, S + 7, 0.95).f1;
     const pits = smoothstep(0.0, 0.26, pit);
     const stain = fbm(u * 2, v * 2, { octaves: 4, period: 2, seed: S + 11 });
-    const crack = 1 - smoothstep(0.0, 0.035, voronoiEdge(u * 5, v * 5, 5, S + 21, 1));
+    const crack = (1 - smoothstep(0.0, 0.014, voronoiEdge(u * 8, v * 8, 8, S + 21, 1)))
+      * smoothstep(0.5, 0.78, fbm(u * 2, v * 2, { octaves: 3, period: 2, seed: S + 71 }));
 
     let l = 0.30 + base * 0.115 + grain * 0.05 - (1 - pits) * 0.11;
     l *= 1 - stain * 0.17;
@@ -171,7 +172,7 @@ const DEFS = {
     const l = 0.55 + broad * 0.09 + lines * 0.05 - smudge * 0.04;
     o.r = l * 0.98; o.g = l * 0.99; o.b = l * 1.0;
     o.h = lines * 0.35 + lines2 * 0.2 + broad * 0.1;
-    o.rough = clamp01(0.22 + lines * 0.16 + lines2 * 0.1 + smudge * 0.12);
+    o.rough = clamp01(0.34 + lines * 0.16 + lines2 * 0.1 + smudge * 0.14);
     o.metal = 1;
     o.ao = 1;
   },
@@ -206,7 +207,7 @@ const DEFS = {
 
   /* --- 波板トタン --- */
   corrugated(u, v, o, S) {
-    const wave = Math.sin(u * TAU * 10) * 0.5 + 0.5;
+    const wave = Math.sin(u * TAU * 5) * 0.5 + 0.5;
     const rib = Math.pow(wave, 0.7);
     const rust = smoothstep(0.5, 0.85, fbm(u * 6, v * 3, { octaves: 5, period: 6, seed: S }));
     const streak = smoothstep(0.4, 0.9, fbm(u * 10, v * 1.4, { octaves: 4, period: 10, seed: S + 9 }));
@@ -252,10 +253,10 @@ const DEFS = {
 
   /* --- 合板 / OSB --- */
   plywood(u, v, o, S) {
-    const chips = worley(u * 16, v * 9, 16, S, 1);
+    const chips = worley(u * 9, v * 5, 9, S, 1);
     const dir = chips.id * TAU;
     const gu = u * Math.cos(dir) + v * Math.sin(dir);
-    const grain = valueNoise(gu * 300, chips.id * 50, 300, S + 3);
+    const grain = valueNoise(gu * 140, chips.id * 50, 140, S + 3);
     const glue = fbm(u * 7, v * 7, { octaves: 4, period: 7, seed: S + 11 });
     const edge = smoothstep(0.0, 0.05, chips.f2 - chips.f1);
 
@@ -474,7 +475,8 @@ const DEFS = {
   plaster(u, v, o, S) {
     const trowel = fbmP(u * 6, v * 6, { octaves: 5, period: 6, seed: S });
     const micro = fbm(u * 240, v * 240, { octaves: 3, period: 240, seed: S + 5 });
-    const crack = 1 - smoothstep(0, 0.022, voronoiEdge(u * 6, v * 6, 6, S + 29, 1));
+    const crack = (1 - smoothstep(0, 0.010, voronoiEdge(u * 9, v * 9, 9, S + 29, 1)))
+      * smoothstep(0.55, 0.8, fbm(u * 3, v * 3, { octaves: 3, period: 3, seed: S + 77 }));
     const patch = smoothstep(0.55, 0.85, fbm(u * 3, v * 3, { octaves: 4, period: 3, seed: S + 41 }));
     let l = 0.42 + trowel * 0.075 + micro * 0.038 - crack * 0.14 - patch * 0.042;
     o.r = l * 0.985; o.g = l * 0.985; o.b = l * 0.975;
@@ -608,7 +610,7 @@ const DEFS = {
     const l = 0.62 + swirl * 0.042 + micro * 0.026 + dent * 0.026;
     o.r = l * 0.97; o.g = l * 0.985; o.b = l * 1.0;
     o.h = micro * 0.35 + dent * 0.5 + swirl * 0.15;
-    o.rough = clamp01(0.13 + micro * 0.09 + smudge * 0.22 + swirl * 0.04);
+    o.rough = clamp01(0.26 + micro * 0.09 + smudge * 0.24 + swirl * 0.05);
     o.metal = 1;
     o.ao = 1;
   },

@@ -6,6 +6,12 @@ const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
+// ビューモデル合成専用の一時領域。
+// 汎用の _v / _v2 を使うと、途中で呼ぶヘルパが同じ実体を上書きしてしまう。
+const _vmBase = new THREE.Vector3();
+const _vmAds = new THREE.Vector3();
+const _amPos = new THREE.Vector3();
+const _amRot = new THREE.Vector3();
 
 /** ビューモデルの基本配置（カメラローカル座標） */
 const HIP_POS = new THREE.Vector3(0.148, -0.132, -0.30);
@@ -89,7 +95,7 @@ export class WeaponSystem {
     if (this._mats) return this._mats;
     const m = this.mats;
     this._mats = {
-      metal: m.get('gunMetal', { repeat: [1, 1] }),
+      metal: m.get('gunMetal', { repeat: [1, 1], normalScale: new THREE.Vector2(0.45, 0.45) }),
       darkMetal: m.solid('darkSteel', { color: 0x15171a, roughness: 0.38, metalness: 1.0 }),
       polymer: m.get('polymer', { repeat: [1, 1] }),
       wood: m.get('woodDark', { repeat: [1, 1] }),
@@ -557,11 +563,11 @@ export class WeaponSystem {
 
     // ADS 位置は照準点がカメラ中心に来るよう逆算する
     const sight = this.model.anchors.sight || new THREE.Vector3(0, 0.08, 0);
-    const adsPos = _v.set(-sight.x, -sight.y, -0.16 - stats.opticZoom * 0.004);
+    const adsPos = _vmAds.set(-sight.x, -sight.y, -0.16 - stats.opticZoom * 0.004);
     const adsRot = _e.set(0, 0, 0);
 
     const e = this.adsT * this.adsT * (3 - 2 * this.adsT);
-    const basePos = _v2.copy(HIP_POS).lerp(adsPos, e);
+    const basePos = _vmBase.copy(HIP_POS).lerp(adsPos, e);
     const rx = HIP_ROT.x * (1 - e) + adsRot.x * e;
     const ry = HIP_ROT.y * (1 - e) + adsRot.y * e;
     const rz = HIP_ROT.z * (1 - e) + adsRot.z * e;
@@ -624,8 +630,8 @@ export class WeaponSystem {
   }
 
   _updateActionMotion(dt) {
-    const target = _v.set(0, 0, 0);
-    const targetRot = _v2.set(0, 0, 0);
+    const target = _amPos.set(0, 0, 0);
+    const targetRot = _amRot.set(0, 0, 0);
 
     if (this.reloading) {
       const t = this._reloadT / Math.max(0.01, this._reloadDur);

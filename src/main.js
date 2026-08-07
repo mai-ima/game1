@@ -197,7 +197,7 @@ async function main() {
       hud.damageFrom(yaw - game.player.yaw + Math.PI);
     };
     game.onPlayerDeath = (from, weapon) => {
-      hud.showDeath(from?.name || from === game._pt ? game.playerStats.name : (from?.name || '敵'), weapon?.name || '');
+      hud.showDeath(from?.name || '敵', weapon?.name || '');
       mobile?.resetAds();
     };
     game.onPlayerSpawn = () => hud.hideDeath();

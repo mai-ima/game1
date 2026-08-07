@@ -361,12 +361,12 @@ export function rubble(b, o) {
 /** 街灯 */
 export function streetLight(b, o) {
   const { x, y = 0, z, yaw = 0, height = 4.6, withLight = true } = o;
-  b.cylinder({ x, y, z, radius: 0.075, height, segments: 10, mat: 'brushedMetal', surface: SURFACE.METAL });
+  b.cylinder({ x, y, z, radius: 0.075, height, segments: 10, mat: 'paintedMetalTan', surface: SURFACE.METAL });
   // アーム
   const armLen = 1.1;
   b.box({
     x: x + Math.sin(yaw) * armLen / 2, y: y + height - 0.06, z: z + Math.cos(yaw) * armLen / 2,
-    w: 0.07, h: 0.07, d: armLen, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false,
+    w: 0.07, h: 0.07, d: armLen, yaw, mat: 'paintedMetalTan', surface: SURFACE.METAL, collide: false,
   });
   // 灯体
   const lx = x + Math.sin(yaw) * armLen, lz = z + Math.cos(yaw) * armLen;

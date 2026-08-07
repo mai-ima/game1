@@ -78,7 +78,7 @@ async function start() {
   await nextFrame();
 
   const materials = {
-    metal: mats.get('gunMetal', { repeat: [1, 1] }),
+    metal: mats.get('gunMetal', { repeat: [1, 1], normalScale: new THREE.Vector2(0.45, 0.45) }),
     darkMetal: mats.solid('darkSteel', { color: 0x15171a, roughness: 0.38, metalness: 1.0 }),
     polymer: mats.get('polymer', { repeat: [1, 1] }),
     wood: mats.get('woodDark', { repeat: [1, 1] }),
