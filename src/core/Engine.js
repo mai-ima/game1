@@ -20,10 +20,10 @@ import { CompositeShader, RadialBlurShader } from '../render/PostFX.js';
  * aa: 'smaa'（3 パス・最良） / 'fxaa'（1 パス・安価） / 'none'
  */
 export const QUALITY = {
-  low:    { pixelRatio: 1.0,  shadows: false, shadowMap: 1024, gtao: false, bloom: false, aa: 'fxaa', aniso: 4,  shadowDist: 30, texSize: 256,  bloomScale: 0.5,  minScale: 0.62 },
-  medium: { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true,  aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.70 },
-  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2048, gtao: false, bloom: true,  aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.70 },
-  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true,  aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.75 },
+  low:    { pixelRatio: 1.0,  shadows: false, shadowMap: 1024, gtao: false, bloom: false, aa: 'fxaa', aniso: 4,  shadowDist: 30, texSize: 256,  bloomScale: 0.5,  minScale: 0.78 },
+  medium: { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true,  aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.85 },
+  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2048, gtao: false, bloom: true,  aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.85 },
+  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true,  aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.85 },
 };
 
 /** 画質プリセットの説明（設定画面に出す） */
@@ -36,14 +36,25 @@ export const QUALITY_INFO = {
 
 /**
  * 動的解像度が取りうる段階（プリセットの pixelRatio に対する倍率）。
- * 下げすぎると「見られる絵」でなくなるため、既定の下限は 0.70 とし、
- * それ以下は利用者が明示的に許可した場合だけ使う。
+ *
+ * 既定では 0.85 までしか下げない。
+ * 「60fps に届かせるために解像度を削る」方針は、
+ * 45fps 出ている端末でも絵をぼかしてしまい体感を悪くする。
+ * ここは「カクついたときに少しだけ逃がす」程度に留め、
+ * 大きく削るのは利用者が「性能優先」を選んだときだけにする。
  */
 const SCALE_STEPS = [1.0, 0.92, 0.85, 0.78, 0.70, 0.62, 0.55];
 /** 通常時に到達できる最下段（利用者が「性能優先」を選ぶと最後まで使う） */
-const SAFE_MIN_INDEX = 4;
-/** 目標フレーム時間（ms）。60fps を狙い、これを超え続けたら解像度を下げる */
+const SAFE_MIN_INDEX = 2;
+/**
+ * 目標フレーム時間（ms）。
+ * 下げるのは 24ms（約 42fps）を割り込んだときだけにし、
+ * 上げ直すのは 15ms（約 67fps）を安定して切れたとき。
+ * 幅を広く取ることで、境界付近での上げ下げの往復を防ぐ。
+ */
 const TARGET_MS = 16.7;
+const DOWNSCALE_MS = 24.0;
+const UPSCALE_MS = 15.0;
 
 /**
  * GPU がソフトウェア実装かどうかを判定する。
@@ -103,9 +114,10 @@ export class Engine {
      * 初期値は 1 段下げた状態から始め、余裕があれば上げていく
      * （最初のフレームから重い、という印象を避けるため）。
      */
-    this._scaleIdx = 1;
+    // 既定は等倍から始める。余裕が無ければ実測に応じて下がる。
+    this._scaleIdx = 0;
     this._frameMs = TARGET_MS;
-    this._scaleCooldown = 1.2;
+    this._scaleCooldown = 2.5;
     /** 解像度の自動調整（利用者が切れる） */
     this.autoResolution = true;
     /**
@@ -335,14 +347,21 @@ export class Engine {
     this.scene.add(sun.target);
     this.sun = sun;
 
-    // 半球光: 上は空の寒色、下は地面からの暖色バウンス。
-    // IBL だけだと影が単調な青一色になるため、地面反射の暖色を明示的に足す。
-    const hemi = new THREE.HemisphereLight(0x93b8e8, 0x6b5334, 0.55);
+    /*
+     * 半球光: 上は空の寒色、下は地面からの暖色バウンス。
+     *
+     * 以前は空側を彩度の高い青（0x93b8e8）にしていたため、
+     * 直射の当たらない面がすべて青く染まり、
+     * 白い漆喰の壁まで水色に見えていた。実際の日陰は青みを帯びるが、
+     * ここまで露骨ではない。彩度を落とし、地面側の暖色を強めて釣り合わせる。
+     */
+    const hemi = new THREE.HemisphereLight(0xa9c2d8, 0x8a6f4a, 0.55);
     this.scene.add(hemi);
     this.hemi = hemi;
 
-    // 太陽と反対側からの弱い寒色フィル。輪郭が黒く潰れるのを防ぐ。
-    const fill = new THREE.DirectionalLight(0x86a9d6, 0.5);
+    // 太陽と反対側からの弱いフィル。輪郭が黒く潰れるのを防ぐ。
+    // 寒色に寄せすぎると影が青一色になるため、ごく淡い色にとどめる。
+    const fill = new THREE.DirectionalLight(0xa6bacd, 0.5);
     fill.position.set(-0.6, 0.45, 0.7).multiplyScalar(80);
     this.scene.add(fill);
     this.fill = fill;
@@ -424,14 +443,26 @@ export class Engine {
       this.gtaoPass = gtao;
     }
 
-    // --- ブルーム ---
-    // ブルームも低周波。入力解像度を落としても見た目はほぼ変わらない一方、
-    // 内部で 5 段のミップ×2 方向ぼかしを回すためコスト差は大きい。
+    /* --- ブルーム ---
+     * 低周波なので入力解像度を落としても見た目はほぼ変わらない一方、
+     * 内部で 5 段のミップ×2 方向ぼかしを回すためコスト差は大きい。
+     *
+     * しきい値は「トーンマップ前のリニア輝度」で判定される。
+     * 以前は 0.86 と低く、青空（リニアでは 1 を大きく超える）が丸ごと
+     * 対象になっていた。半径も 0.62 と広かったため、
+     * 空の青白い光が画面全体へ薄く延ばされ、壁も地面も白く濁っていた。
+     * 実測では、ブルームを切るだけで壁の輝度が 4 割下がる。
+     *
+     * 太陽・銃口炎・金属のハイライトだけが滲むよう、
+     * しきい値を大きく上げ、強さと半径を絞る。
+     */
     if (q.bloom) {
       const bs = q.bloomScale ?? 0.5;
       const bloom = new UnrealBloomPass(
         new THREE.Vector2(Math.max(4, Math.floor(w * bs)), Math.max(4, Math.floor(h * bs))),
-        0.34, 0.62, 0.86
+        0.22,   // 強さ
+        0.40,   // 半径（広いほど画面全体へ延びる）
+        2.20    // しきい値（リニア輝度）
       );
       this.composer.addPass(bloom);
       this.bloomPass = bloom;
@@ -544,7 +575,7 @@ export class Engine {
     this._scaleCooldown -= raw / 1000;
     if (this._scaleCooldown > 0) return;
 
-    if (this._frameMs > TARGET_MS * 1.35) {
+    if (this._frameMs > DOWNSCALE_MS) {
       /*
        * 描画時間はおおむね画素数に比例するので、必要な縮小率は
        * sqrt(目標時間 / 実測時間)。1 段ずつ下げると重い端末では
@@ -555,7 +586,7 @@ export class Engine {
       let want = this._scaleIdx;
       while (want < lowest && SCALE_STEPS[want] > need) want++;
       if (this._applyScale(Math.max(this._scaleIdx + 1, want))) {
-        this._scaleCooldown = 1.0;
+        this._scaleCooldown = 2.0;
         this._frameMs = TARGET_MS;
         return;
       }
@@ -575,10 +606,10 @@ export class Engine {
         this._frameMs = TARGET_MS;
         this.onQualityAuto?.(next);
       }
-    } else if (this._frameMs < TARGET_MS * 0.72) {
+    } else if (this._frameMs < UPSCALE_MS) {
       // 十分な余裕がある → 1 段上げる
       if (this._applyScale(this._scaleIdx - 1)) {
-        this._scaleCooldown = 3.0;
+        this._scaleCooldown = 2.5;
         this._frameMs = TARGET_MS;
       }
     }

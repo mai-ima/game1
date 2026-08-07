@@ -56,7 +56,17 @@ async function main() {
 
   boot?.set(14, '大気と環境光を生成');
   await nextFrame();
-  engine.tune({ skyScale: 0.10, exposure: 0.95 * settings.get('brightness'), sunIntensity: 4.4, hemiIntensity: 0.42, fillIntensity: 0.45 });
+  /*
+   * 屋外の基準ライティング。
+   * 太陽（暖色）が支配的になるよう、青い回り込み（半球光・フィル）は弱める。
+   * 以前は半球光 0.42 ＋ フィル 0.45 が強すぎ、直射の当たらない面が
+   * すべて青く染まっていた。
+   */
+  engine.tune({
+    skyScale: 0.10,
+    exposure: 0.92 * settings.get('brightness'),
+    sunIntensity: 3.6, hemiIntensity: 0.26, fillIntensity: 0.22,
+  });
 
   // --- UI ---
   const hud = new HUD(container);

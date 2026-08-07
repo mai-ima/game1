@@ -86,7 +86,8 @@ export class Game {
 
     this.engine.setSunAngle(this.mapInfo.sun.elevation, this.mapInfo.sun.azimuth);
     this.engine.refreshEnvironment();
-    this.engine.scene.environmentIntensity = 0.40;
+    // 環境マップ（青空）の効きを抑える。強いと全面が青みを帯びる。
+    this.engine.scene.environmentIntensity = 0.26;
     this.mats.applyEnvironment(this.engine.envRT.texture, 1.0);
     this.engine.scene.fog = new THREE.Fog(this.mapInfo.fog.color, this.mapInfo.fog.near, this.mapInfo.fog.far);
 

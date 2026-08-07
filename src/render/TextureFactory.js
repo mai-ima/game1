@@ -27,11 +27,12 @@ const DEFS = {
     const crack = (1 - smoothstep(0.0, 0.014, voronoiEdge(u * 8, v * 8, 8, S + 21, 1)))
       * smoothstep(0.5, 0.78, fbm(u * 2, v * 2, { octaves: 3, period: 2, seed: S + 71 }));
 
-    let l = 0.30 + base * 0.115 + grain * 0.05 - (1 - pits) * 0.11;
+    let l = 0.26 + base * 0.110 + grain * 0.048 - (1 - pits) * 0.105;
     l *= 1 - stain * 0.17;
     l -= crack * 0.2;
-    // 実物のコンクリートはわずかに青灰色。暖色寄りにすると画面全体がセピアになる。
-    o.r = l * 0.97; o.g = l * 0.985; o.b = l * 1.0;
+    // 実物のコンクリートはごくわずかに青灰色。ここを青くしすぎると
+    // 環境光の青みと重なって画面全体が水色に転ぶ。
+    o.r = l * 0.99; o.g = l * 0.995; o.b = l * 1.0;
     o.h = base * 0.55 + pits * 0.3 + grain * 0.08 - crack * 0.5;
     o.rough = clamp01(0.82 + grain * 0.12 - stain * 0.08);
     o.metal = 0;
@@ -47,10 +48,11 @@ const DEFS = {
     const chipped = smoothstep(0.12, 0.2, chip) < 0.5 ? 1 : 0;
     const drip = smoothstep(0.62, 0.98, fbm(u * 3, v * 0.6, { octaves: 3, period: 3, seed: S + 41 }));
 
-    let l = 0.40 + base * 0.065 + roll * 0.028;
-    l -= scuff * 0.09 * smoothstep(0.35, 0.0, v);
-    l -= drip * 0.14;
-    o.r = l * 0.93; o.g = l * 0.945; o.b = l * 0.94;
+    // 明度は日向で飽和しない範囲に収める（漆喰と同じ理由）
+    let l = 0.30 + base * 0.060 + roll * 0.026;
+    l -= scuff * 0.085 * smoothstep(0.35, 0.0, v);
+    l -= drip * 0.13;
+    o.r = l * 0.955; o.g = l * 0.945; o.b = l * 0.912;
     if (chipped) { o.r *= 0.62; o.g *= 0.6; o.b *= 0.56; }
     o.h = base * 0.3 + roll * 0.12 - chipped * 0.6;
     o.rough = clamp01(0.62 + scuff * 0.2 + chipped * 0.25);
@@ -478,8 +480,15 @@ const DEFS = {
     const crack = (1 - smoothstep(0, 0.010, voronoiEdge(u * 9, v * 9, 9, S + 29, 1)))
       * smoothstep(0.55, 0.8, fbm(u * 3, v * 3, { octaves: 3, period: 3, seed: S + 77 }));
     const patch = smoothstep(0.55, 0.85, fbm(u * 3, v * 3, { octaves: 4, period: 3, seed: S + 41 }));
-    let l = 0.42 + trowel * 0.075 + micro * 0.038 - crack * 0.14 - patch * 0.042;
-    o.r = l * 0.985; o.g = l * 0.985; o.b = l * 0.975;
+    /*
+     * 明度 0.42 は「日向で白飛びする」値だった。
+     * ACES のトーンカーブは上端で強く圧縮するため、そこまで持ち上がると
+     * 表面の凹凸が全部つぶれて真っ白な板に見える。
+     * 実際の日焼けした漆喰の反射率（0.28〜0.35 程度）へ落とし、
+     * 砂漠の建物らしい暖色を与える。
+     */
+    let l = 0.30 + trowel * 0.070 + micro * 0.034 - crack * 0.13 - patch * 0.040;
+    o.r = l * 1.00; o.g = l * 0.955; o.b = l * 0.878;
     o.h = trowel * 0.6 + micro * 0.2 - crack * 0.6;
     o.rough = clamp01(0.8 + micro * 0.12 + crack * 0.1);
     o.metal = 0;

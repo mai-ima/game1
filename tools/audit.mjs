@@ -188,6 +188,64 @@ console.log(' ', JSON.stringify(res));
 ok(res.倍率 >= 0.6, `解像度倍率が下限（0.6）を下回っていない: ${res.倍率}`);
 ok(res.自動降格 === false, '既定では画質の自動降格が無効');
 
+/* =============== 3b. 画面の色と明るさ =============== */
+/*
+ * 監査の穴だった部分。
+ * これまで「例外が出ないか」「解像度が下がりすぎないか」しか見ておらず、
+ * 実際に描かれた絵が破綻していても通ってしまっていた。
+ * 固定視点で壁・空・地面の色を測り、白飛びと色かぶりを検出する。
+ */
+console.log('\n=== 3b. 画面の色と明るさ ===');
+await startMatch('tdm');
+await page.evaluate(`(() => {
+  const d = window.__DEV;
+  d.game.paused = true;
+  d.hud.hide();
+  const c = d.engine.camera;
+  c.position.set(-6, 2.0, 12); c.lookAt(0, 2.4, 0); c.updateMatrixWorld();
+})()`);
+await page.waitForTimeout(9000);
+const look = JSON.parse(await page.evaluate(`(() => {
+  const e = window.__DEV.engine;
+  const src = e.captureFrame(0.016);
+  return new Promise((res) => {
+    const img = new Image();
+    img.onload = () => {
+      const W = 160, H = 90;
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0, W, H);
+      const d = g.getImageData(0, 0, W, H).data;
+      const R = (x0, y0, x1, y1) => {
+        let r = 0, gg = 0, b = 0, n = 0;
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+          const i = (y * W + x) * 4; r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++;
+        }
+        return [Math.round(r / n), Math.round(gg / n), Math.round(b / n)];
+      };
+      let blown = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (Math.max(d[i], d[i + 1], d[i + 2]) >= 250) blown++;
+      }
+      res(JSON.stringify({ 壁: R(60, 35, 110, 60), 地面: R(50, 78, 120, 88), 白飛び率: +(blown / (W * H)).toFixed(3) }));
+    };
+    img.onerror = () => res('{}');
+    img.src = src;
+  });
+})()`));
+console.log(' ', JSON.stringify(look));
+{
+  const [wr, , wb] = look.壁;
+  const [gr, , gb] = look.地面;
+  // 日中の屋外で、壁や地面の青が赤の 2 倍を超えるのは色かぶりが強すぎる
+  ok(wb / Math.max(1, wr) < 2.0, `壁の青かぶりが過剰でない (B/R = ${(wb / wr).toFixed(2)})`);
+  ok(gb / Math.max(1, gr) < 1.6, `地面の青かぶりが過剰でない (B/R = ${(gb / gr).toFixed(2)})`);
+  ok(Math.max(...look.壁) < 235, `壁が白飛びしていない (最大 ${Math.max(...look.壁)})`);
+  ok(look.白飛び率 < 0.06, `画面の白飛び率が低い (${look.白飛び率})`);
+}
+await page.evaluate('window.__DEV.game.paused = false; window.__DEV.hud.show();');
+
 /* =============== 4. ゲームバランス =============== */
 console.log('\n=== 4. ゲームバランス（正規兵・8体） ===');
 await startMatch('tdm');
