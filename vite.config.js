@@ -12,6 +12,7 @@ export default defineConfig({
         main: 'index.html',
         showcase: 'showcase.html',
         weapons: 'weapons.html',
+        map: 'map.html',
       },
       output: {
         manualChunks(id) {

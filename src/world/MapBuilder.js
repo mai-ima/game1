@@ -1,0 +1,383 @@
+import * as THREE from 'three';
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { SURFACE } from './Physics.js';
+import { PRESETS, SOLIDS } from '../render/MaterialLibrary.js';
+
+/**
+ * レベル構築ヘルパ。
+ * 「見た目のメッシュ」と「当たり判定のコライダ」を同時に生成し、
+ * 同一マテリアルのジオメトリはバッチ結合してドローコールを抑える。
+ *
+ * 座標系: Y が上。1 単位 = 1 メートル。
+ */
+
+const _box = new THREE.Box3();
+const _v = new THREE.Vector3();
+
+/** 表面種別ごとの既定マテリアル名 */
+const SURFACE_MATERIAL = {
+  [SURFACE.CONCRETE]: 'concrete',
+  [SURFACE.METAL]: 'paintedMetal',
+  [SURFACE.WOOD]: 'wood',
+  [SURFACE.DIRT]: 'dirt',
+  [SURFACE.SAND]: 'sand',
+  [SURFACE.GRAVEL]: 'gravel',
+  [SURFACE.FABRIC]: 'fabric',
+  [SURFACE.RUBBER]: 'rubber',
+};
+
+export class MapBuilder {
+  /**
+   * @param {THREE.Scene} scene
+   * @param {import('./Physics.js').Physics} physics
+   * @param {import('../render/MaterialLibrary.js').MaterialLibrary} mats
+   */
+  constructor(scene, physics, mats) {
+    this.scene = scene;
+    this.physics = physics;
+    this.mats = mats;
+
+    this.root = new THREE.Group();
+    this.root.name = 'Level';
+    scene.add(this.root);
+
+    /** materialKey -> {geos: [], material, castShadow, receiveShadow} */
+    this.batches = new Map();
+    /** 個別メッシュ（発光体・ガラスなど、結合しないもの） */
+    this.extras = [];
+    /** インスタンス描画するプロップ */
+    this.instances = new Map();
+
+    this.spawnPoints = { A: [], B: [], FFA: [] };
+    this.objectives = [];
+    this.lights = [];
+    this.bounds = new THREE.Box3();
+    this.navHints = [];
+  }
+
+  /* ================= バッチ ================= */
+
+  _batch(matKey) {
+    if (!this.batches.has(matKey)) {
+      this.batches.set(matKey, { geos: [], matKey });
+    }
+    return this.batches.get(matKey);
+  }
+
+  _pushGeo(matKey, geo) {
+    const g = geo.index ? geo.toNonIndexed() : geo;
+    if (!g.getAttribute('normal')) g.computeVertexNormals();
+    // 属性を統一
+    for (const name of Object.keys(g.attributes)) {
+      if (name !== 'position' && name !== 'normal' && name !== 'uv') g.deleteAttribute(name);
+    }
+    if (!g.getAttribute('uv')) {
+      const c = g.getAttribute('position').count;
+      g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(c * 2), 2));
+    }
+    g.clearGroups();
+    this._batch(matKey).geos.push(g);
+    _box.setFromBufferAttribute(g.getAttribute('position'));
+    this.bounds.union(_box);
+  }
+
+  /**
+   * 直方体を追加（ワールドスケールに応じた UV を自動生成）。
+   * @param {object} o {x,y,z, w,h,d, yaw, mat, surface, collide, shadow, uvScale, penetration, tag}
+   */
+  box(o) {
+    const {
+      x = 0, y = 0, z = 0, w = 1, h = 1, d = 1, yaw = 0, rx = 0, rz = 0,
+      mat = 'concrete', surface = SURFACE.CONCRETE,
+      collide = true, blocksBullets = true, penetration = 0,
+      uvScale = null, tag = null,
+    } = o;
+
+    const geo = new THREE.BoxGeometry(w, h, d);
+    this._worldUv(geo, uvScale ?? this._matDensity(mat), w, h, d);
+    if (rz) geo.rotateZ(rz);
+    if (rx) geo.rotateX(rx);
+    if (yaw) geo.rotateY(yaw);
+    geo.translate(x, y, z);
+    this._pushGeo(mat, geo);
+
+    if (collide) {
+      this.physics.addBox(x, y, z, w / 2, h / 2, d / 2, yaw, {
+        surface, blocksBullets, penetration, tag,
+      });
+    }
+    return this;
+  }
+
+  /** 床（薄い箱として扱う。厚み 0.3m で下から抜けない） */
+  floor(o) {
+    return this.box({ h: 0.3, ...o, y: (o.y ?? 0) - 0.15 });
+  }
+
+  /**
+   * 壁。start/end で指定でき、厚みと高さを持つ。
+   * @param {object} o {x1,z1,x2,z2, h, thickness, y, mat, surface}
+   */
+  wall(o) {
+    const { x1, z1, x2, z2, h = 3.2, thickness = 0.28, y = 0, ...rest } = o;
+    const dx = x2 - x1, dz = z2 - z1;
+    const len = Math.hypot(dx, dz);
+    const yaw = Math.atan2(dx, dz);
+    return this.box({
+      x: (x1 + x2) / 2, y: y + h / 2, z: (z1 + z2) / 2,
+      w: thickness, h, d: len, yaw, ...rest,
+    });
+  }
+
+  /**
+   * 出入口付きの壁（ドア/窓の開口を残す）。
+   * @param {object} o wall と同じ + {gapStart, gapWidth, gapBottom, gapTop}
+   */
+  wallWithGap(o) {
+    const { x1, z1, x2, z2, h = 3.2, gapStart = 0.4, gapWidth = 1.2, gapBottom = 0, gapTop = 2.15 } = o;
+    const dx = x2 - x1, dz = z2 - z1;
+    const len = Math.hypot(dx, dz);
+    const ux = dx / len, uz = dz / len;
+    const s = Math.max(0, Math.min(len, gapStart));
+    const e = Math.max(s, Math.min(len, gapStart + gapWidth));
+
+    // 開口の手前
+    if (s > 0.02) {
+      this.wall({ ...o, x1, z1, x2: x1 + ux * s, z2: z1 + uz * s, h });
+    }
+    // 開口の奥
+    if (len - e > 0.02) {
+      this.wall({ ...o, x1: x1 + ux * e, z1: z1 + uz * e, x2, z2, h });
+    }
+    // 開口の下（腰壁 = 窓の場合）
+    if (gapBottom > 0.02) {
+      this.wall({ ...o, x1: x1 + ux * s, z1: z1 + uz * s, x2: x1 + ux * e, z2: z1 + uz * e, h: gapBottom, y: o.y ?? 0 });
+    }
+    // 開口の上（まぐさ）
+    if (h - gapTop > 0.02) {
+      this.wall({
+        ...o, x1: x1 + ux * s, z1: z1 + uz * s, x2: x1 + ux * e, z2: z1 + uz * e,
+        h: h - gapTop, y: (o.y ?? 0) + gapTop,
+      });
+    }
+    return this;
+  }
+
+  /**
+   * 階段。
+   * @param {object} o {x,y,z, width, rise, run, steps, yaw, mat, surface}
+   */
+  stairs(o) {
+    const {
+      x = 0, y = 0, z = 0, width = 1.6, rise = 0.19, run = 0.28,
+      steps = 10, yaw = 0, mat = 'concrete', surface = SURFACE.CONCRETE,
+    } = o;
+    for (let i = 0; i < steps; i++) {
+      const sy = y + rise * (i + 0.5);
+      const sz = z - run * (i + 0.5);
+      // 段を回転
+      const rx = Math.sin(yaw) * (sz - z);
+      const rz = Math.cos(yaw) * (sz - z);
+      this.box({
+        x: x + rx, y: sy, z: z + rz,
+        w: width, h: rise, d: run, yaw, mat, surface,
+      });
+    }
+    return this;
+  }
+
+  /** 傾斜路 */
+  ramp(o) {
+    const { x = 0, y = 0, z = 0, width = 2.0, length = 4.0, height = 1.2, yaw = 0, steps = 12, mat = 'concrete', surface = SURFACE.CONCRETE } = o;
+    const rise = height / steps;
+    const run = length / steps;
+    for (let i = 0; i < steps; i++) {
+      const sy = y + rise * (i + 0.5);
+      const off = -run * (i + 0.5);
+      this.box({
+        x: x + Math.sin(yaw) * off, y: sy, z: z + Math.cos(yaw) * off,
+        w: width, h: rise * 1.05, d: run * 1.05, yaw, mat, surface,
+      });
+    }
+    return this;
+  }
+
+  /** 円柱（柱・パイプ） */
+  cylinder(o) {
+    const {
+      x = 0, y = 0, z = 0, radius = 0.2, height = 3, segments = 14,
+      mat = 'concrete', surface = SURFACE.CONCRETE, collide = true,
+    } = o;
+    const geo = new THREE.CylinderGeometry(radius, radius, height, segments);
+    this._cylUv(geo, radius, height, this._matDensity(mat));
+    geo.translate(x, y + height / 2, z);
+    this._pushGeo(mat, geo);
+    if (collide) {
+      this.physics.addBox(x, y + height / 2, z, radius * 0.88, height / 2, radius * 0.88, 0, { surface });
+    }
+    return this;
+  }
+
+  /** 任意ジオメトリ（コライダは別途 box で指定） */
+  mesh(matKey, geo, transform = {}) {
+    const g = geo.clone();
+    if (transform.sx || transform.sy || transform.sz) g.scale(transform.sx ?? 1, transform.sy ?? 1, transform.sz ?? 1);
+    if (transform.rx) g.rotateX(transform.rx);
+    if (transform.ry) g.rotateY(transform.ry);
+    if (transform.rz) g.rotateZ(transform.rz);
+    g.translate(transform.x ?? 0, transform.y ?? 0, transform.z ?? 0);
+    this._pushGeo(matKey, g);
+    return this;
+  }
+
+  /** 結合しない個別メッシュ（ガラス・発光体など） */
+  addExtra(mesh, collider = null) {
+    this.root.add(mesh);
+    this.extras.push(mesh);
+    if (collider) {
+      this.physics.addBox(
+        collider.x, collider.y, collider.z,
+        collider.hx, collider.hy, collider.hz, collider.yaw || 0,
+        { surface: collider.surface || SURFACE.GLASS, blocksBullets: collider.blocksBullets !== false, penetration: collider.penetration ?? 0 }
+      );
+    }
+    return this;
+  }
+
+  /** 点光源を追加 */
+  light(o) {
+    const { x, y, z, color = 0xffd9a0, intensity = 3, distance = 9, decay = 2, castShadow = false } = o;
+    const l = new THREE.PointLight(color, intensity, distance, decay);
+    l.position.set(x, y, z);
+    if (castShadow) {
+      l.castShadow = true;
+      l.shadow.mapSize.set(512, 512);
+      l.shadow.bias = -0.004;
+      l.shadow.camera.near = 0.12;
+      l.shadow.camera.far = distance;
+    }
+    this.root.add(l);
+    this.lights.push(l);
+    return l;
+  }
+
+  /** スポーン地点 */
+  spawn(team, x, y, z, yaw = 0) {
+    (this.spawnPoints[team] ??= []).push({ pos: new THREE.Vector3(x, y, z), yaw });
+    this.spawnPoints.FFA.push({ pos: new THREE.Vector3(x, y, z), yaw });
+    return this;
+  }
+
+  /** 目標地点（爆破・支配など） */
+  objective(id, x, y, z, radius = 3.2) {
+    this.objectives.push({ id, pos: new THREE.Vector3(x, y, z), radius });
+    return this;
+  }
+
+  /* ================= UV ================= */
+
+  _matDensity(matKey) {
+    // MaterialLibrary のプリセットが持つワールド密度（1m あたりのタイル数）
+    return PRESETS[matKey]?.repeat ?? 0.42;
+  }
+
+  /**
+   * BoxGeometry にワールドスケール UV を貼る。
+   * 面ごとに投影軸が異なるので、six-face の順序（+X,-X,+Y,-Y,+Z,-Z）に沿って処理する。
+   */
+  _worldUv(geo, density, w, h, d) {
+    const uv = geo.getAttribute('uv');
+    const sizes = [
+      [d, h], [d, h],   // +X, -X
+      [w, d], [w, d],   // +Y, -Y
+      [w, h], [w, h],   // +Z, -Z
+    ];
+    for (let f = 0; f < 6; f++) {
+      const [su, sv] = sizes[f];
+      const su2 = su * density, sv2 = sv * density;
+      for (let i = 0; i < 4; i++) {
+        const idx = f * 4 + i;
+        uv.setXY(idx, uv.getX(idx) * su2, uv.getY(idx) * sv2);
+      }
+    }
+    uv.needsUpdate = true;
+  }
+
+  _cylUv(geo, radius, height, density) {
+    const uv = geo.getAttribute('uv');
+    const circ = 2 * Math.PI * radius * density;
+    const hh = height * density;
+    for (let i = 0; i < uv.count; i++) {
+      uv.setXY(i, uv.getX(i) * circ, uv.getY(i) * hh);
+    }
+    uv.needsUpdate = true;
+  }
+
+  /* ================= 完成 ================= */
+
+  /**
+   * バッチを結合して実際の Mesh を生成する。
+   * 必ずレベル構築の最後に 1 度だけ呼ぶ。
+   */
+  finalize() {
+    for (const [matKey, batch] of this.batches) {
+      if (batch.geos.length === 0) continue;
+      const merged = BufferGeometryUtils.mergeGeometries(batch.geos, false);
+      if (!merged) {
+        console.warn(`バッチ結合に失敗: ${matKey}`);
+        continue;
+      }
+      merged.computeBoundingSphere();
+      // repeat を 1 にしたマテリアルを使う（UV 側でワールドスケール済み）。
+      // テクスチャ無しの単色マテリアル（brass / copper 等）も同じキー空間で扱う。
+      const material = PRESETS[matKey]
+        ? this.mats.get(matKey, { repeat: [1, 1] })
+        : this.mats.solid(matKey);
+      const mesh = new THREE.Mesh(merged, material);
+      mesh.name = `batch:${matKey}`;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.root.add(mesh);
+      // 元ジオメトリを解放
+      for (const g of batch.geos) g.dispose();
+    }
+    this.batches.clear();
+
+    // インスタンス群を生成
+    for (const [key, list] of this.instances) {
+      const { geo, matKey, items } = list;
+      const material = PRESETS[matKey]
+        ? this.mats.get(matKey, { repeat: [1, 1] })
+        : this.mats.solid(matKey);
+      const inst = new THREE.InstancedMesh(geo, material, items.length);
+      inst.castShadow = true;
+      inst.receiveShadow = true;
+      const m = new THREE.Matrix4();
+      items.forEach((it, i) => {
+        m.compose(it.pos, it.quat, it.scale);
+        inst.setMatrixAt(i, m);
+      });
+      inst.instanceMatrix.needsUpdate = true;
+      inst.name = `inst:${key}`;
+      this.root.add(inst);
+    }
+    this.instances.clear();
+
+    return this.root;
+  }
+
+  /** インスタンス配置を登録 */
+  instance(key, geo, matKey, pos, quat = new THREE.Quaternion(), scale = new THREE.Vector3(1, 1, 1)) {
+    if (!this.instances.has(key)) this.instances.set(key, { geo, matKey, items: [] });
+    this.instances.get(key).items.push({ pos: pos.clone(), quat: quat.clone(), scale: scale.clone() });
+    return this;
+  }
+
+  dispose() {
+    this.scene.remove(this.root);
+    this.root.traverse((o) => {
+      if (o.isMesh) { o.geometry?.dispose(); }
+    });
+    this.physics.clear();
+  }
+}

@@ -25,12 +25,12 @@ export const CompositeShader = {
     uLift:          { value: new THREE.Vector3(0.000, 0.003, 0.012) },
     uGain:          { value: new THREE.Vector3(1.015, 1.0, 0.995) },
     // スプリットトーン: 影に寒色・ハイライトに暖色を乗せて色の分離を作る
-    uShadowTint:    { value: new THREE.Vector3(0.16, 0.30, 0.62) },
+    uShadowTint:    { value: new THREE.Vector3(0.26, 0.36, 0.58) },
     uHighlightTint: { value: new THREE.Vector3(1.00, 0.80, 0.46) },
-    uSplitStrength: { value: 0.20 },
+    uSplitStrength: { value: 0.11 },
     uSplitBalance:  { value: 0.30 },
     // 彩度の伸ばし方（低彩度部をより強く持ち上げる vibrance）
-    uVibrance:      { value: 0.34 },
+    uVibrance:      { value: 0.26 },
     uDamage:        { value: 0.0 },   // 0..1 被弾フラッシュ
     uLowHealth:     { value: 0.0 },   // 0..1 低体力
     uFlash:         { value: 0.0 },   // 0..1 スタングレネード等

@@ -23,10 +23,10 @@ const DEFS = {
     const grain = valueNoise(u * 160, v * 160, 160, S + 3);
     const pit = worley(u * 14, v * 14, 14, S + 7, 0.95).f1;
     const pits = smoothstep(0.0, 0.26, pit);
-    const stain = fbm(u * 2.2, v * 2.2, { octaves: 4, period: 2.2, seed: S + 11 });
+    const stain = fbm(u * 2, v * 2, { octaves: 4, period: 2, seed: S + 11 });
     const crack = 1 - smoothstep(0.0, 0.035, voronoiEdge(u * 5, v * 5, 5, S + 21, 1));
 
-    let l = 0.44 + base * 0.16 + grain * 0.07 - (1 - pits) * 0.16;
+    let l = 0.30 + base * 0.115 + grain * 0.05 - (1 - pits) * 0.11;
     l *= 1 - stain * 0.17;
     l -= crack * 0.2;
     // 実物のコンクリートはわずかに青灰色。暖色寄りにすると画面全体がセピアになる。
@@ -46,7 +46,7 @@ const DEFS = {
     const chipped = smoothstep(0.12, 0.2, chip) < 0.5 ? 1 : 0;
     const drip = smoothstep(0.62, 0.98, fbm(u * 3, v * 0.6, { octaves: 3, period: 3, seed: S + 41 }));
 
-    let l = 0.62 + base * 0.08 + roll * 0.035;
+    let l = 0.40 + base * 0.065 + roll * 0.028;
     l -= scuff * 0.09 * smoothstep(0.35, 0.0, v);
     l -= drip * 0.14;
     o.r = l * 0.93; o.g = l * 0.945; o.b = l * 0.94;
@@ -62,7 +62,7 @@ const DEFS = {
     const agg = worley(u * 46, v * 46, 46, S + 3, 1);
     const fine = fbm(u * 90, v * 90, { octaves: 4, period: 90, seed: S + 9 });
     const broad = fbm(u * 3, v * 3, { octaves: 4, period: 3, seed: S + 17 });
-    const crack = 1 - smoothstep(0, 0.028, voronoiEdge(u * 3.4, v * 3.4, 3.4, S + 27, 1));
+    const crack = 1 - smoothstep(0, 0.028, voronoiEdge(u * 4, v * 4, 4, S + 27, 1));
     const stone = smoothstep(0.16, 0.05, agg.f1);
 
     let l = 0.085 + broad * 0.05 + fine * 0.05 + stone * 0.16 * (0.4 + agg.id * 0.6);
@@ -163,8 +163,8 @@ const DEFS = {
 
   /* --- ヘアライン加工金属（アルミ） --- */
   brushedMetal(u, v, o, S) {
-    const lines = valueNoise(u * 900, v * 5, 900, S);
-    const lines2 = valueNoise(u * 320, v * 3, 320, S + 5);
+    const lines = valueNoise(u * 220, v * 5, 220, S);
+    const lines2 = valueNoise(u * 130, v * 3, 130, S + 5);
     const broad = fbmP(u * 5, v * 5, { octaves: 3, period: 5, seed: S + 9 });
     const smudge = fbm(u * 12, v * 12, { octaves: 4, period: 12, seed: S + 13 });
 
@@ -271,28 +271,28 @@ const DEFS = {
 
   /* --- 土 / 乾いた地面 --- */
   dirt(u, v, o, S) {
-    const broad = fbm(u * 3.5, v * 3.5, { octaves: 6, period: 3.5, seed: S });
+    const broad = fbm(u * 4, v * 4, { octaves: 6, period: 4, seed: S });
     const fine = fbm(u * 70, v * 70, { octaves: 4, period: 70, seed: S + 7 });
     const peb = worley(u * 34, v * 34, 34, S + 13, 1);
     const pebble = smoothstep(0.16, 0.055, peb.f1);
-    const crack = 1 - smoothstep(0, 0.03, voronoiEdge(u * 8, v * 8, 8, S + 23, 1));
+    const crack = 1 - smoothstep(0, 0.012, voronoiEdge(u * 26, v * 26, 26, S + 23, 1));
 
     let l = 0.16 + broad * 0.11 + fine * 0.06;
     l = mix(l, 0.3 + peb.id * 0.16, pebble * 0.8);
-    l -= crack * 0.06;
+    l -= crack * 0.025;
     o.r = l * 1.0; o.g = l * 0.79; o.b = l * 0.58;
-    o.h = broad * 0.5 + fine * 0.2 + pebble * 0.4 - crack * 0.5;
+    o.h = broad * 0.5 + fine * 0.2 + pebble * 0.4 - crack * 0.18;
     o.rough = clamp01(0.93 - pebble * 0.16 + fine * 0.05);
     o.metal = 0;
-    o.ao = clamp01(0.68 + pebble * 0.25 - crack * 0.3);
+    o.ao = clamp01(0.68 + pebble * 0.25 - crack * 0.12);
   },
 
   /* --- 砂 --- */
   sand(u, v, o, S) {
     const dune = fbm(u * 4, v * 4, { octaves: 5, period: 4, seed: S });
     const ripple = Math.sin((v * 40 + fbm(u * 5, v * 5, { octaves: 3, period: 5, seed: S + 5 }) * 9) * TAU * 0.32) * 0.5 + 0.5;
-    const grain = valueNoise(u * 500, v * 500, 500, S + 9);
-    const l = 0.44 + dune * 0.11 + ripple * 0.06 + grain * 0.09;
+    const grain = valueNoise(u * 190, v * 190, 190, S + 9);
+    const l = 0.34 + dune * 0.085 + ripple * 0.045 + grain * 0.07;
     o.r = l * 1.0; o.g = l * 0.88; o.b = l * 0.67;
     o.h = dune * 0.5 + ripple * 0.35 + grain * 0.15;
     o.rough = clamp01(0.87 + grain * 0.1);
@@ -319,13 +319,13 @@ const DEFS = {
 
   /* --- 布（麻袋 / テント地） --- */
   fabric(u, v, o, S) {
-    const N = 220;
+    const N = 56;
     const wu = (u * N) % 1, wv = (v * N) % 1;
     const warpT = Math.sin(wu * Math.PI);
     const weftT = Math.sin(wv * Math.PI);
     const over = ((Math.floor(u * N) + Math.floor(v * N)) % 2) === 0;
     const weave = over ? warpT : weftT;
-    const fuzz = fbm(u * 300, v * 300, { octaves: 3, period: 300, seed: S });
+    const fuzz = fbm(u * 120, v * 120, { octaves: 3, period: 120, seed: S });
     const dirt = fbm(u * 4, v * 4, { octaves: 5, period: 4, seed: S + 11 });
 
     const l = (0.22 + weave * 0.1 + fuzz * 0.06) * (1 - dirt * 0.28);
@@ -349,9 +349,9 @@ const DEFS = {
     else if (n2 < 0.5) { r = 0.315; g = 0.270; b = 0.155; }
     else { r = 0.118; g = 0.104; b = 0.062; }
 
-    const N = 200;
+    const N = 60;
     const weave = Math.sin(((u * N) % 1) * Math.PI) * Math.sin(((v * N) % 1) * Math.PI);
-    const fuzz = fbm(u * 260, v * 260, { octaves: 3, period: 260, seed: S + 5 });
+    const fuzz = fbm(u * 110, v * 110, { octaves: 3, period: 110, seed: S + 5 });
     const sh = 0.82 + weave * 0.18 + fuzz * 0.1;
     o.r = r * sh; o.g = g * sh; o.b = b * sh;
     o.h = weave * 0.5 + fuzz * 0.5;
@@ -362,7 +362,7 @@ const DEFS = {
 
   /* --- ゴム（タイヤ / グリップ） --- */
   rubber(u, v, o, S) {
-    const grain = fbm(u * 180, v * 180, { octaves: 4, period: 180, seed: S });
+    const grain = fbm(u * 110, v * 110, { octaves: 4, period: 110, seed: S });
     const mold = fbm(u * 12, v * 12, { octaves: 3, period: 12, seed: S + 7 });
     const l = 0.035 + grain * 0.03 + mold * 0.018;
     o.r = l; o.g = l * 1.01; o.b = l * 1.03;
@@ -379,7 +379,7 @@ const DEFS = {
     const blockU = Math.abs((((u + shift) * 5) % 1) - 0.5);
     const groove = smoothstep(0.3, 0.42, blockV) + smoothstep(0.3, 0.44, blockU);
     const tread = clamp01(1 - groove);
-    const grain = fbm(u * 200, v * 200, { octaves: 3, period: 200, seed: S });
+    const grain = fbm(u * 110, v * 110, { octaves: 3, period: 110, seed: S });
     const l = 0.03 + tread * 0.028 + grain * 0.022;
     o.r = l; o.g = l * 1.02; o.b = l * 1.04;
     o.h = tread * 0.95 + grain * 0.05;
@@ -402,8 +402,8 @@ const DEFS = {
     const dirtG = fbm(u * 30, v * 30, { octaves: 4, period: 30, seed: S + 21 });
     const crack = smoothstep(0.9, 1.0, ridged(u * 30, v * 30, { octaves: 3, period: 30, seed: S + cx * 13 })) * (id > 0.85 ? 1 : 0);
 
-    const tileL = 0.5 + id * 0.1 + glaze * 0.06;
-    const groutL = 0.3 + dirtG * 0.12;
+    const tileL = 0.36 + id * 0.075 + glaze * 0.045;
+    const groutL = 0.20 + dirtG * 0.085;
     const l = mix(groutL, tileL, inside);
     o.r = l * 0.955; o.g = l * 0.985; o.b = l * 1.0;
     o.h = inside * 0.85 - crack * 0.3;
@@ -427,8 +427,8 @@ const DEFS = {
 
   /* --- ガンメタル（武器本体） --- */
   gunMetal(u, v, o, S) {
-    const micro = valueNoise(u * 700, v * 700, 700, S);
-    const machine = valueNoise(u * 400, v * 6, 400, S + 3);
+    const micro = valueNoise(u * 180, v * 180, 180, S);
+    const machine = valueNoise(u * 190, v * 6, 190, S + 3);
     const wear = smoothstep(0.62, 0.95, fbm(u * 9, v * 9, { octaves: 5, period: 9, seed: S + 11 }));
     const edge = smoothstep(0.9, 1.0, ridged(u * 24, v * 24, { octaves: 3, period: 24, seed: S + 19 }));
 
@@ -443,10 +443,10 @@ const DEFS = {
 
   /* --- ポリマーグリップ（武器樹脂部） --- */
   polymer(u, v, o, S) {
-    const N = 46;
+    const N = 26;
     const gx = (u * N) % 1, gy = (v * N) % 1;
     const stipple = smoothstep(0.55, 0.2, Math.hypot(gx - 0.5, gy - 0.5));
-    const micro = fbm(u * 300, v * 300, { octaves: 3, period: 300, seed: S });
+    const micro = fbm(u * 130, v * 130, { octaves: 3, period: 130, seed: S });
     const wear = fbm(u * 8, v * 8, { octaves: 4, period: 8, seed: S + 7 });
     const l = 0.045 + stipple * 0.028 + micro * 0.018 + wear * 0.012;
     o.r = l * 1.0; o.g = l * 1.0; o.b = l * 0.98;
@@ -476,7 +476,7 @@ const DEFS = {
     const micro = fbm(u * 240, v * 240, { octaves: 3, period: 240, seed: S + 5 });
     const crack = 1 - smoothstep(0, 0.022, voronoiEdge(u * 6, v * 6, 6, S + 29, 1));
     const patch = smoothstep(0.55, 0.85, fbm(u * 3, v * 3, { octaves: 4, period: 3, seed: S + 41 }));
-    let l = 0.66 + trowel * 0.09 + micro * 0.045 - crack * 0.18 - patch * 0.05;
+    let l = 0.42 + trowel * 0.075 + micro * 0.038 - crack * 0.14 - patch * 0.042;
     o.r = l * 0.985; o.g = l * 0.985; o.b = l * 0.975;
     o.h = trowel * 0.6 + micro * 0.2 - crack * 0.6;
     o.rough = clamp01(0.8 + micro * 0.12 + crack * 0.1);
@@ -486,8 +486,8 @@ const DEFS = {
 
   /* --- 段ボール --- */
   cardboard(u, v, o, S) {
-    const flute = Math.sin(u * TAU * 55) * 0.5 + 0.5;
-    const fiber = fbm(u * 260, v * 260, { octaves: 3, period: 260, seed: S });
+    const flute = Math.sin(u * TAU * 22) * 0.5 + 0.5;
+    const fiber = fbm(u * 110, v * 110, { octaves: 3, period: 110, seed: S });
     const stain = fbm(u * 5, v * 5, { octaves: 4, period: 5, seed: S + 9 });
     const l = (0.3 + fiber * 0.09 + flute * 0.03) * (1 - stain * 0.22);
     o.r = l * 1.0; o.g = l * 0.79; o.b = l * 0.55;
@@ -517,7 +517,7 @@ const DEFS = {
     const chip = smoothstep(0.1, 0.03, chipD) * (1 - inside * 0.4);
     const moss = smoothstep(0.66, 0.92, fbm(u * 9, v * 9, { octaves: 4, period: 9, seed: S + 53 })) * (1 - inside);
 
-    const slabL = 0.34 + id * 0.09 + grit * 0.07 - wear * 0.05;
+    const slabL = 0.27 + id * 0.075 + grit * 0.055 - wear * 0.04;
     const jointL = 0.15 + grit * 0.06;
     let l = mix(jointL, slabL, inside) - chip * 0.06;
     let r = l * 1.0, g = l * 0.985, b = l * 0.95;
@@ -537,7 +537,7 @@ const DEFS = {
     const [wu, wv] = warp(u * 30, v * 30, 0.9, { octaves: 3, period: 30, seed: S });
     const cell = worley(wu, wv, 30, S + 5, 1);
     const grainCell = smoothstep(0.0, 0.09, cell.f2 - cell.f1);
-    const pore = fbm(u * 380, v * 380, { octaves: 3, period: 380, seed: S + 11 });
+    const pore = fbm(u * 150, v * 150, { octaves: 3, period: 150, seed: S + 11 });
     const broad = fbmP(u * 4, v * 4, { octaves: 4, period: 4, seed: S + 17 });
     const scuff = smoothstep(0.68, 0.96, fbm(u * 11, v * 11, { octaves: 5, period: 11, seed: S + 23 }));
 
@@ -554,14 +554,14 @@ const DEFS = {
   /* --- 土嚢（サンドバッグ） --- */
   sandbag(u, v, o, S) {
     // 粗い麻織り + 中身の砂による膨らみ
-    const N = 120;
+    const N = 40;
     const wx = (u * N) % 1, wy = (v * N) % 1;
     const over = ((Math.floor(u * N) + Math.floor(v * N)) % 2) === 0;
     const weave = over ? Math.sin(wx * Math.PI) : Math.sin(wy * Math.PI);
-    const thread = valueNoise(u * N * 3, v * N * 3, N * 3, S + 3);
+    const thread = valueNoise(u * N * 2, v * N * 2, N * 2, S + 3);
     const bulge = fbmP(u * 6, v * 6, { octaves: 4, period: 6, seed: S });
-    const fuzz = fbm(u * 300, v * 300, { octaves: 3, period: 300, seed: S + 9 });
-    const dust = fbm(u * 3.5, v * 3.5, { octaves: 5, period: 3.5, seed: S + 21 });
+    const fuzz = fbm(u * 120, v * 120, { octaves: 3, period: 120, seed: S + 9 });
+    const dust = fbm(u * 4, v * 4, { octaves: 5, period: 4, seed: S + 21 });
     const stain = smoothstep(0.55, 0.95, dust);
 
     let l = (0.16 + weave * 0.075 + thread * 0.035 + bulge * 0.05 + fuzz * 0.03);
@@ -600,12 +600,12 @@ const DEFS = {
 
   /* --- アルミ板（磨き / 微細ヘアライン） --- */
   aluminum(u, v, o, S) {
-    const micro = valueNoise(u * 1400, v * 9, 1400, S);
+    const micro = valueNoise(u * 200, v * 9, 200, S);
     const swirl = fbmP(u * 8, v * 8, { octaves: 4, period: 8, seed: S + 7 });
     const dent = fbmP(u * 3, v * 3, { octaves: 3, period: 3, seed: S + 13 });
     const smudge = smoothstep(0.55, 0.92, fbm(u * 14, v * 14, { octaves: 4, period: 14, seed: S + 19 }));
 
-    const l = 0.78 + swirl * 0.05 + micro * 0.03 + dent * 0.03;
+    const l = 0.62 + swirl * 0.042 + micro * 0.026 + dent * 0.026;
     o.r = l * 0.97; o.g = l * 0.985; o.b = l * 1.0;
     o.h = micro * 0.35 + dent * 0.5 + swirl * 0.15;
     o.rough = clamp01(0.13 + micro * 0.09 + smudge * 0.22 + swirl * 0.04);

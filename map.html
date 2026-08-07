@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>マップビューア | OPERATION CRIMSON</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0a0b0d;
+    font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;color:#f2efe9}
+  canvas{display:block} #app{position:fixed;inset:0}
+  #boot{position:fixed;inset:0;z-index:99;display:flex;align-items:center;justify-content:center;
+    background:#0a0b0d;transition:opacity .5s;font-size:12px;letter-spacing:.2em;color:#8a9096}
+  #boot.gone{opacity:0;pointer-events:none}
+  #hud{position:fixed;left:14px;top:14px;font-size:11px;letter-spacing:.06em;
+    color:#c8ccd0;background:rgba(0,0,0,.55);padding:9px 13px;border-radius:6px;line-height:1.8;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="boot">マップ構築中…</div>
+<div id="hud">マップビューア</div>
+<script>
+window.__boot={set(p,l){const b=document.getElementById('boot');if(b)b.textContent=(l||'構築中')+' '+Math.round(p)+'%';},
+ done(){const b=document.getElementById('boot');if(b){b.classList.add('gone');setTimeout(()=>b.remove(),600);}},
+ fail(m){const b=document.getElementById('boot');if(b)b.textContent='エラー: '+m;}};
+</script>
+<script type="module" src="/src/mapview.js"></script>
+</body>
+</html>
