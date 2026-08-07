@@ -225,6 +225,30 @@ export class WeaponSystem {
     this.onAmmoChange?.(this.getAmmo());
   }
 
+  /**
+   * 進行中の動作（覗き込み・リロード・近接・持ち替え）を全て畳む。
+   * 死亡時とリスポーン時に呼ぶ。特に覗き込みは、
+   * 進行度を残したままにするとスコープの黒縁が画面を覆い続ける。
+   */
+  resetState() {
+    this.ads = false;
+    this.adsT = 0;
+    this.reloading = false;
+    this._reloadT = 0;
+    this.meleeT = 0;
+    this.swapping = false;
+    this._swapT = 0;
+    this._pendingSwap = -1;
+    this._boltT = 0;
+    this._sprintOut = 0;
+    this._semiLatch = false;
+    this.firing = false;
+    this._reloadOffset.set(0, 0, 0);
+    this._reloadRot.set(0, 0, 0);
+    if (this.model) this.model.root.visible = true;
+    this.engine.setFov(this.player.baseFov ?? 80);
+  }
+
   /** 次 / 前の武器へ */
   nextWeapon() { this.equip((this.current + 1) % this.loadout.length); }
   prevWeapon() { this.equip((this.current - 1 + this.loadout.length) % this.loadout.length); }
@@ -277,7 +301,19 @@ export class WeaponSystem {
   /* ================= 更新 ================= */
 
   update(dt) {
-    if (!this.enabled || !this.def) return;
+    if (!this.def) return;
+    /*
+     * enabled が false（死亡中）でも、覗き込みの進行度や
+     * ビューモデルの姿勢は戻し続ける必要がある。
+     * 入力の読み取りだけを止める。
+     */
+    if (!this.enabled) {
+      this.adsT = Math.max(0, this.adsT - dt * 6);
+      this.ads = false;
+      this.meleeT = Math.max(0, this.meleeT - dt);
+      this._updateViewModel(dt);
+      return;
+    }
 
     this._sinceLastShot += dt;
     if (this._fireTimer > 0) this._fireTimer -= dt;

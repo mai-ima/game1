@@ -52,6 +52,8 @@ export class Game {
     this._regenT = 0;
     this._respawnT = 0;
     this._damageFlash = 0;
+    /** リスポーン保護の残り時間（秒）。0 より大きい間は被弾しない。 */
+    this._spawnProtect = 0;
     this._lastDamageDir = new THREE.Vector3();
 
     // イベント（UI へ通知）
@@ -135,7 +137,19 @@ export class Game {
    * @param {(p:number, label:string)=>void} onProgress 進捗通知（0..1）
    */
   async start(cfg = {}, onProgress = () => {}) {
+    /*
+     * 準備中は更新ループを止める。
+     * start() はフレームを跨いで進むため、ここで止めておかないと
+     * 「新しいモードを差し替えたが start() はまだ呼んでいない」状態で
+     * update が回り、初期化前のフィールド（zones や tags）を触って
+     * 毎フレーム例外になる。実際、試合を開始し直すたびに発生していた。
+     */
+    this.running = false;
+    this.paused = false;
+    this.matchOver = false;
+
     const modeId = cfg.mode || 'tdm';
+    this.mode?.dispose?.();
     this.mode = GAME_MODES[modeId].create(this);
     this.difficulty = cfg.difficulty || 'regular';
 
@@ -175,9 +189,14 @@ export class Game {
     const pool = botWeapons || ['m4a1', 'ak47', 'mp5', 'ak47', 'm4a1', 'shotgun', 'mp5', 'sniper'];
     const names = ['ヴィクター', 'ブラボー', 'デルタ', 'エコー', 'フォックス', 'ゴースト', 'ホーク', 'アイリス', 'ジャッカル', 'キロ', 'ライナ', 'マーロウ'];
 
-    // 敵チーム（B）を多め、味方（A）も少し入れる
-    const enemyCount = Math.ceil(total * 0.6);
-    const allyCount = total - enemyCount;
+    /*
+     * チーム人数を揃える。
+     * 以前は敵を 6 割にしていたため、プレイヤー側を数に入れても
+     * 5 対 4 で常に不利な状態から始まっていた。
+     * プレイヤーは A チームなので、味方ボットを 1 人少なくして同数にする。
+     */
+    const enemyCount = Math.ceil(total / 2);
+    const allyCount = Math.max(0, total - enemyCount - 1);
     const ctx = { scene: this.engine.scene, physics: this.physics, effects: this.effects, mats: this.mats, game: this };
 
     const plan = [];
@@ -224,19 +243,56 @@ export class Game {
 
   respawnPlayer(instant = false) {
     const s = this.pickSpawn(this.playerStats.team);
-    this.player.spawn(s.pos.clone().setY(s.pos.y + 0.05), s.yaw);
+    const pos = this._safeSpawnPos(s.pos);
+    this.player.spawn(pos, s.yaw);
     this.playerStats.hp = this.playerStats.maxHp;
     this.playerStats.alive = true;
     this.playerStats.streak = 0;
     this.player.alive = true;
     this.player.enabled = true;
     this.weapons.enabled = true;
+    // 覗き込み・近接・リロードの途中状態を残さない
+    this.weapons.resetState();
     this.weapons.equip(0, true);
     const id = this.weapons.loadout[0];
     if (id) this.weapons.ammo[id] = { mag: WEAPONS[id].magSize, reserve: WEAPONS[id].reserveAmmo };
     this._respawnT = 0;
     this._damageFlash = 0;
+    this._regenT = 0;
+    // 湧いた直後に撃たれ続けると何もできないので、短い保護を与える
+    this._spawnProtect = 1.6;
     this.onPlayerSpawn?.();
+  }
+
+  /**
+   * スポーン地点を安全な位置へ補正する。
+   *
+   * 地形の作りが変わったり、スポーン定義の y がずれていると、
+   * 床の下や壁の中に湧いて落下し続ける（＝何も映らない）ことがある。
+   * 真上から地面を探し、見つからなければ他の候補へ逃がす。
+   */
+  _safeSpawnPos(src) {
+    const out = src.clone();
+    const probe = _v.set(out.x, out.y + 4, out.z);
+    const hit = this.physics.raycast(probe, _v2.set(0, -1, 0), 12, { forBullets: false });
+    if (hit) out.y = hit.point.y + 0.05;
+    else out.y = Math.max(out.y, 0) + 0.05;
+
+    // それでも壁などに埋まっている場合は周囲へずらす
+    if (this.physics._overlaps(out, 0.34, 1.8)) {
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        _v.set(out.x + Math.cos(a) * 1.2, out.y, out.z + Math.sin(a) * 1.2);
+        if (!this.physics._overlaps(_v, 0.34, 1.8)) { out.copy(_v); break; }
+      }
+    }
+    return out;
+  }
+
+  /** 全員をその場で復活させる（ラウンド制モードの仕切り直し用） */
+  respawnAll() {
+    for (const b of this.bots) this.respawnBot(b, true);
+    this.respawnPlayer(true);
   }
 
   respawnBot(bot, instant = false) {
@@ -421,6 +477,7 @@ export class Game {
 
   _damagePlayer(amount, from, dir, zone, weapon) {
     if (!this.playerStats.alive) return;
+    if (this._spawnProtect > 0) return;   // リスポーン直後は無敵
     this.playerStats.hp -= amount;
     this._regenT = 0;
     this._damageFlash = Math.min(1, this._damageFlash + amount / 55);
@@ -435,6 +492,8 @@ export class Game {
       this.playerStats.deaths++;
       this.player.enabled = false;
       this.weapons.enabled = false;
+      // 覗き込みを畳む。残したままだとスコープの黒縁が画面を覆い続ける。
+      this.weapons.resetState();
       this._respawnT = 0;
       from.deaths ??= 0;
       this._registerKill(from, this._playerAsTarget(), weapon, zone === HIT_ZONE.HEAD, true);
@@ -458,7 +517,22 @@ export class Game {
     const victimName = victimIsPlayer ? this.playerStats.name : (victim.name || '不明');
     const killerTeam = isPlayerKiller ? this.playerStats.team : killer.team;
 
-    this.mode?.onKill?.(killerTeam, isPlayerKiller);
+    /*
+     * モードへは「誰が誰を、どこで倒したか」まで渡す。
+     * 以前はチームと byPlayer しか渡しておらず、
+     * キルコンファームドはドッグタグを落とす座標を得られないため
+     * 加点が一切発生せず、モードとして成立していなかった。
+     */
+    const victimPos = victimIsPlayer
+      ? this.player.position.clone()
+      : (victim.char?.position?.clone?.() || victim.position?.clone?.() || null);
+    this.mode?.onKill?.({
+      killerTeam,
+      victimTeam: victimIsPlayer ? this.playerStats.team : victim.team,
+      byPlayer: isPlayerKiller,
+      againstPlayer: victimIsPlayer,
+      victimPos, killer, victim, weapon, headshot,
+    });
     this.onKill?.({
       killerName, victimName, killerTeam,
       victimTeam: victimIsPlayer ? this.playerStats.team : victim.team,
@@ -474,18 +548,32 @@ export class Game {
     this.time += dt;
 
     // --- プレイヤー ---
-    if (this.playerStats.alive) {
-      this.player.update(dt);
-      this.weapons.update(dt);
+    /*
+     * 死亡中も player / weapons の更新は回し続ける。
+     * 止めてしまうと覗き込みの進行度が固まったままになり、
+     * スコープを覗いた状態で倒されると画面を覆う黒い縁が残り続けて
+     * 「復帰しても何も描画されない」状態になる。
+     * 入力の受け付けは enabled = false 側で止めているので、
+     * 更新を回しても操作はできない。
+     */
+    this.player.update(dt);
+    this.weapons.update(dt);
 
+    if (this.playerStats.alive) {
       // 体力の自然回復（COD 系のリジェネ）
       this._regenT += dt;
       if (this._regenT > 4.2 && this.playerStats.hp < this.playerStats.maxHp) {
         this.playerStats.hp = Math.min(this.playerStats.maxHp, this.playerStats.hp + 32 * dt);
       }
+      // リスポーン直後の保護（撃つか一定時間で解除）
+      if (this._spawnProtect > 0) {
+        this._spawnProtect -= dt;
+        if (this.weapons.firing) this._spawnProtect = 0;
+      }
     } else {
       this._respawnT += dt;
-      if (this._respawnT > 3.2 && !this.matchOver) this.respawnPlayer();
+      const allowed = this.mode?.allowRespawn ? this.mode.allowRespawn(this.playerStats.team) : true;
+      if (this._respawnT > 3.2 && !this.matchOver && allowed) this.respawnPlayer();
     }
 
     // --- ボット ---
@@ -494,7 +582,10 @@ export class Game {
       b.update(dt, this);
       b.updateShadowLod(camPos);
       // respawnTimer は Bot.update 内で加算される
-      if (!b.alive && b.respawnTimer > 5.5 && !this.matchOver) this.respawnBot(b);
+      if (!b.alive && b.respawnTimer > 5.5 && !this.matchOver
+          && (this.mode?.allowRespawn ? this.mode.allowRespawn(b.team) : true)) {
+        this.respawnBot(b);
+      }
     }
 
     // --- エフェクト・ポスト ---
@@ -508,7 +599,9 @@ export class Game {
     this.mode?.update(dt);
     if (this.mode?.isOver() && !this.matchOver) {
       this.matchOver = true;
-      this.onMatchEnd?.(this.mode.getResult());
+      const result = this.mode.getResult();
+      this.mode.dispose?.();
+      this.onMatchEnd?.(result);
     }
   }
 

@@ -66,6 +66,9 @@ async function main() {
 
   const game = new Game({ engine, mats, input, audio });
   wireGame(game, hud, menu, mobile, settings, engine);
+  // game ができてから、視野角など game 依存の設定を改めて適用する。
+  // これをしないと、保存済みの視野角が「設定を触るまで反映されない」。
+  applySettings(engine, input, settings, game);
 
   boot?.set(28, 'レベルを読み込み中');
   await nextFrame();
@@ -186,7 +189,11 @@ async function main() {
       mobile?.show();
       starting = false;
 
+      applySettings(engine, input, settings, game);
       hud.setModeName(GAME_MODES[sel.mode].nameJa);
+      hud.setPlayerTeam(game.playerStats.team);
+      // 「使用」操作があるモードでだけボタンを出す
+      mobile?.setUseVisible(sel.mode === 'snd');
       hud.announce(GAME_MODES[sel.mode].nameJa, MAP_INFO.nameJa);
       if (!isTouch) input.requestPointerLock();
       audio.init(); audio.resume();
@@ -204,6 +211,7 @@ async function main() {
     menu.onQuit = () => {
       game.running = false;
       game.paused = false;
+      game.mode?.dispose?.();
       hud.hide();
       hud.clearFeed();
       audio.stopAll();
@@ -213,6 +221,12 @@ async function main() {
     };
 
     menu.onSettingChange = (k, v) => applySettings(engine, input, settings, game, k, v);
+    // 既定へ戻したときは、画質プリセットを含めて全項目を貼り直す
+    menu.onSettingsReset = () => {
+      engine.setQuality(settings.get('quality'));
+      applySettings(engine, input, settings, game);
+      mobile?.applyLayout?.();
+    };
 
     // 解像度を下限まで落としてもフレーム時間が足りない場合、
     // エンジンが自動で画質を落とす。設定表示と食い違わないよう同期する。
@@ -269,6 +283,10 @@ async function main() {
 
 /* ================= 補助 ================= */
 
+/**
+ * 設定値をエンジン・入力・ゲームへ反映する。
+ * key を省略して呼ぶと全項目をまとめて適用する（起動時・試合開始時）。
+ */
 function applySettings(engine, input, settings, game, key, val) {
   const s = settings.values;
   input.sensitivity = s.sensitivity;
@@ -276,7 +294,12 @@ function applySettings(engine, input, settings, game, key, val) {
   input.touchSensitivity = s.touchSensitivity;
   input.invertY = s.invertY;
 
-  if (game) game.player.baseFov = s.fov;
+  // 視野角。game がまだ無い起動時でも、後で必ず再適用されるようにしている。
+  if (game) {
+    game.player.baseFov = s.fov;
+    // 覗いていないときは即座に反映（覗き中は WeaponSystem が上書きする）
+    if (game.weapons.adsProgress < 0.01) engine.setFov(s.fov);
+  }
   engine.renderer.toneMappingExposure = 0.95 * s.brightness;
 
   if (engine.compositePass) {
@@ -284,6 +307,9 @@ function applySettings(engine, input, settings, game, key, val) {
   }
   // モーションブラーは効果量 0 のときエンジン側で自動的に止まる。ここでは可否だけ渡す。
   engine.motionBlurAllowed = s.motionBlur;
+
+  engine.autoResolution = s.dynamicRes !== false;
+  engine.setPerformanceMode(!!s.perfMode);
 
   if (key === 'quality' && QUALITY[val]) engine.setQuality(val);
 }

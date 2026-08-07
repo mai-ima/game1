@@ -1,6 +1,7 @@
 import { MODE_LIST, GAME_MODES } from '../game/GameModes.js';
 import { WEAPONS, ATTACHMENTS, WEAPON_CLASS } from '../player/weapons/WeaponDefs.js';
 import { DIFFICULTY } from '../ai/Bot.js';
+import { QUALITY, QUALITY_INFO } from '../core/Engine.js';
 import { ICONS, MARK_CSS, BRAND, burstMarkHTML, burstStaticHTML, opusMarkHTML, engineMarkHTML } from './Icons.js';
 
 /**
@@ -147,6 +148,34 @@ const CSS = MARK_CSS + `
 .stat .b { flex: 1; height: 2px; background: rgba(242,239,233,.10); border-radius: 2px; overflow: hidden; }
 .stat .b > i { display: block; height: 100%; background: var(--coral); }
 .stat .v { font: 500 9px/1 var(--mono); color: var(--steel); width: 24px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* 画質の内訳表 */
+.qtable {
+  width: 100%; border-collapse: collapse; margin: 10px 0 4px;
+  font: 500 10px/1 var(--mono); color: var(--steel);
+}
+.qtable th {
+  text-align: left; font-weight: 500; color: var(--dim); letter-spacing: .12em;
+  padding: 0 8px 7px 0; font-size: 8.5px; text-transform: uppercase; white-space: nowrap;
+}
+.qtable td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line); white-space: nowrap; }
+.qtable tr.on td { color: var(--coral); }
+.qtable tr.on td:first-child { font-weight: 700; }
+
+/* 補足文 */
+.note {
+  font: 400 11px/1.7 var(--sans); color: var(--dim);
+  padding: 8px 0 2px; border-bottom: 1px solid var(--line);
+}
+
+/* 破壊的な操作のボタン */
+.ui button.danger {
+  padding: 10px 18px; border: 1px solid rgba(217,72,47,.55); border-radius: 2px;
+  font: 500 10px/1 var(--mono); letter-spacing: .18em; color: var(--crimson);
+  transition: all .16s; min-height: 40px;
+}
+.ui button.danger:hover { background: var(--crimson); border-color: var(--crimson); color: var(--paper); }
+.ui button.danger.confirm { background: var(--crimson); border-color: var(--crimson); color: var(--paper); }
 
 /* 設定行 */
 .row { display: flex; align-items: center; gap: 16px; padding: 13px 2px; border-bottom: 1px solid var(--line); }
@@ -614,11 +643,21 @@ export class Menu {
         <div class="ds">${m.desc}</div>
       </button>`).join('');
 
+    /** 拡散半径（ラジアン）を人が読める表現へ */
+    const accuracyLabel = (aimError) => {
+      // 15m 先での散らばり半径（メートル）に直すと直感的
+      const spread = aimError * 15;
+      if (spread < 0.4) return `非常に高い（15m で ±${spread.toFixed(1)}m）`;
+      if (spread < 0.6) return `高い（15m で ±${spread.toFixed(1)}m）`;
+      if (spread < 0.95) return `並（15m で ±${spread.toFixed(1)}m）`;
+      return `低い（15m で ±${spread.toFixed(1)}m）`;
+    };
+
     const diffs = Object.entries(DIFFICULTY).map(([k, d]) => `
       <button class="card ${this.sel.difficulty === k ? 'on' : ''}" data-diff="${k}">
         <div class="nm" style="margin-top:0">${d.name}</div>
         <div class="en">${k}</div>
-        <div class="ds">反応 ${(d.reaction * 1000).toFixed(0)}ms ／ 命中率 ${(d.accuracy * 100).toFixed(0)}% ／ 視認 ${d.sight}m</div>
+        <div class="ds">反応 ${(d.reaction * 1000).toFixed(0)}ms ／ 射撃精度 ${accuracyLabel(d.aimError)} ／ 視認 ${d.sight}m</div>
       </button>`).join('');
 
     return `
@@ -690,30 +729,64 @@ export class Menu {
 
     // 端末に応じて出す項目を変える
     const control = this.isTouch
-      ? `${range('touchSens', 'タッチ感度', '画面右側のドラッグでの視点移動量', 0.4, 3, 0.05, s.touchSensitivity, (v) => (+v).toFixed(2))}
-         ${range('adsSens', '照準時の感度倍率', '覗き込み中の感度（対 通常）', 0.2, 1.5, 0.02, s.adsSensitivity, (v) => (+v).toFixed(2))}
-         ${toggle('invertY', 'Y軸反転', '上下の視点操作を反転する', s.invertY)}
-         ${toggle('leftHanded', '左利き配置', '移動と視点、ボタンの左右を入れ替える', s.leftHanded)}`
-      : `${range('sens', 'マウス感度', '視点移動の速さ', 0.2, 3, 0.05, s.sensitivity, (v) => (+v).toFixed(2))}
-         ${range('adsSens', 'ADS 感度倍率', '覗き込み中の感度（対 通常）', 0.2, 1.5, 0.02, s.adsSensitivity, (v) => (+v).toFixed(2))}
-         ${toggle('invertY', 'Y軸反転', '上下の視点操作を反転する', s.invertY)}`;
+      ? `${range('touchSens', 'タッチ感度', '画面右側をなぞったときの視点の動く量。上げるほど少ない指の動きで大きく振り向ける。', 0.4, 3, 0.05, s.touchSensitivity, (v) => (+v).toFixed(2))}
+         ${range('adsSens', '照準時の感度倍率', '覗き込み中だけ感度を何倍にするか。1 未満にすると狙いを細かく合わせやすい。', 0.2, 1.5, 0.02, s.adsSensitivity, (v) => `×${(+v).toFixed(2)}`)}
+         ${toggle('invertY', 'Y軸反転', '上へなぞると下を向くようになる。航空機の操縦桿と同じ向き。', s.invertY)}
+         ${toggle('leftHanded', '左利き配置', '移動スティックと射撃ボタンの左右を入れ替える。', s.leftHanded)}`
+      : `${range('sens', 'マウス感度', 'マウスを動かしたときの視点の動く量。', 0.2, 3, 0.05, s.sensitivity, (v) => (+v).toFixed(2))}
+         ${range('adsSens', 'ADS 感度倍率', '覗き込み中だけ感度を何倍にするか。1 未満にすると狙いを細かく合わせやすい。', 0.2, 1.5, 0.02, s.adsSensitivity, (v) => `×${(+v).toFixed(2)}`)}
+         ${toggle('invertY', 'Y軸反転', 'マウスを奥へ動かすと下を向くようになる。', s.invertY)}`;
+
+    // 画質プリセットの中身を表で見せる（何が変わるのかを明示する）
+    const qRow = (k) => {
+      const q = QUALITY[k], i = QUALITY_INFO[k];
+      return `<tr class="${s.quality === k ? 'on' : ''}">
+        <td>${i.label}</td>
+        <td>${q.shadows ? `影 ${q.shadowMap}` : '影なし'}</td>
+        <td>${q.bloom ? 'ブルーム' : '—'}</td>
+        <td>${q.gtao ? 'GTAO' : '—'}</td>
+        <td>${q.aa === 'smaa' ? 'SMAA' : q.aa === 'fxaa' ? 'FXAA' : '—'}</td>
+        <td>最大 ×${q.pixelRatio}</td>
+      </tr>`;
+    };
 
     return `
       <div class="sec"><h2>操作</h2>${control}</div>
+
       <div class="sec"><h2>画面</h2>
-        ${range('fov', '視野角', '広いほど周辺が見えるが的が小さくなる', 65, 110, 1, s.fov, (v) => `${v}°`)}
-        ${seg('quality', '画質', '描画負荷と見た目の釣り合い', [
+        ${range('fov', '視野角', '一度に見渡せる角度。広げるほど周囲の敵に気づきやすくなる反面、遠くの敵が小さく写る。', 65, 110, 1, s.fov, (v) => `${v}°`)}
+        ${seg('quality', '画質', '影・ブルーム・環境遮蔽・アンチエイリアスと描画解像度をまとめて切り替える。下の表が各段階の内訳。', [
           { v: 'low', l: '低' }, { v: 'medium', l: '中' }, { v: 'high', l: '高' }, { v: 'ultra', l: '最高' },
         ], s.quality)}
-        ${range('brightness', '明るさ', '暗所の見やすさ', 0.6, 1.6, 0.02, s.brightness, (v) => (+v).toFixed(2))}
-        ${toggle('motionBlur', 'モーションブラー', '疾走時の速度感を強調する', s.motionBlur)}
-        ${toggle('filmGrain', 'フィルムグレイン', '画面に粒状感を加える', s.filmGrain)}
-        ${toggle('showFps', 'FPS 表示', '描画性能を画面隅に表示する', s.showFps)}
+        <table class="qtable">
+          <thead><tr><th>段階</th><th>影</th><th>光の滲み</th><th>環境遮蔽</th><th>輪郭処理</th><th>解像度</th></tr></thead>
+          <tbody>${['low', 'medium', 'high', 'ultra'].map(qRow).join('')}</tbody>
+        </table>
+        <div class="note">${QUALITY_INFO[s.quality]?.desc || ''}</div>
+
+        ${toggle('dynamicRes', '動的解像度', 'フレーム時間を見て描画解像度を自動で上下させ、動きの滑らかさを保つ。切ると常に選んだ画質のままになり、重い場面ではカクつく。', s.dynamicRes !== false)}
+        ${toggle('perfMode', '性能優先', '解像度を下げても足りないとき、画質設定そのものを自動で 1 段下げる。滑らかさを最優先したい場合に。', !!s.perfMode)}
+        ${range('brightness', '明るさ', '露出の倍率。屋内や日陰が見づらいときに上げる。', 0.6, 1.6, 0.02, s.brightness, (v) => `×${(+v).toFixed(2)}`)}
+        ${toggle('motionBlur', 'モーションブラー', '疾走時に画面の周辺を放射状にぼかして速度感を出す。酔いやすい場合は切る。', s.motionBlur)}
+        ${toggle('filmGrain', 'フィルムグレイン', '画面全体に細かい粒状感を乗せる。フィルムらしい質感になる。', s.filmGrain)}
+        ${toggle('showFps', 'FPS 表示', '左下にフレームレート・描画解像度・描画呼び出し数を表示する。', s.showFps)}
       </div>
+
       <div class="sec"><h2>音響</h2>
-        ${range('master', 'マスター音量', '全体の音量', 0, 1, 0.02, s.master, (v) => `${Math.round(v * 100)}`)}
-        ${range('sfx', '効果音', '銃声・着弾音など', 0, 1, 0.02, s.sfx, (v) => `${Math.round(v * 100)}`)}
-        ${range('music', 'BGM', 'メニューの音楽', 0, 1, 0.02, s.music, (v) => `${Math.round(v * 100)}`)}
+        ${range('master', 'マスター音量', 'すべての音の最終的な音量。', 0, 1, 0.02, s.master, (v) => `${Math.round(v * 100)}`)}
+        ${range('sfx', '効果音', '銃声・着弾・足音などの音量。', 0, 1, 0.02, s.sfx, (v) => `${Math.round(v * 100)}`)}
+        ${range('music', 'BGM', 'メニューで流れる環境音の音量。', 0, 1, 0.02, s.music, (v) => `${Math.round(v * 100)}`)}
+      </div>
+
+      <div class="sec"><h2>初期化</h2>
+        <div class="row">
+          <div class="lab">
+            <div class="n">すべて既定値に戻す</div>
+            <div class="h">操作・画面・音響のすべての項目を初期状態へ戻す。装備や難易度の選択は変わらない。</div>
+          </div>
+          <div class="ctl"><button class="danger" id="resetSettings">既定に戻す</button></div>
+        </div>
+        <div class="note" id="resetNote" style="display:none">既定値に戻しました。</div>
       </div>`;
   }
 
@@ -842,7 +915,7 @@ export class Menu {
       bindRange('sfx', 'sfx', (v) => `${Math.round(v * 100)}`);
       bindRange('music', 'music', (v) => `${Math.round(v * 100)}`);
 
-      for (const key of ['invertY', 'motionBlur', 'filmGrain', 'showFps', 'leftHanded']) {
+      for (const key of ['invertY', 'motionBlur', 'filmGrain', 'showFps', 'leftHanded', 'dynamicRes', 'perfMode']) {
         const el = p.querySelector('#' + key);
         el?.addEventListener('click', () => {
           const v = !el.classList.contains('on');
@@ -856,9 +929,38 @@ export class Menu {
       q?.addEventListener('click', (e) => {
         const b = e.target.closest('button[data-v]');
         if (!b) return;
-        [...q.children].forEach((x) => x.classList.toggle('on', x === b));
         s.set('quality', b.dataset.v);
         this.onSettingChange?.('quality', b.dataset.v);
+        // 内訳表と説明文も切り替わるので、ページごと描き直す
+        this._renderPage('settings');
+      });
+
+      /*
+       * 既定へ戻す。
+       * 押し間違いで全設定が飛ぶと痛いので、1 度目は確認、2 度目で実行する。
+       */
+      const reset = p.querySelector('#resetSettings');
+      const note = p.querySelector('#resetNote');
+      let armed = false;
+      reset?.addEventListener('click', () => {
+        if (!armed) {
+          armed = true;
+          reset.textContent = 'もう一度押すと実行';
+          reset.classList.add('confirm');
+          clearTimeout(this._resetT);
+          this._resetT = setTimeout(() => {
+            armed = false;
+            reset.textContent = '既定に戻す';
+            reset.classList.remove('confirm');
+          }, 4000);
+          return;
+        }
+        clearTimeout(this._resetT);
+        s.reset();
+        this.onSettingsReset?.();
+        this._renderPage('settings');
+        const n = this.root.querySelector('#resetNote');
+        if (n) { n.style.display = 'block'; n.textContent = 'すべての設定を既定値に戻しました。'; }
       });
     }
   }

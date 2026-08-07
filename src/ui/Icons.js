@@ -155,6 +155,12 @@ export const ICONS = {
 
   /** チェック */
   check: (o) => svg(`<path d="M4.6 12.6l4.8 4.8L19.4 7.4" />`, o),
+
+  /** 目標の使用（設置・解除） */
+  objective: (o) => svg(`
+    <rect x="5" y="9" width="14" height="10" rx="1.4" />
+    <path d="M9 9V6.6a3 3 0 0 1 6 0V9" />
+    <circle cx="12" cy="14" r="1.5" />`, o),
 };
 
 /**

@@ -20,14 +20,28 @@ import { CompositeShader, RadialBlurShader } from '../render/PostFX.js';
  * aa: 'smaa'（3 パス・最良） / 'fxaa'（1 パス・安価） / 'none'
  */
 export const QUALITY = {
-  low:    { pixelRatio: 1.0,  shadows: false, shadowMap: 1024, gtao: false, bloom: false, aa: 'fxaa', aniso: 4,  shadowDist: 30, texSize: 256,  bloomScale: 0.5,  minScale: 0.42 },
-  medium: { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true,  aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.55 },
-  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2048, gtao: false, bloom: true,  aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.60 },
-  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true,  aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.65 },
+  low:    { pixelRatio: 1.0,  shadows: false, shadowMap: 1024, gtao: false, bloom: false, aa: 'fxaa', aniso: 4,  shadowDist: 30, texSize: 256,  bloomScale: 0.5,  minScale: 0.62 },
+  medium: { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true,  aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.70 },
+  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2048, gtao: false, bloom: true,  aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.70 },
+  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true,  aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.75 },
 };
 
-/** 動的解像度が取りうる段階（プリセットの pixelRatio に対する倍率） */
-const SCALE_STEPS = [1.0, 0.90, 0.80, 0.70, 0.62, 0.55, 0.48, 0.42];
+/** 画質プリセットの説明（設定画面に出す） */
+export const QUALITY_INFO = {
+  low:    { label: '低',   desc: '影とブルームを切り、解像度も抑える。GPU が弱い端末向け。' },
+  medium: { label: '中',   desc: '影あり・簡易アンチエイリアス。多くのノートPCで 60fps を狙える。' },
+  high:   { label: '高',   desc: '影 2048・SMAA・等倍以上の解像度。既定の推奨設定。' },
+  ultra:  { label: '最高', desc: 'さらに環境遮蔽（GTAO）と高解像度の影を追加。要 dGPU。' },
+};
+
+/**
+ * 動的解像度が取りうる段階（プリセットの pixelRatio に対する倍率）。
+ * 下げすぎると「見られる絵」でなくなるため、既定の下限は 0.70 とし、
+ * それ以下は利用者が明示的に許可した場合だけ使う。
+ */
+const SCALE_STEPS = [1.0, 0.92, 0.85, 0.78, 0.70, 0.62, 0.55];
+/** 通常時に到達できる最下段（利用者が「性能優先」を選ぶと最後まで使う） */
+const SAFE_MIN_INDEX = 4;
 /** 目標フレーム時間（ms）。60fps を狙い、これを超え続けたら解像度を下げる */
 const TARGET_MS = 16.7;
 
@@ -92,7 +106,16 @@ export class Engine {
     this._scaleIdx = 1;
     this._frameMs = TARGET_MS;
     this._scaleCooldown = 1.2;
+    /** 解像度の自動調整（利用者が切れる） */
     this.autoResolution = true;
+    /**
+     * 解像度を下限まで下げても足りないときに画質プリセットまで落とすか。
+     * 既定は false。勝手に見た目が別物になるのは体験として悪いので、
+     * 「性能優先」を選んだときだけ有効にする。
+     */
+    this.autoQualityDowngrade = false;
+    /** 通常時に許す最下段。性能優先ではさらに下まで使う。 */
+    this._minScaleIndex = SAFE_MIN_INDEX;
 
     this.renderer.setPixelRatio(this._targetPixelRatio());
     this.renderer.setSize(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight);
@@ -478,7 +501,8 @@ export class Engine {
 
   /** 解像度段階を変更して、レンダラとコンポーザに反映する */
   _applyScale(idx) {
-    const clamped = Math.max(0, Math.min(SCALE_STEPS.length - 1, idx));
+    const lowest = Math.min(SCALE_STEPS.length - 1, this._minScaleIndex ?? SAFE_MIN_INDEX);
+    const clamped = Math.max(0, Math.min(lowest, idx));
     if (clamped === this._scaleIdx) return false;
     this._scaleIdx = clamped;
     this.renderer.setPixelRatio(this._targetPixelRatio());
@@ -527,8 +551,9 @@ export class Engine {
        * 収束まで何秒もかかるため、必要な段まで一気に飛ばす。
        */
       const need = Math.sqrt(TARGET_MS / this._frameMs);
+      const lowest = Math.min(SCALE_STEPS.length - 1, this._minScaleIndex ?? SAFE_MIN_INDEX);
       let want = this._scaleIdx;
-      while (want < SCALE_STEPS.length - 1 && SCALE_STEPS[want] > need) want++;
+      while (want < lowest && SCALE_STEPS[want] > need) want++;
       if (this._applyScale(Math.max(this._scaleIdx + 1, want))) {
         this._scaleCooldown = 1.0;
         this._frameMs = TARGET_MS;
@@ -536,9 +561,11 @@ export class Engine {
       }
       /*
        * 解像度を下限まで落としてもまだ重い。
-       * この場合はプリセット自体が端末に対して重すぎるので、
-       * 1 段階下の画質へ落とす（自動で上げ直すことはしない）。
+       * プリセット自体が端末に対して重すぎるので 1 段下げるが、
+       * これは見た目が明確に変わる操作なので、
+       * 利用者が「性能優先」を選んだときだけ行う。
        */
+      if (!this.autoQualityDowngrade) return;
       const order = ['ultra', 'high', 'medium', 'low'];
       const i = order.indexOf(this.quality);
       if (i >= 0 && i < order.length - 1) {
@@ -557,6 +584,17 @@ export class Engine {
     }
   }
 
+  /**
+   * 性能優先モードの切り替え。
+   * 有効にすると解像度の下限をさらに下げ、
+   * それでも足りなければ画質プリセット自体も自動で落とす。
+   */
+  setPerformanceMode(on) {
+    this.autoQualityDowngrade = !!on;
+    this._minScaleIndex = on ? SCALE_STEPS.length - 1 : SAFE_MIN_INDEX;
+    if (!on && this._scaleIdx > SAFE_MIN_INDEX) this._applyScale(SAFE_MIN_INDEX);
+  }
+
   /** 実際に描画している解像度（デバッグ表示用） */
   get renderScale() { return +(this._targetPixelRatio() / Math.min(window.devicePixelRatio, QUALITY[this.quality].pixelRatio)).toFixed(2); }
   get renderSize() { return `${this.renderer.domElement.width}x${this.renderer.domElement.height}`; }
@@ -570,6 +608,7 @@ export class Engine {
     this._scaleIdx = 1;
     this._frameMs = TARGET_MS;
     this._scaleCooldown = 1.5;
+    this._lastFrameAt = 0;
     this.renderer.setPixelRatio(this._targetPixelRatio());
     this.renderer.shadowMap.enabled = q.shadows !== false;
     if (this.sun) {

@@ -14,10 +14,21 @@ class BaseMode {
     this.scores = { A: 0, B: 0 };
     this.over = false;
     this.winner = null;
+    /*
+     * start() を呼ぶまでは更新も採点もしない。
+     * 生成から start() までの間に update / getScores が呼ばれても
+     * 壊れないようにするための番人。
+     */
+    this.ready = false;
   }
-  start() { this.remaining = this.timeLimit; this.scores = { A: 0, B: 0 }; this.over = false; }
+  start() {
+    this.remaining = this.timeLimit;
+    this.scores = { A: 0, B: 0 };
+    this.over = false;
+    this.ready = true;
+  }
   update(dt) {
-    if (this.over) return;
+    if (this.over || !this.ready) return;
     this.remaining -= dt;
     if (this.remaining <= 0) { this.remaining = 0; this._finish(); }
   }
@@ -44,8 +55,9 @@ class BaseMode {
 
 /* ---------------- チームデスマッチ ---------------- */
 class TeamDeathmatch extends BaseMode {
-  onKill(team) {
+  onKill(e) {
     if (this.over) return;
+    const team = e.killerTeam;
     this.scores[team] = (this.scores[team] || 0) + 1;
     if (this.scores[team] >= this.cfg.scoreLimit) {
       this.over = true;
@@ -61,19 +73,45 @@ class FreeForAll extends BaseMode {
     this.playerScore = 0;
     this.botScores = new Map();
   }
-  onKill(team, byPlayer) {
+
+  /**
+   * 全員が敵。プレイヤーだけでなくボットのキルも数える。
+   * 以前はプレイヤーのキルしか記録していなかったため、
+   * 「規定キル数に最初に到達した者が勝つ」という規則が成立せず、
+   * 相手側はいくら倒しても永久に 0 点のままだった。
+   */
+  onKill(e) {
     if (this.over) return;
-    if (byPlayer) {
+    if (e.byPlayer) {
       this.playerScore++;
       if (this.playerScore >= this.cfg.scoreLimit) { this.over = true; this.winner = 'player'; }
+      return;
     }
+    const k = e.killer;
+    if (!k || k === this.game.playerStats) return;
+    const n = (this.botScores.get(k) || 0) + 1;
+    this.botScores.set(k, n);
+    if (n >= this.cfg.scoreLimit) { this.over = true; this.winner = 'bot'; this.topBot = k; }
   }
+
   getScores() {
-    return { A: this.playerScore, B: Math.max(0, ...[...this.botScores.values()], 0), remaining: this.remaining, limit: this.cfg.scoreLimit };
+    let top = 0;
+    for (const v of (this.botScores?.values() || [])) if (v > top) top = v;
+    return { A: this.playerScore || 0, B: top, remaining: this.remaining, limit: this.cfg.scoreLimit };
   }
+
+  _finish() {
+    // 時間切れ: 最多キルの者が勝ち
+    let top = 0;
+    for (const v of this.botScores.values()) if (v > top) top = v;
+    this.over = true;
+    this.winner = this.playerScore > top ? 'player' : (this.playerScore === top ? 'draw' : 'bot');
+  }
+
   getResult() {
     const r = super.getResult();
     r.victory = this.winner === 'player';
+    r.draw = this.winner === 'draw';
     return r;
   }
 }
@@ -92,9 +130,8 @@ class Domination extends BaseMode {
 
   update(dt) {
     super.update(dt);
-    if (this.over) return;
+    if (this.over || !this.ready) return;
 
-    const _v = new THREE.Vector3();
     for (const z of this.zones) {
       // 各チームの人数を数える
       let a = 0, b = 0;
@@ -136,70 +173,301 @@ class Domination extends BaseMode {
   getScores() {
     return {
       ...this.scores, remaining: this.remaining, limit: this.cfg.scoreLimit,
-      zones: this.zones.map((z) => ({ id: z.id, owner: z.owner, progress: z.progress, contested: z.contested })),
+      zones: (this.zones || []).map((z) => ({ id: z.id, owner: z.owner, progress: z.progress, contested: z.contested })),
     };
   }
 }
 
 /* ---------------- キル確定（キルコンファームド） ---------------- */
-class KillConfirmed extends TeamDeathmatch {
+/**
+ * 倒すだけでは加点されず、落ちたドッグタグを回収して初めて確定する。
+ *
+ * 以前は onKill が座標を受け取れずタグが 1 つも落ちなかったため、
+ * 双方のスコアが 0 のまま時間切れになるだけのモードだった。
+ * 併せて、タグを画面に見せる（回収位置がわからないと成立しない）。
+ */
+class KillConfirmed extends BaseMode {
   start() {
     super.start();
-    this.tags = [];   // {pos, team, t}
+    this.tags = [];   // {pos, team, t, mesh}
   }
-  onKill(team, byPlayer, victimPos) {
-    // ドッグタグを落とす（拾って初めて加点）
-    if (victimPos) this.tags.push({ pos: victimPos.clone(), team: team === 'A' ? 'B' : 'A', t: 0 });
+
+  onKill(e) {
+    if (this.over || !e.victimPos) return;
+    // タグの所属は「倒された側」。敵のタグを拾えば加点、味方のタグは敵の加点を防ぐ。
+    this.tags.push({
+      pos: e.victimPos.clone().setY(e.victimPos.y + 0.12),
+      team: e.victimTeam,
+      t: 0,
+      mesh: this._makeTag(e.victimTeam),
+    });
   }
+
+  _makeTag(team) {
+    const g = new THREE.PlaneGeometry(0.34, 0.34);
+    const m = new THREE.MeshBasicMaterial({
+      color: team === 'A' ? 0x4a90d9 : 0xd9482f,
+      transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(g, m);
+    mesh.renderOrder = 900;
+    this.game.engine.scene.add(mesh);
+    return mesh;
+  }
+
+  _dropTag(i) {
+    const tag = this.tags[i];
+    if (tag.mesh) {
+      this.game.engine.scene.remove(tag.mesh);
+      tag.mesh.geometry.dispose();
+      tag.mesh.material.dispose();
+    }
+    this.tags.splice(i, 1);
+  }
+
   update(dt) {
     super.update(dt);
+    if (this.over || !this.ready) return;
+
+    const ps = this.game.playerStats;
+    const cam = this.game.engine.camera;
+
     for (let i = this.tags.length - 1; i >= 0; i--) {
       const tag = this.tags[i];
       tag.t += dt;
-      if (tag.t > 22) { this.tags.splice(i, 1); continue; }
-      if (this.game.playerStats.alive && this.game.player.position.distanceTo(tag.pos) < 1.6) {
-        const t = this.game.playerStats.team;
-        this.scores[t] = (this.scores[t] || 0) + (tag.team === t ? 0 : 1);
-        this.tags.splice(i, 1);
+      if (tag.t > 24) { this._dropTag(i); continue; }
+
+      if (tag.mesh) {
+        // 上下にゆっくり漂わせ、常にカメラを向ける（見つけやすさ優先）
+        tag.mesh.position.set(tag.pos.x, tag.pos.y + 0.55 + Math.sin(tag.t * 2.2) * 0.06, tag.pos.z);
+        tag.mesh.quaternion.copy(cam.quaternion);
+        tag.mesh.material.opacity = tag.t > 20 ? 0.95 * (1 - (tag.t - 20) / 4) : 0.95;
       }
+
+      // プレイヤーの回収
+      if (ps.alive && this.game.player.position.distanceTo(tag.pos) < 1.8) {
+        this._collect(tag, ps.team);
+        this._dropTag(i);
+        continue;
+      }
+      // ボットの回収
+      let taken = false;
+      for (const b of this.game.bots) {
+        if (!b.alive) continue;
+        if (b.char.position.distanceTo(tag.pos) < 1.6) { this._collect(tag, b.team); taken = true; break; }
+      }
+      if (taken) this._dropTag(i);
     }
   }
+
+  /** タグを拾ったチームへ加点する（敵のタグのみ得点になる） */
+  _collect(tag, byTeam) {
+    if (tag.team === byTeam) return;   // 味方のタグは回収するだけ（敵の加点を防ぐ）
+    this.scores[byTeam] = (this.scores[byTeam] || 0) + 1;
+    if (this.scores[byTeam] >= this.cfg.scoreLimit) { this.over = true; this.winner = byTeam; }
+  }
+
+  getScores() {
+    return {
+      ...this.scores, remaining: this.remaining, limit: this.cfg.scoreLimit,
+      tags: (this.tags || []).length,
+    };
+  }
+
+  dispose() { while (this.tags.length) this._dropTag(this.tags.length - 1); }
 }
 
 /* ---------------- 捜索と破壊（ラウンド制） ---------------- */
+/**
+ * リスポーン無しのラウンド制。攻撃側は爆弾設置、防衛側は阻止。
+ *
+ * 以前は planted を true にする経路が存在せず、
+ * 「時間切れで必ず防衛側の勝ち」を繰り返すだけだった。
+ * 設置・解除・導火線・攻守交代を実装して成立させる。
+ */
 class SearchAndDestroy extends BaseMode {
   start() {
     super.start();
     this.round = 1;
     this.roundTime = this.cfg.roundTime ?? 100;
+    this.fuseTime = this.cfg.fuseTime ?? 45;
+    this.plantTime = this.cfg.plantTime ?? 3.0;
+    this.defuseTime = this.cfg.defuseTime ?? 4.5;
     this.remaining = this.roundTime;
     this.roundsWon = { A: 0, B: 0 };
     this.planted = false;
     this.plantTimer = 0;
+    this.progress = 0;          // 設置／解除の進行度（0..1）
+    this.action = null;         // 'plant' | 'defuse' | null
+    this._roundEnding = 0;
+
+    // 爆破目標は中央の拠点を使う
+    const objs = this.game.builder.objectives;
+    const site = objs[Math.floor(objs.length / 2)] || objs[0];
+    this.site = {
+      pos: site ? site.pos.clone() : new THREE.Vector3(),
+      // 目標そのものの広さを使う。狭すぎると足がわずかにずれただけで
+      // 設置が止まり、何度やっても終わらない。
+      radius: Math.max(3.5, (site?.radius ?? 4) + 1.0),
+    };
+    this._setSides();
   }
+
+  /** ラウンドごとに攻守を入れ替える（奇数ラウンドはプレイヤー側が攻撃） */
+  _setSides() {
+    const playerTeam = this.game.playerStats.team;
+    const other = playerTeam === 'A' ? 'B' : 'A';
+    const playerAttacks = this.round % 2 === 1;
+    this.attackers = playerAttacks ? playerTeam : other;
+    this.defenders = playerAttacks ? other : playerTeam;
+  }
+
+  /** ラウンド中は復活しない */
+  allowRespawn() { return false; }
+
   update(dt) {
-    if (this.over) return;
-    this.remaining -= dt;
+    if (this.over || !this.ready) return;
+
+    // ラウンド間の間（次ラウンドの準備）
+    if (this._roundEnding > 0) {
+      this._roundEnding -= dt;
+      if (this._roundEnding <= 0) this._beginRound();
+      return;
+    }
+
     if (this.planted) {
       this.plantTimer -= dt;
-      if (this.plantTimer <= 0) this._endRound('B');
-    } else if (this.remaining <= 0) {
-      this._endRound('A');
+      this._updateDefuse(dt);
+      if (this.plantTimer <= 0) this._endRound(this.attackers);
+      return;
     }
+
+    this.remaining -= dt;
+    this._updatePlant(dt);
+
+    if (this.remaining <= 0) this._endRound(this.defenders);
+    else if (this._sideWipedOut(this.attackers)) this._endRound(this.defenders);
+    else if (this._sideWipedOut(this.defenders)) this._endRound(this.attackers);
   }
+
+  /** その陣営が全滅したか */
+  _sideWipedOut(team) {
+    if (this.game.playerStats.team === team && this.game.playerStats.alive) return false;
+    for (const b of this.game.bots) if (b.team === team && b.alive) return false;
+    return true;
+  }
+
+  /**
+   * 目標地点の中に居るか。
+   * 高さは 3m まで許容する。段差の上下で判定が切れると、
+   * 押し続けているのに進行が止まる理由が分からず理不尽になる。
+   */
+  _onSite(pos) {
+    const dx = pos.x - this.site.pos.x, dz = pos.z - this.site.pos.z;
+    if (Math.abs(pos.y - this.site.pos.y) > 3) return false;
+    return dx * dx + dz * dz < this.site.radius * this.site.radius;
+  }
+
+  /** 爆弾設置。攻撃側が目標地点で「使用」を押し続ける。 */
+  _updatePlant(dt) {
+    const ps = this.game.playerStats;
+    const onSite = (pos) => this._onSite(pos);
+
+    // プレイヤーが攻撃側なら手動設置
+    if (ps.team === this.attackers && ps.alive && onSite(this.game.player.position)
+        && this.game.input.down('interact')) {
+      this.action = 'plant';
+      this.progress = Math.min(1, this.progress + dt / this.plantTime);
+      if (this.progress >= 1) this._plant();
+      return;
+    }
+
+    // ボットが攻撃側なら、目標に留まっている間に自動で進行する
+    let botOnSite = 0;
+    for (const b of this.game.bots) {
+      if (b.alive && b.team === this.attackers && onSite(b.char.position)) botOnSite++;
+    }
+    if (botOnSite > 0) {
+      this.action = 'plant';
+      this.progress = Math.min(1, this.progress + dt / (this.plantTime * 2.2));
+      if (this.progress >= 1) this._plant();
+      return;
+    }
+
+    this.action = null;
+    this.progress = Math.max(0, this.progress - dt * 0.25);
+  }
+
+  /** 爆弾解除。防衛側が同じ操作で行う。 */
+  _updateDefuse(dt) {
+    const ps = this.game.playerStats;
+    const onSite = (pos) => this._onSite(pos);
+
+    if (ps.team === this.defenders && ps.alive && onSite(this.game.player.position)
+        && this.game.input.down('interact')) {
+      this.action = 'defuse';
+      this.progress = Math.min(1, this.progress + dt / this.defuseTime);
+      if (this.progress >= 1) this._endRound(this.defenders);
+      return;
+    }
+
+    let botOnSite = 0;
+    for (const b of this.game.bots) {
+      if (b.alive && b.team === this.defenders && onSite(b.char.position)) botOnSite++;
+    }
+    if (botOnSite > 0) {
+      this.action = 'defuse';
+      this.progress = Math.min(1, this.progress + dt / (this.defuseTime * 2.4));
+      if (this.progress >= 1) this._endRound(this.defenders);
+      return;
+    }
+
+    this.action = null;
+    this.progress = Math.max(0, this.progress - dt * 0.22);
+  }
+
+  _plant() {
+    this.planted = true;
+    this.plantTimer = this.fuseTime;
+    this.progress = 0;
+    this.action = null;
+    this.game.onAnnounce?.('爆弾設置', '導火線作動');
+  }
+
   _endRound(winner) {
     this.roundsWon[winner]++;
     this.scores = { ...this.roundsWon };
     if (this.roundsWon[winner] >= this.cfg.roundsToWin) {
-      this.over = true; this.winner = winner;
-    } else {
-      this.round++;
-      this.remaining = this.roundTime;
-      this.planted = false;
+      this.over = true;
+      this.winner = winner;
+      return;
     }
+    this.round++;
+    this._roundEnding = 4.0;   // 次ラウンドまでの間
   }
+
+  /** 次ラウンドを始める。全員を復活させ、攻守を入れ替える。 */
+  _beginRound() {
+    this._setSides();
+    this.remaining = this.roundTime;
+    this.planted = false;
+    this.plantTimer = 0;
+    this.progress = 0;
+    this.action = null;
+    this.game.respawnAll?.();
+  }
+
   getScores() {
-    return { ...this.roundsWon, remaining: this.remaining, limit: this.cfg.roundsToWin, round: this.round, planted: this.planted };
+    if (!this.ready) return { A: 0, B: 0, remaining: this.remaining, limit: this.cfg.roundsToWin };
+    return {
+      ...this.roundsWon,
+      remaining: this.planted ? this.plantTimer : this.remaining,
+      limit: this.cfg.roundsToWin,
+      round: this.round, planted: this.planted,
+      attackers: this.attackers, defenders: this.defenders,
+      action: this.action, progress: this.progress,
+      site: this.site ? { x: this.site.pos.x, z: this.site.pos.z } : null,
+    };
   }
 }
 
@@ -209,20 +477,61 @@ class GunGame extends BaseMode {
     super.start();
     this.ladder = this.cfg.ladder || ['pistol', 'mp5', 'm4a1', 'ak47', 'shotgun', 'sniper'];
     this.level = 0;
+    // ボットも同じ梯子を上る（相手が居ないと競争にならない）
+    this.botLevels = new Map();
     this._applyWeapon();
   }
+
   _applyWeapon() {
     const id = this.ladder[Math.min(this.level, this.ladder.length - 1)];
+    // 予備弾を潤沢にしておく（キットごとに弾切れで詰まないように）
     this.game.weapons.setLoadout([id], {});
+    const a = this.game.weapons.ammo[id];
+    if (a) a.reserve = Math.max(a.reserve, 120);
   }
-  onKill(team, byPlayer) {
-    if (!byPlayer || this.over) return;
-    this.level++;
-    if (this.level >= this.ladder.length) { this.over = true; this.winner = this.game.playerStats.team; return; }
-    this._applyWeapon();
+
+  onKill(e) {
+    if (this.over) return;
+    if (e.byPlayer) {
+      this.level++;
+      if (this.level >= this.ladder.length) {
+        this.over = true;
+        this.winner = this.game.playerStats.team;
+        return;
+      }
+      this._applyWeapon();
+      return;
+    }
+    // ボット側の進行
+    const k = e.killer;
+    if (!k || k === this.game.playerStats) return;
+    const n = (this.botLevels.get(k) || 0) + 1;
+    this.botLevels.set(k, n);
+    if (n >= this.ladder.length) { this.over = true; this.winner = 'bot'; }
   }
+
+  _finish() {
+    let top = 0;
+    for (const v of this.botLevels.values()) if (v > top) top = v;
+    this.over = true;
+    this.winner = this.level > top ? this.game.playerStats.team
+      : (this.level === top ? 'draw' : 'bot');
+  }
+
   getScores() {
-    return { A: this.level, B: 0, remaining: this.remaining, limit: this.ladder.length, weapon: this.ladder[Math.min(this.level, this.ladder.length - 1)] };
+    let top = 0;
+    for (const v of (this.botLevels?.values() || [])) if (v > top) top = v;
+    return {
+      A: this.level || 0, B: top, remaining: this.remaining, limit: this.ladder.length,
+      weapon: this.ladder[Math.min(this.level, this.ladder.length - 1)],
+    };
+  }
+
+  getResult() {
+    const r = super.getResult();
+    r.victory = this.winner === this.game.playerStats.team;
+    r.draw = this.winner === 'draw';
+    return r;
   }
 }
 
@@ -271,7 +580,7 @@ export const GAME_MODES = {
     nameJa: '捜索と破壊',
     desc: 'リスポーン無しのラウンド制。攻撃側は爆弾設置、防衛側は阻止を目指す。',
     icon: '✱',
-    cfg: { roundsToWin: 4, roundTime: 100, timeLimit: 1800 },
+    cfg: { roundsToWin: 4, roundTime: 100, fuseTime: 45, plantTime: 3.0, defuseTime: 4.5, timeLimit: 1800 },
     create(game) { return new SearchAndDestroy(game, { ...this.cfg, nameJa: this.nameJa }); },
   },
   gungame: {

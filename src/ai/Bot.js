@@ -16,18 +16,36 @@ export const BOT_STATE = {
   ENGAGE: 'engage', COVER: 'cover', RELOAD: 'reload', DEAD: 'dead',
 };
 
-/** 難易度プリセット */
+/**
+ * 難易度プリセット。
+ *
+ * aimError は 1 発ごとの拡散半径（ラジアン）。
+ * 10m 先での散らばり半径はおよそ aimError * 10 メートルになる。
+ * 人体の幅が 0.5m 程度なので、0.030 なら 10m で半径 0.30m ＝ そこそこ当たる、
+ * 0.075 なら半径 0.75m ＝ かなり外す、という目安。
+ *
+ * reaction   : 敵を認識してから撃ち始めるまでの秒数
+ * burstPause : バースト間の休み（長いほど player に反撃の間が生まれる）
+ */
 export const DIFFICULTY = {
-  recruit:  { name: '新兵',   aimError: 0.075, reaction: 0.62, burstMin: 2, burstMax: 4, aimSpeed: 3.2,  accuracy: 0.55, hp: 100, fovDeg: 105, sight: 55, lead: 0.3 },
-  regular:  { name: '正規兵', aimError: 0.042, reaction: 0.40, burstMin: 3, burstMax: 6, aimSpeed: 5.0,  accuracy: 0.72, hp: 100, fovDeg: 115, sight: 70, lead: 0.6 },
-  veteran:  { name: '古参兵', aimError: 0.024, reaction: 0.26, burstMin: 4, burstMax: 8, aimSpeed: 7.0,  accuracy: 0.84, hp: 100, fovDeg: 125, sight: 85, lead: 0.85 },
-  elite:    { name: '特殊部隊', aimError: 0.013, reaction: 0.17, burstMin: 5, burstMax: 11, aimSpeed: 9.5, accuracy: 0.92, hp: 100, fovDeg: 135, sight: 100, lead: 1.0 },
+  recruit:  { name: '新兵',     aimError: 0.085, reaction: 0.85, burstMin: 2, burstMax: 4,  burstPause: [0.75, 1.35], aimSpeed: 2.6, hp: 100, fovDeg: 95,  sight: 42, lead: 0.2 },
+  regular:  { name: '正規兵',   aimError: 0.055, reaction: 0.62, burstMin: 3, burstMax: 5,  burstPause: [0.55, 1.05], aimSpeed: 3.8, hp: 100, fovDeg: 105, sight: 55, lead: 0.45 },
+  veteran:  { name: '古参兵',   aimError: 0.034, reaction: 0.42, burstMin: 4, burstMax: 7,  burstPause: [0.42, 0.85], aimSpeed: 5.4, hp: 100, fovDeg: 115, sight: 70, lead: 0.7 },
+  elite:    { name: '特殊部隊', aimError: 0.021, reaction: 0.28, burstMin: 5, burstMax: 9,  burstPause: [0.32, 0.62], aimSpeed: 7.2, hp: 100, fovDeg: 125, sight: 85, lead: 0.9 },
 };
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
 const _dir = new THREE.Vector3();
+// 射撃解決の専用一時領域（毎発の生成を避ける）
+const _fOrigin = new THREE.Vector3();
+const _fOrigin2 = new THREE.Vector3();
+const _fAim = new THREE.Vector3();
+const _fRight = new THREE.Vector3();
+const _fUp = new THREE.Vector3();
+const _fMuzzle = new THREE.Vector3();
+const _UP = new THREE.Vector3(0, 1, 0);
 
 let _nextId = 1;
 
@@ -471,45 +489,72 @@ export class Bot {
       Math.sin(this.aimPitch),
       -Math.cos(this.aimYaw) * Math.cos(this.aimPitch)
     );
-    if (fwd.dot(_dir) < 0.985) return;
+    // 大まかに向いていれば撃つ。命中の当たり外れは拡散側で決める。
+    if (fwd.dot(_dir) < 0.965) return;
 
     if (this._fireTimer > 0) return;
 
     // バースト管理
     if (this._burstLeft <= 0) {
       this._burstLeft = this.diff.burstMin + Math.floor(Math.random() * (this.diff.burstMax - this.diff.burstMin + 1));
+      this._shotsInBurst = 0;
     }
 
     this._fire(world, fwd);
     this._burstLeft--;
+    this._shotsInBurst = (this._shotsInBurst || 0) + 1;
     this._fireTimer = fireInterval(this.weapon);
     if (this._burstLeft <= 0) {
-      this._burstPauseT = 0.25 + Math.random() * 0.55;
+      const [lo, hi] = this.diff.burstPause || [0.25, 0.8];
+      this._burstPauseT = lo + Math.random() * (hi - lo);
+      this._shotsInBurst = 0;
     }
   }
 
+  /**
+   * 1 発撃つ。
+   *
+   * 以前は「命中ロールに勝ったら照準方向へ寸分違わず飛ぶ」実装だった。
+   * ボットは相手の目の位置を狙うため、これは事実上「確定ヘッドショット」で、
+   * 正規兵でも 100 の体力を 0.3 秒で削り切ってしまい勝負にならなかった。
+   *
+   * 実銃と同じく、常に拡散を持たせる方式へ変える:
+   *   - 狙点は胸（目より少し下）。頭に当たるのは拡散が上振れしたときだけ。
+   *   - 拡散は難易度と距離で決まり、遠いほど当てにくい。
+   *   - 連射するほど拡散が広がる（反動の再現）。
+   */
   _fire(world, fwd) {
     this.ammo--;
     this.char.onFire();
 
-    // 命中判定: 難易度の accuracy で当たり外れを決め、外す弾は周囲へ散らす
-    const dir = _dir.copy(fwd);
-    const hitRoll = Math.random() < this.diff.accuracy;
-    if (!hitRoll) {
-      const miss = 0.028 + Math.random() * 0.045;
-      const a = Math.random() * Math.PI * 2;
-      const up = new THREE.Vector3(0, 1, 0);
-      const right = new THREE.Vector3().crossVectors(dir, up).normalize();
-      const upv = new THREE.Vector3().crossVectors(right, dir).normalize();
-      dir.addScaledVector(right, Math.cos(a) * miss).addScaledVector(upv, Math.sin(a) * miss).normalize();
-    }
+    const origin = this.char.getEyePosition(_fOrigin);
+    const t = this.targetEnemy;
+    const tp = t?.getEyePosition ? t.getEyePosition(_fAim) : _fAim.copy(t?.position || origin);
+    // 目ではなく胸を狙う
+    tp.y -= 0.28;
+    const dist = origin.distanceTo(tp);
 
-    const origin = this.char.getEyePosition(new THREE.Vector3());
+    const dir = _dir.copy(tp).sub(origin).normalize();
+    // 狙いが定まっていない分（aimError）＋ 連射による広がり
+    const burstSpread = Math.min(1, this._shotsInBurst * 0.16);
+    const spread = this.diff.aimError * (1 + burstSpread)
+      * (1 + Math.max(0, dist - 12) * 0.022);
+
+    const a = Math.random() * Math.PI * 2;
+    // 中心寄りの分布（sqrt を取らないので中心に集まる）
+    const r = Math.random() * Math.random() * spread;
+    _fRight.crossVectors(dir, _UP).normalize();
+    _fUp.crossVectors(_fRight, dir).normalize();
+    dir.addScaledVector(_fRight, Math.cos(a) * r)
+      .addScaledVector(_fUp, Math.sin(a) * r)
+      .normalize();
+
     // 銃口位置はおおよそ胸の前
-    const muzzle = origin.clone().addScaledVector(dir, 0.45).add(new THREE.Vector3(0, -0.12, 0));
+    const muzzle = _fMuzzle.copy(origin).addScaledVector(dir, 0.45);
+    muzzle.y -= 0.12;
 
     world.resolveShot({
-      shooter: this, origin, dir, weapon: this.weapon, muzzle,
+      shooter: this, origin: _fOrigin2.copy(origin), dir, weapon: this.weapon, muzzle,
     });
   }
 

@@ -68,6 +68,9 @@ const CSS = `
 .mc .melee  { left: calc(20px + var(--sl)); bottom: calc(166px + var(--sb)); width: 46px; height: 46px; }
 .mc .sprint { left: calc(20px + var(--sl)); bottom: calc(104px + var(--sb)); width: 52px; height: 52px; }
 .mc .sprint.on { background: rgba(217,119,87,.32); border-color: var(--coral); }
+/* 使用（爆弾の設置・解除など目標系の操作） */
+.mc .use { left: calc(84px + var(--sl)); bottom: calc(150px + var(--sb)); width: 52px; height: 52px; display: none; }
+.mc.showuse .use { display: flex; }
 
 /* 上部の小ボタン */
 .mc .pause { right: calc(14px + var(--sr)); top: calc(12px + var(--st)); width: 38px; height: 38px; border-radius: 8px; }
@@ -92,6 +95,7 @@ const CSS = `
   .mc .swap   { width: 40px; height: 40px; bottom: calc(148px + var(--sb)); right: calc(76px + var(--sr)); }
   .mc .melee  { width: 40px; height: 40px; bottom: calc(128px + var(--sb)); left: calc(14px + var(--sl)); }
   .mc .sprint { width: 44px; height: 44px; bottom: calc(80px + var(--sb)); left: calc(14px + var(--sl)); }
+  .mc .use    { width: 44px; height: 44px; bottom: calc(122px + var(--sb)); left: calc(64px + var(--sl)); }
   .mc button .lbl { font-size: 7px; }
   .mc .stick { width: 106px; height: 106px; margin: -53px 0 0 -53px; }
   .mc .stick i { width: 42px; height: 42px; margin: -21px 0 0 -21px; }
@@ -108,6 +112,7 @@ const CSS = `
 .mc.portrait .swap   { right: calc(96px + var(--sr)); bottom: calc(226px + var(--sb)); width: 50px; height: 50px; }
 .mc.portrait .melee  { left: calc(20px + var(--sl)); bottom: calc(206px + var(--sb)); width: 50px; height: 50px; }
 .mc.portrait .sprint { left: calc(20px + var(--sl)); bottom: calc(138px + var(--sb)); width: 56px; height: 56px; }
+.mc.portrait .use    { left: calc(88px + var(--sl)); bottom: calc(174px + var(--sb)); width: 56px; height: 56px; }
 .mc.portrait .pause  { top: calc(10px + var(--st)); }
 .mc.portrait .board  { top: calc(10px + var(--st)); }
 
@@ -136,6 +141,7 @@ const CSS = `
 .mc.lefty .swap   { left: calc(94px + var(--sl)); right: auto; }
 .mc.lefty .melee  { right: calc(20px + var(--sr)); left: auto; }
 .mc.lefty .sprint { right: calc(20px + var(--sr)); left: auto; }
+.mc.lefty .use    { right: calc(84px + var(--sr)); left: auto; }
 .mc.lefty.portrait .fire   { left: calc(18px + var(--sl)); }
 .mc.lefty.portrait .ads    { left: calc(116px + var(--sl)); }
 .mc.lefty.portrait .jump   { left: calc(24px + var(--sl)); }
@@ -172,6 +178,7 @@ export class MobileControls {
       <button class="swap" id="mcSwap" aria-label="武器切替">${ICONS.swap({ size: 19 })}</button>
       <button class="melee" id="mcMelee" aria-label="近接攻撃">${ICONS.melee({ size: 19 })}</button>
       <button class="sprint" id="mcSprint" aria-label="スプリント">${ICONS.sprint({ size: 20 })}<span class="lbl">走</span></button>
+      <button class="use" id="mcUse" aria-label="使用">${ICONS.objective ? ICONS.objective({ size: 20 }) : ICONS.reload({ size: 20 })}<span class="lbl">使用</span></button>
 
       <button class="pause" id="mcPause" aria-label="一時停止">${ICONS.pause({ size: 17 })}</button>
       <button class="board" id="mcBoard" aria-label="スコアボード">${ICONS.board({ size: 17 })}</button>
@@ -189,6 +196,7 @@ export class MobileControls {
       stick: $('mcStick'), knob: $('mcKnob'),
       fire: $('mcFire'), ads: $('mcAds'), jump: $('mcJump'), crouch: $('mcCrouch'),
       reload: $('mcReload'), swap: $('mcSwap'), melee: $('mcMelee'), sprint: $('mcSprint'),
+      use: $('mcUse'),
       pause: $('mcPause'), board: $('mcBoard'), needLand: $('mcNeedLand'),
     };
     // 対戦中かどうか（縦画面の警告を出す条件）
@@ -244,6 +252,9 @@ export class MobileControls {
   get blockedByOrientation() {
     return this.inGameplay && window.innerHeight >= window.innerWidth;
   }
+
+  /** 設定変更後などに、外部から配置を再適用する */
+  applyLayout() { this._applyLayout(); }
 
   /** 画面の向きと利き手を反映する */
   _applyLayout() {
@@ -353,6 +364,7 @@ export class MobileControls {
     };
 
     hold(this.el.fire, 'fire');
+    hold(this.el.use, 'interact');
     tap(this.el.jump, 'jump');
     tap(this.el.crouch, 'crouch');
     tap(this.el.reload, 'reload');
@@ -400,6 +412,13 @@ export class MobileControls {
   }
 
   setReloading(on) { this.el.reload.classList.toggle('busy', on); }
+
+  /**
+   * 「使用」ボタンの表示切り替え。
+   * 使う場面のあるモード（捜索と破壊）でだけ出す。
+   * 常に置くと横画面の限られた領域を無駄に潰すため。
+   */
+  setUseVisible(on) { this.root.classList.toggle('showuse', !!on); }
 
   dispose() { this.root.remove(); }
 }

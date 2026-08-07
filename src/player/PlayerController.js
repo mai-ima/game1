@@ -171,7 +171,15 @@ export class PlayerController {
   /* ================= メイン更新 ================= */
 
   update(dt) {
-    if (!this.enabled) return;
+    /*
+     * 死亡中（enabled = false）でもカメラの更新だけは続ける。
+     * 完全に止めると、視野角や揺れが倒れた瞬間の値で固まり、
+     * 復帰時に画面がおかしいまま残ることがある。操作入力は読まない。
+     */
+    if (!this.enabled) {
+      this._updateCamera(dt);
+      return;
+    }
 
     this._updateLook(dt);
 

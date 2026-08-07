@@ -12,6 +12,10 @@ const DEFAULTS = {
   leftHanded: false,
   fov: 80,
   quality: 'high',
+  /** 実測フレーム時間に応じて描画解像度を自動調整する */
+  dynamicRes: true,
+  /** 解像度を下げても足りないとき、画質設定そのものを自動で落とす */
+  perfMode: false,
   brightness: 1.0,
   motionBlur: true,
   filmGrain: true,
@@ -49,7 +53,14 @@ export class Settings {
 
   onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
 
-  reset() { this.values = { ...DEFAULTS }; this.save(); }
+  /** すべて既定値へ戻し、購読者へ通知する */
+  reset() {
+    this.values = { ...DEFAULTS };
+    this.save();
+    for (const k of Object.keys(DEFAULTS)) {
+      for (const fn of this.listeners) fn(k, this.values[k]);
+    }
+  }
 
   /** 端末に応じた初期画質を推定する */
   static suggestQuality() {

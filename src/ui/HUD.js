@@ -91,6 +91,21 @@ const CSS = `
 .scorebar .clock.urgent { color: var(--crimson); }
 .scorebar .mode { font: 500 9px/1 var(--mono); letter-spacing: .22em; color: var(--dim); text-transform: uppercase; }
 
+/* ---------- 目標表示（モード別の状況） ---------- */
+.objbar {
+  left: 50%; top: calc(56px + var(--safe-t)); transform: translateX(-50%);
+  display: none; flex-direction: column; align-items: center; gap: 6px;
+  background: rgba(11,12,14,.90); border: 1px solid rgba(242,239,233,.10);
+  border-radius: 3px; padding: 7px 16px; min-width: 190px;
+}
+.objbar.show { display: flex; }
+.objbar .t { font: 500 10px/1 var(--mono); letter-spacing: .18em; color: var(--paper); }
+.objbar .t.warn { color: var(--crimson); }
+.objbar .s { font: 500 9px/1 var(--mono); letter-spacing: .14em; color: var(--dim); }
+.objbar .bar { width: 100%; height: 3px; background: rgba(242,239,233,.12); border-radius: 2px; overflow: hidden; display: none; }
+.objbar.acting .bar { display: block; }
+.objbar .bar > i { display: block; height: 100%; width: 0; background: var(--coral); }
+
 /* ---------- ミニマップ ---------- */
 .mapbox { left: calc(16px + var(--safe-l)); top: calc(14px + var(--safe-t)); }
 .mapbox canvas { display: block; border-radius: 50%; }
@@ -428,6 +443,12 @@ export class HUD {
         <div class="label" id="mapLabel">コンパウンド</div>
       </div>
 
+      <div data-el class="objbar" id="hudObj">
+        <div class="t" id="objT"></div>
+        <div class="s" id="objS"></div>
+        <div class="bar"><i id="objBar"></i></div>
+      </div>
+
       <div data-el class="feed" id="hudFeed"></div>
 
       <div data-el class="vitals" id="hudVitals">
@@ -473,6 +494,7 @@ export class HUD {
       scoreA: $('scoreA'), scoreB: $('scoreB'), clock: $('clock'), modeName: $('modeName'),
       map: $('hudMap'), mapCanvas: $('mapCanvas'), mapLabel: $('mapLabel'),
       feed: $('hudFeed'),
+      obj: $('hudObj'), objT: $('objT'), objS: $('objS'), objBar: $('objBar'),
       vitals: $('hudVitals'), hpNum: $('hpNum'), hpBar: $('hpBar'), stamBar: $('stamBar'),
       ammo: $('hudAmmo'), wName: $('wName'), wMode: $('wMode'),
       ammoMag: $('ammoMag'), ammoRes: $('ammoRes'), ammoTicks: $('ammoTicks'),
@@ -698,7 +720,54 @@ export class HUD {
     this.el.clock.textContent = `${m}:${String(sec).padStart(2, '0')}`;
     this.el.clock.classList.toggle('urgent', t < 30);
     if (modeName) this.el.modeName.textContent = modeName;
+    this._updateObjective(s);
   }
+
+  /**
+   * モード固有の状況を中央上部に出す。
+   * 「捜索と破壊」は攻守と設置状況が見えないと何をすべきか分からないため、
+   * ここで明示する。それ以外のモードでは非表示。
+   */
+  _updateObjective(s) {
+    const el = this.el.obj;
+    if (s.attackers) {
+      // 捜索と破壊
+      el.classList.add('show');
+      const mine = this._playerTeam || 'A';
+      const attacking = s.attackers === mine;
+      if (s.planted) {
+        this.el.objT.textContent = attacking ? '爆弾設置済み — 防衛せよ' : '爆弾を解除せよ';
+        this.el.objT.classList.add('warn');
+      } else {
+        this.el.objT.textContent = attacking ? '爆弾を設置せよ' : '設置を阻止せよ';
+        this.el.objT.classList.remove('warn');
+      }
+      this.el.objS.textContent = `ラウンド ${s.round}　${s.A ?? 0} - ${s.B ?? 0}`;
+      const acting = !!s.action && s.progress > 0.01;
+      el.classList.toggle('acting', acting);
+      if (acting) {
+        this.el.objBar.style.width = `${Math.round(s.progress * 100)}%`;
+        this.el.objT.textContent = s.action === 'plant' ? '設置中…' : '解除中…';
+      }
+    } else if (s.tags !== undefined) {
+      // キルコンファームド
+      el.classList.add('show');
+      el.classList.remove('acting');
+      this.el.objT.textContent = 'ドッグタグを回収せよ';
+      this.el.objS.textContent = s.tags > 0 ? `未回収 ${s.tags} 枚` : '未回収なし';
+    } else if (s.weapon) {
+      // ガンゲーム
+      el.classList.add('show');
+      el.classList.remove('acting');
+      this.el.objT.textContent = `第 ${(s.A ?? 0) + 1} 段階 / ${s.limit}`;
+      this.el.objS.textContent = '倒すたびに武器が変わる';
+    } else {
+      el.classList.remove('show', 'acting');
+    }
+  }
+
+  /** 目標表示で「自分の陣営」を判定するために保持する */
+  setPlayerTeam(team) { this._playerTeam = team; }
 
   /** スコアボード（Tab） */
   setBoard(open, data) {
