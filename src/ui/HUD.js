@@ -74,10 +74,9 @@ const CSS = `
 .scorebar {
   left: 50%; top: calc(10px + var(--safe-t)); transform: translateX(-50%);
   display: flex; align-items: center; gap: 14px;
-  background: linear-gradient(180deg, rgba(9,10,12,.80), rgba(9,10,12,.60));
+  background: linear-gradient(180deg, rgba(11,12,14,.93), rgba(8,9,11,.86));
   border: 1px solid rgba(242,239,233,.10);
   border-radius: 3px; padding: 7px 14px;
-  backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
 }
 .scorebar .team { display: flex; align-items: center; gap: 7px; }
 .scorebar .pip { width: 7px; height: 7px; border-radius: 1px; }
@@ -173,19 +172,28 @@ const CSS = `
 
 /* ---------- スコープ ----------
  * 円形のレンズ以外を黒で覆い、内側にミルドット照準線を描く。
- * 黒縁は box-shadow を巨大な spread で広げて作る（マスク不要で軽い）。
+ * 黒縁は「画面いっぱいの radial-gradient」で作る。
+ * box-shadow の巨大 spread（0 0 0 9999px）は iOS Safari で
+ * 画面外まで及ぶ巨大な合成レイヤを生み、覗くたびに数秒固まる原因になる。
+ * グラデーションなら画面サイズぶんの塗りで済むので安全。
  */
 .scope {
   inset: 0; opacity: 0; pointer-events: none;
   transition: opacity .09s linear;
 }
 .scope.on { opacity: 1; }
+.scope .shroud {
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 50%,
+    rgba(0,0,0,0) calc(var(--lens) / 2 - 1px),
+    #000 calc(var(--lens) / 2 + 0.5px));
+}
+/* レンズ内側の暗い縁取り（要素サイズが有限なので合成コストは小さい） */
 .scope .lens {
   position: absolute; left: 50%; top: 50%;
   width: var(--lens); height: var(--lens); margin: calc(var(--lens) / -2) 0 0 calc(var(--lens) / -2);
   border-radius: 50%;
   box-shadow:
-    0 0 0 9999px #000,
     inset 0 0 34px 12px rgba(0,0,0,.92),
     inset 0 0 4px 2px rgba(150,180,210,.30);
 }
@@ -259,7 +267,7 @@ const CSS = `
   width: min(760px, 92vw); background: rgba(9,10,12,.93);
   border: 1px solid rgba(242,239,233,.12); border-radius: 4px;
   padding: 22px 24px; opacity: 0; pointer-events: none; transition: opacity .14s;
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 24px 70px rgba(0,0,0,.6);
 }
 .board.show { opacity: 1; }
 .board h3 {
@@ -402,6 +410,7 @@ export class HUD {
           <div class="fringe"></div>
         </div>
         <div class="lens"></div>
+        <div class="shroud"></div>
       </div>
       <div data-el class="dmgring" id="hudDmg"></div>
 
@@ -622,12 +631,37 @@ export class HUD {
       `<span class="v">${esc(victimName)}</span>`;
     this.el.feed.appendChild(row);
     this._feedRows.push(row);
-    setTimeout(() => { row.style.transition = 'opacity .4s'; row.style.opacity = '0'; }, 5200);
-    setTimeout(() => { row.remove(); this._feedRows.shift(); }, 5700);
+
+    /*
+     * 行の破棄は「その行自身」を対象にする。
+     * 以前は shift() で先頭を落としていたため、行数上限で先に消えた行の
+     * タイマーが無関係な行を配列から外し、DOM 上に取り残された行が
+     * 試合中ずっと積み上がっていた。
+     */
+    const drop = () => {
+      clearTimeout(row._fadeT); clearTimeout(row._killT);
+      const i = this._feedRows.indexOf(row);
+      if (i >= 0) this._feedRows.splice(i, 1);
+      row.remove();
+    };
+    row._fadeT = setTimeout(() => { row.style.transition = 'opacity .4s'; row.style.opacity = '0'; }, 5200);
+    row._killT = setTimeout(drop, 5700);
+
     while (this._feedRows.length > 6) {
       const r = this._feedRows.shift();
-      r?.remove();
+      if (!r) continue;
+      clearTimeout(r._fadeT); clearTimeout(r._killT);
+      r.remove();
     }
+  }
+
+  /** 試合終了・離脱時にキルフィードを空にする */
+  clearFeed() {
+    for (const r of this._feedRows) {
+      clearTimeout(r._fadeT); clearTimeout(r._killT);
+      r.remove();
+    }
+    this._feedRows.length = 0;
   }
 
   announce(big, sub = '') {
@@ -691,7 +725,18 @@ export class HUD {
   }
 
   /** ミニマップ更新 */
-  updateMinimap(state) { this.minimap.draw(state); }
+  /**
+   * ミニマップを更新する。
+   * 中身は Canvas2D の再描画（回転した地形画像の転写を含む）なので、
+   * 描画フレームレートに合わせて毎フレーム回す必要はない。
+   * 30Hz に間引いても体感は変わらず、負荷は半分になる。
+   */
+  updateMinimap(state) {
+    const now = performance.now();
+    if (now - (this._miniAt || 0) < 33) return;
+    this._miniAt = now;
+    this.minimap.draw(state);
+  }
 
   /** 目標地点のスクリーンピン */
   setPins(pins) {

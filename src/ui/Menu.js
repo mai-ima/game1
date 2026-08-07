@@ -228,16 +228,14 @@ const CSS = MARK_CSS + `
 /* 出撃バー（スマホは常時表示で固定） */
 .ui.touch .deploybar {
   flex: 0 0 auto; padding: 10px calc(16px + var(--sr)) calc(10px + var(--sb)) calc(16px + var(--sl));
-  border-top: 1px solid var(--line); background: rgba(9,10,12,.9);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-top: 1px solid var(--line); background: rgba(9,10,12,.97);
 }
 .ui.touch .mpanel .deploy { display: none; }
 
 /* 下部タブバー */
 .ui.touch .tabbar {
   flex: 0 0 auto; display: flex; border-top: 1px solid var(--line);
-  background: rgba(9,10,12,.94); padding-bottom: var(--sb);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: rgba(9,10,12,.98); padding-bottom: var(--sb);
 }
 .ui.touch .tabbar button {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;
@@ -282,8 +280,7 @@ const CSS = MARK_CSS + `
 /* ---------------- 結果 ---------------- */
 .result {
   position: absolute; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center; background: rgba(8,9,11,.94); padding: 0 20px;
-  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  align-items: center; justify-content: center; background: rgba(8,9,11,.985); padding: 0 20px;
 }
 .result.on { display: flex; }
 .result .verdict { font: 200 clamp(30px,7vw,64px)/1 var(--sans); letter-spacing: .2em; text-indent: .2em; text-transform: uppercase; text-align: center; }
@@ -306,7 +303,7 @@ const CSS = MARK_CSS + `
 /* ---------------- ポーズ ---------------- */
 .pause {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(8,9,11,.82); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); padding: 20px;
+  background: rgba(8,9,11,.93); padding: 20px;
 }
 .pause.on { display: flex; }
 .pause .box { width: min(360px, 88vw); }
@@ -867,6 +864,13 @@ export class Menu {
   }
 
   setMeta(text) { this.el.metaLine.textContent = text; }
+
+  /** エンジンが自動で画質を落としたときに、設定画面の選択状態を合わせる */
+  syncQuality(name) {
+    const q = this.root.querySelector('#quality');
+    if (!q) return;
+    [...q.children].forEach((x) => x.classList.toggle('on', x.dataset.v === name));
+  }
 
   dispose() {
     window.removeEventListener('resize', this._onResize);

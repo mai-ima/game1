@@ -49,6 +49,8 @@ export class Bot {
     const model = buildSoldier(soldierMaterials(ctx.mats, this.id % 3), teamColor);
     ctx.scene.add(model);
     this.char = new Character(model);
+    // 被弾解決がこのボット本体へ辿り着けるようにする
+    this.char.owner = this;
     this.char.model.visible = false;
 
     // ステータス

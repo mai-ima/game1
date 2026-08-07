@@ -256,7 +256,13 @@ export class Character {
       if (!best || t < best.dist) {
         const point = new THREE.Vector3(origin.x + dir.x * t, hy, origin.z + dir.z * t);
         const normal = new THREE.Vector3(point.x - this.position.x, 0, point.z - this.position.z).normalize();
-        best = { dist: t, point, normal, zone: hb.zone, target: this };
+        /*
+         * target は「弾を受けた主体」。Character は見た目と当たり判定だけを
+         * 持つ部品で、体力や撃破処理は所有者（Bot）側にある。
+         * ここで Character 自身を返すと呼び出し側が target.damage() を
+         * 呼べず、着弾のたびに例外で更新が止まる。
+         */
+        best = { dist: t, point, normal, zone: hb.zone, target: this.owner || this };
       }
     }
     return best;

@@ -35,17 +35,15 @@ const CSS = `
   position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px;
   border-radius: 50%; background: rgba(242,239,233,.20);
   border: 1.5px solid rgba(242,239,233,.42);
-  backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
 }
 
 /* ボタン共通 */
 .mc button {
   position: absolute; pointer-events: auto; border-radius: 50%;
-  background: rgba(14,16,19,.52); border: 1.5px solid rgba(242,239,233,.22);
+  background: rgba(14,16,19,.68); border: 1.5px solid rgba(242,239,233,.22);
   color: var(--paper); font-family: var(--mono); font-weight: 600;
   display: flex; align-items: center; justify-content: center;
   flex-direction: column; gap: 2px;
-  backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
   transition: transform .08s, background .12s, border-color .12s;
   -webkit-tap-highlight-color: transparent;
 }

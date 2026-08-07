@@ -16,8 +16,13 @@ import { SURFACE, DebrisBody } from '../world/Physics.js';
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
+const _q2 = new THREE.Quaternion();
 const _m = new THREE.Matrix4();
 const _up = new THREE.Vector3(0, 1, 0);
+// 毎フレームの生成を避けるための定数ベクトル（書き換えないこと）
+const _AXIS_Z = new THREE.Vector3(0, 0, 1);
+const _AXIS_NEG_Z = new THREE.Vector3(0, 0, -1);
+const _scale = new THREE.Vector3(1, 1, 1);
 
 /* ---------- テクスチャ生成（キャンバス） ---------- */
 
@@ -263,8 +268,8 @@ export class Effects {
       _v.copy(p.to).sub(p.from).normalize();
       const head = _v2.copy(p.from).addScaledVector(_v, headD);
 
-      _q.setFromUnitVectors(new THREE.Vector3(0, 0, -1), _v);
-      _m.compose(head, _q, new THREE.Vector3(1, 1, tailLen));
+      _q.setFromUnitVectors(_AXIS_NEG_Z, _v);
+      _m.compose(head, _q, _scale.set(1, 1, tailLen));
       this.tracerMesh.setMatrixAt(i, _m);
       changed = true;
     }
@@ -347,7 +352,8 @@ export class Effects {
         : Math.sin(Math.min(1, k * 2.4) * Math.PI * 0.5) * (1 - k) * 1.1;
 
       // ビルボード（カメラ向き + 自転）
-      _q.copy(camQ).multiply(_q.clone().setFromAxisAngle(new THREE.Vector3(0, 0, 1), p.rot));
+      _q2.setFromAxisAngle(_AXIS_Z, p.rot);
+      _q.copy(camQ).multiply(_q2);
       _m.compose(p.pos, _q, _v.set(size, size, size));
 
       if (p.kind === 'spark') {
@@ -392,9 +398,9 @@ export class Effects {
   decal(point, normal, size = 0.11) {
     const i = this.decalIndex % this.decalMax;
     this.decalIndex++;
-    _q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    _q.setFromUnitVectors(_AXIS_Z, normal);
     // 面内でランダム回転
-    const spin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.random() * Math.PI * 2);
+    const spin = _q2.setFromAxisAngle(_AXIS_Z, Math.random() * Math.PI * 2);
     _q.multiply(spin);
     const s = size * (0.82 + Math.random() * 0.42);
     _v.copy(point).addScaledVector(normal, 0.006);

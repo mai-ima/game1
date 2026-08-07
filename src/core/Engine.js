@@ -7,41 +7,99 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { CompositeShader, RadialBlurShader } from '../render/PostFX.js';
 
-/** 画質プリセット */
+/**
+ * 画質プリセット。
+ *
+ * pixelRatio は「上限」。実際の描画解像度はここに動的解像度スケール
+ * （後述の DRS）を掛けた値になるため、余裕のある端末では上限まで上がり、
+ * 苦しい端末では自動的に下がる。
+ *
+ * aa: 'smaa'（3 パス・最良） / 'fxaa'（1 パス・安価） / 'none'
+ */
 export const QUALITY = {
-  low:    { pixelRatio: 1.0,  shadowMap: 1024, gtao: false, bloom: false, smaa: false, aniso: 4,  shadowDist: 32,  texSize: 256 },
-  medium: { pixelRatio: 1.25, shadowMap: 1536, gtao: false, bloom: true,  smaa: true,  aniso: 8,  shadowDist: 45,  texSize: 512 },
-  high:   { pixelRatio: 1.5,  shadowMap: 2048, gtao: false, bloom: true,  smaa: true,  aniso: 16, shadowDist: 55,  texSize: 512 },
-  ultra:  { pixelRatio: 2.0,  shadowMap: 3072, gtao: true,  bloom: true,  smaa: true,  aniso: 16, shadowDist: 80,  texSize: 1024 },
+  low:    { pixelRatio: 1.0,  shadows: false, shadowMap: 1024, gtao: false, bloom: false, aa: 'fxaa', aniso: 4,  shadowDist: 30, texSize: 256,  bloomScale: 0.5,  minScale: 0.42 },
+  medium: { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true,  aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.55 },
+  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2048, gtao: false, bloom: true,  aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.60 },
+  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true,  aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.65 },
 };
+
+/** 動的解像度が取りうる段階（プリセットの pixelRatio に対する倍率） */
+const SCALE_STEPS = [1.0, 0.90, 0.80, 0.70, 0.62, 0.55, 0.48, 0.42];
+/** 目標フレーム時間（ms）。60fps を狙い、これを超え続けたら解像度を下げる */
+const TARGET_MS = 16.7;
+
+/**
+ * GPU がソフトウェア実装かどうかを判定する。
+ *
+ * Chrome はハードウェアアクセラレーションが無効・GPU が blocklist 入り・
+ * リモートデスクトップ経由といった条件で SwiftShader（CPU 実装）へ落ちる。
+ * この状態では本作に限らず 3D は 1fps 級になり、利用者からは
+ * 「フリーズした」ようにしか見えない。判別して設定を最小にし、
+ * 原因を伝えられるようにしておく。
+ */
+export function detectSoftwareRenderer(gl) {
+  try {
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = String(
+      (ext && gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || ''
+    );
+    const soft = /swiftshader|llvmpipe|softpipe|software|microsoft basic render|generic renderer/i.test(name);
+    return { name, software: soft };
+  } catch {
+    return { name: '不明', software: false };
+  }
+}
 
 export class Engine {
   /**
    * @param {HTMLElement} container
    * @param {string} quality QUALITY のキー
    */
-  constructor(container, quality = 'high') {
+  constructor(container, quality = 'high', opts = {}) {
     this.container = container;
+    // 検証用途では、ソフトウェア描画でも指定した画質のまま動かしたいことがある
+    this.ignoreSoftwareDowngrade = !!opts.ignoreSoftwareDowngrade;
     this.quality = QUALITY[quality] ? quality : 'high';
     const q = QUALITY[this.quality];
 
     /* ---------------- レンダラ ---------------- */
     this.renderer = new THREE.WebGLRenderer({
-      antialias: false,           // SMAA をポストで使うため無効
+      antialias: false,           // SMAA / FXAA をポストで使うため無効
       powerPreference: 'high-performance',
       stencil: false,
       depth: true,
       alpha: false,
-      preserveDrawingBuffer: true, // スクリーンショット取得のため
+      /*
+       * preserveDrawingBuffer は false。true にするとブラウザは毎フレーム
+       * 描画バッファを保持するためにコピーを挟み、合成のゼロコピー経路から
+       * 外れる。Chrome では高解像度ほど顕著に重くなる。
+       * canvas から画像を取り出したい場合は captureFrame() を使う
+       * （描き直した直後に読むので保持は不要）。
+       */
+      preserveDrawingBuffer: false,
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q.pixelRatio));
+
+    /*
+     * ---------------- 動的解像度（DRS） ----------------
+     * 実測フレーム時間に応じて描画解像度を上下させる。
+     * 端末性能を事前に当てるのは不可能なので、走らせながら合わせるほうが確実。
+     * 初期値は 1 段下げた状態から始め、余裕があれば上げていく
+     * （最初のフレームから重い、という印象を避けるため）。
+     */
+    this._scaleIdx = 1;
+    this._frameMs = TARGET_MS;
+    this._scaleCooldown = 1.2;
+    this.autoResolution = true;
+
+    this.renderer.setPixelRatio(this._targetPixelRatio());
     this.renderer.setSize(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = q.shadows !== false;
     // PCFSoftShadowMap は非推奨。柔らかさは shadow.radius / blurSamples で制御する。
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.shadowMap.autoUpdate = true;
@@ -91,6 +149,19 @@ export class Engine {
     /* ---------------- ポストプロセス ---------------- */
     this._setupComposer();
 
+    /* ---------------- GPU の素性を確認 ---------------- */
+    this.gpu = detectSoftwareRenderer(this.renderer.getContext());
+    if (this.gpu.software && !this.ignoreSoftwareDowngrade) {
+      // CPU 描画では何をしても 60fps には届かない。最小構成で始める。
+      this.quality = 'low';
+      this._scaleIdx = SCALE_STEPS.length - 1;
+      this.renderer.setPixelRatio(this._targetPixelRatio());
+      this.renderer.shadowMap.enabled = false;
+      this.composer?.dispose();
+      this._setupComposer();
+      this._onResizeRaw();
+    }
+
     /* ---------------- リサイズ ---------------- */
     this._onResize = this._onResize.bind(this);
     window.addEventListener('resize', this._onResize);
@@ -104,6 +175,15 @@ export class Engine {
     const sky = new Sky();
     sky.scale.setScalar(6000);
     sky.name = 'Sky';
+    /*
+     * 空は最後に描く。
+     * 雲は 2 回の FBM（各 5 オクターブ）を回す高価なフラグメントシェーダで、
+     * 既定の描画順（不透明を手前から）だと画面全体で実行されたうえに
+     * 建物で上書きされ、丸ごと無駄になる。
+     * 最後に回せば深度テストで隠れた画素が early-Z で捨てられ、
+     * 実際に空が見えている部分だけの計算で済む。
+     */
+    sky.renderOrder = 1000;
     this.scene.add(sky);
     this.sky = sky;
 
@@ -264,9 +344,10 @@ export class Engine {
     if (!this.sun) return;
     const s = this.sun;
     s.target.position.set(target.x, 0, target.z);
-    s.position.copy(this.sunPosition).multiplyScalar(160).add(
-      new THREE.Vector3(target.x, 0, target.z)
-    );
+    // 毎フレーム呼ばれるので Vector3 を生成しない
+    s.position.copy(this.sunPosition).multiplyScalar(160);
+    s.position.x += target.x;
+    s.position.z += target.z;
     s.target.updateMatrixWorld();
     s.updateMatrixWorld();
   }
@@ -275,6 +356,9 @@ export class Engine {
 
   _setupComposer() {
     const q = QUALITY[this.quality];
+    // 作り直すので、前回のパス参照は必ず捨てる
+    this.gtaoPass = null; this.bloomPass = null; this.smaaPass = null; this.fxaaPass = null;
+
     const size = this.renderer.getSize(new THREE.Vector2());
     const pr = this.renderer.getPixelRatio();
     const w = Math.floor(size.x * pr), h = Math.floor(size.y * pr);
@@ -296,34 +380,47 @@ export class Engine {
     this.composer.addPass(this.renderPass);
 
     // --- GTAO (アンビエントオクルージョン) ---
+    // AO は低周波なので半解像度で十分。全解像度だと深度・法線の再描画まで
+    // 含めて基本パスの数倍のコストになる。
     if (q.gtao) {
-      const gtao = new GTAOPass(this.scene, this.camera, w, h);
+      const gw = Math.max(2, Math.floor(w * 0.5)), gh = Math.max(2, Math.floor(h * 0.5));
+      const gtao = new GTAOPass(this.scene, this.camera, gw, gh);
       gtao.output = GTAOPass.OUTPUT.Default;
       gtao.updateGtaoMaterial({
         radius: 0.32,
         distanceExponent: 1.0,
         thickness: 1.0,
         scale: 1.05,
-        samples: 16,
+        samples: 8,
         distanceFallOff: 1.0,
         screenSpaceRadius: false,
       });
-      gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 16 });
+      gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 8 });
       gtao.blendIntensity = 0.9;
       this.composer.addPass(gtao);
       this.gtaoPass = gtao;
     }
 
     // --- ブルーム ---
+    // ブルームも低周波。入力解像度を落としても見た目はほぼ変わらない一方、
+    // 内部で 5 段のミップ×2 方向ぼかしを回すためコスト差は大きい。
     if (q.bloom) {
-      const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.34, 0.62, 0.86);
+      const bs = q.bloomScale ?? 0.5;
+      const bloom = new UnrealBloomPass(
+        new THREE.Vector2(Math.max(4, Math.floor(w * bs)), Math.max(4, Math.floor(h * bs))),
+        0.34, 0.62, 0.86
+      );
       this.composer.addPass(bloom);
       this.bloomPass = bloom;
+      this._bloomScale = bs;
     }
 
     // --- 径方向モーションブラー ---
+    // 効果量が 0 のときはパスごと無効化する。有効なままだと、何も変えない
+    // 全画面描画とレンダーターゲットの往復が毎フレーム走って無駄になる。
     this.blurPass = new ShaderPass(RadialBlurShader);
-    this.blurPass.enabled = true;
+    this.blurPass.enabled = false;
+    this.motionBlurAllowed = this._motionBlurAllowed ?? true;
     this.composer.addPass(this.blurPass);
 
     // --- トーンマップ + sRGB 変換 ---
@@ -335,11 +432,134 @@ export class Engine {
     this.composer.addPass(this.compositePass);
 
     // --- アンチエイリアス ---
-    if (q.smaa) {
+    // SMAA は 3 パス、FXAA は 1 パス。負荷に応じて選べるようにしておく。
+    if (q.aa === 'smaa') {
       this.smaaPass = new SMAAPass();
       this.composer.addPass(this.smaaPass);
+    } else if (q.aa === 'fxaa') {
+      const fxaa = new ShaderPass(FXAAShader);
+      fxaa.material.uniforms.resolution.value.set(1 / w, 1 / h);
+      this.composer.addPass(fxaa);
+      this.fxaaPass = fxaa;
     }
   }
+
+  /**
+   * シェーダを事前コンパイルする。
+   *
+   * three は「そのマテリアルで初めて描画するフレーム」でプログラムを
+   * 生成・リンクする。これは同期処理なので、対戦開始直後や新しい敵・武器が
+   * 初めて画面に入った瞬間に数十〜数百 ms のカクつきとして現れる。
+   * ローディング中にまとめて済ませておけば、試合中は起きない。
+   */
+  async precompile() {
+    const r = this.renderer;
+    try {
+      if (r.compileAsync) {
+        await r.compileAsync(this.scene, this.camera);
+        if (this.viewScene.children.length > 0) await r.compileAsync(this.viewScene, this.viewCamera);
+      } else {
+        r.compile(this.scene, this.camera);
+        if (this.viewScene.children.length > 0) r.compile(this.viewScene, this.viewCamera);
+      }
+    } catch { /* コンパイル失敗は描画時に再試行される */ }
+  }
+
+  /* ================= 動的解像度 ================= */
+
+  /** 現在の解像度段階から実際のピクセル比を求める */
+  _targetPixelRatio() {
+    const q = QUALITY[this.quality];
+    const scale = SCALE_STEPS[this._scaleIdx];
+    // 下限を下回るとさすがに眠い絵になるので、プリセットごとの最低値で止める
+    const eff = Math.max(q.minScale ?? 0.5, scale);
+    return Math.max(0.5, Math.min(window.devicePixelRatio, q.pixelRatio) * eff);
+  }
+
+  /** 解像度段階を変更して、レンダラとコンポーザに反映する */
+  _applyScale(idx) {
+    const clamped = Math.max(0, Math.min(SCALE_STEPS.length - 1, idx));
+    if (clamped === this._scaleIdx) return false;
+    this._scaleIdx = clamped;
+    this.renderer.setPixelRatio(this._targetPixelRatio());
+    this._onResize();
+    // 作り直したレンダーターゲットの確保コストを次フレームの計測に混ぜない
+    this._lastFrameAt = 0;
+    return true;
+  }
+
+  /**
+   * 実測フレーム時間から解像度を上下させる。
+   *
+   * 下げるときは素早く（重い状態を長引かせない）、
+   * 上げるときは慎重に（上げ下げの振動を防ぐ）。
+   * @param {number} dt 直前フレームの経過秒
+   */
+  _updateAutoResolution(dt) {
+    if (!this.autoResolution) return;
+
+    /*
+     * フレーム時間は自前で測る。
+     * ゲームループから渡される dt は物理を安定させるため上限で切られており
+     * （50ms 相当）、本当に重いときの値がそのまま丸められてしまうため、
+     * これを判断材料にすると解像度がいつまでも下がらない。
+     */
+    const now = performance.now();
+    const raw = this._lastFrameAt ? now - this._lastFrameAt : TARGET_MS;
+    this._lastFrameAt = now;
+    // タブ復帰などの巨大な間隔は測定対象外
+    if (raw > 2000) return;
+    const ms = Math.min(raw, 400);
+    /*
+     * 指数移動平均。悪化には速く、改善にはゆっくり追従させる。
+     * 逆にすると、たまたま軽い数フレームで解像度を上げてしまい、
+     * 上げ下げを往復し続ける。
+     */
+    this._frameMs += (ms - this._frameMs) * (ms > this._frameMs ? 0.30 : 0.06);
+
+    this._scaleCooldown -= raw / 1000;
+    if (this._scaleCooldown > 0) return;
+
+    if (this._frameMs > TARGET_MS * 1.35) {
+      /*
+       * 描画時間はおおむね画素数に比例するので、必要な縮小率は
+       * sqrt(目標時間 / 実測時間)。1 段ずつ下げると重い端末では
+       * 収束まで何秒もかかるため、必要な段まで一気に飛ばす。
+       */
+      const need = Math.sqrt(TARGET_MS / this._frameMs);
+      let want = this._scaleIdx;
+      while (want < SCALE_STEPS.length - 1 && SCALE_STEPS[want] > need) want++;
+      if (this._applyScale(Math.max(this._scaleIdx + 1, want))) {
+        this._scaleCooldown = 1.0;
+        this._frameMs = TARGET_MS;
+        return;
+      }
+      /*
+       * 解像度を下限まで落としてもまだ重い。
+       * この場合はプリセット自体が端末に対して重すぎるので、
+       * 1 段階下の画質へ落とす（自動で上げ直すことはしない）。
+       */
+      const order = ['ultra', 'high', 'medium', 'low'];
+      const i = order.indexOf(this.quality);
+      if (i >= 0 && i < order.length - 1) {
+        const next = order[i + 1];
+        this.setQuality(next);
+        this._scaleCooldown = 6.0;
+        this._frameMs = TARGET_MS;
+        this.onQualityAuto?.(next);
+      }
+    } else if (this._frameMs < TARGET_MS * 0.72) {
+      // 十分な余裕がある → 1 段上げる
+      if (this._applyScale(this._scaleIdx - 1)) {
+        this._scaleCooldown = 3.0;
+        this._frameMs = TARGET_MS;
+      }
+    }
+  }
+
+  /** 実際に描画している解像度（デバッグ表示用） */
+  get renderScale() { return +(this._targetPixelRatio() / Math.min(window.devicePixelRatio, QUALITY[this.quality].pixelRatio)).toFixed(2); }
+  get renderSize() { return `${this.renderer.domElement.width}x${this.renderer.domElement.height}`; }
 
   /** 画質プリセットを切り替え（コンポーザを再構築） */
   setQuality(name) {
@@ -347,7 +567,11 @@ export class Engine {
     this.quality = name;
     const q = QUALITY[name];
 
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q.pixelRatio));
+    this._scaleIdx = 1;
+    this._frameMs = TARGET_MS;
+    this._scaleCooldown = 1.5;
+    this.renderer.setPixelRatio(this._targetPixelRatio());
+    this.renderer.shadowMap.enabled = q.shadows !== false;
     if (this.sun) {
       this.sun.shadow.mapSize.set(q.shadowMap, q.shadowMap);
       this.sun.shadow.map?.dispose();
@@ -364,7 +588,8 @@ export class Engine {
 
   /* ================= ループ ================= */
 
-  _onResize() {
+  /** bind 前でも呼べる実体。_onResize はこれを指す。 */
+  _onResizeRaw() {
     const w = this.container.clientWidth || window.innerWidth;
     const h = this.container.clientHeight || window.innerHeight;
     if (w === 0 || h === 0) return;
@@ -375,13 +600,23 @@ export class Engine {
     this.viewCamera.updateProjectionMatrix();
 
     this.renderer.setSize(w, h);
+    const pr = this.renderer.getPixelRatio();
+    this.composer.setPixelRatio(pr);
     this.composer.setSize(w, h);
 
-    const pr = this.renderer.getPixelRatio();
-    this.compositePass?.uniforms.uResolution.value.set(w * pr, h * pr);
-    this.gtaoPass?.setSize(w * pr, h * pr);
+    const pw = Math.floor(w * pr), ph = Math.floor(h * pr);
+    this.compositePass?.uniforms.uResolution.value.set(pw, ph);
+    // GTAO とブルームは縮小解像度で動かしているので、その比率を保つ
+    this.gtaoPass?.setSize(Math.max(2, Math.floor(pw * 0.5)), Math.max(2, Math.floor(ph * 0.5)));
+    if (this.bloomPass) {
+      const bs = this._bloomScale ?? 0.5;
+      this.bloomPass.setSize(Math.max(4, Math.floor(pw * bs)), Math.max(4, Math.floor(ph * bs)));
+    }
+    this.fxaaPass?.material.uniforms.resolution.value.set(1 / pw, 1 / ph);
     this.onResize?.(w, h);
   }
+
+  _onResize() { this._onResizeRaw(); }
 
   /**
    * ライティング調整用のまとめ設定。
@@ -427,6 +662,14 @@ export class Engine {
     if (this.compositePass) this.compositePass.uniforms.uTime.value = this.elapsed;
     if (this.sky) this.sky.material.uniforms.time.value = this.elapsed;
 
+    // 効果量が 0 のモーションブラーはパスごと止める（無駄な全画面描画を省く）
+    if (this.blurPass) {
+      this.blurPass.enabled = this.motionBlurAllowed &&
+        this.blurPass.uniforms.uStrength.value > 0.002;
+    }
+
+    this._updateAutoResolution(dt);
+
     this.renderer.info.reset();
     this.composer.render(dt);
 
@@ -439,6 +682,16 @@ export class Engine {
       this.renderer.render(this.viewScene, this.viewCamera);
       this.renderer.autoClear = true;
     }
+  }
+
+  /**
+   * 現在のフレームを PNG データ URL として取り出す。
+   * preserveDrawingBuffer が false のため、描き直した直後に読む必要がある。
+   * @param {number} dt 描き直しに使う経過秒
+   */
+  captureFrame(dt = 0.016) {
+    this.render(dt);
+    return this.renderer.domElement.toDataURL('image/png');
   }
 
   get drawCalls() { return this.renderer.info.render.calls; }

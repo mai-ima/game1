@@ -20,6 +20,7 @@ const boot = window.__boot;
 const container = document.getElementById('app');
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const _v = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
 const _sway = { x: 0, y: 0 };
 
 async function main() {
@@ -34,7 +35,19 @@ async function main() {
   boot?.set(6, '描画エンジン初期化');
   await nextFrame();
 
-  const engine = new Engine(container, settings.get('quality'));
+  // ?rawgpu を付けるとソフトウェア描画時の自動降格を行わない（見た目の検証用）
+  const qs = new URLSearchParams(location.search);
+  const engine = new Engine(container, qs.get('quality') || settings.get('quality'), {
+    ignoreSoftwareDowngrade: qs.has('rawgpu'),
+  });
+  // GPU 描画が使えていない場合は、そのまま遊ばせても 1fps 級になる。
+  // 原因と対処を明示する（黙って重いのが一番わかりにくい）。
+  // 見た目の検証時は自動調整も止める（画質が勝手に下がると比較できない）
+  if (qs.has('rawgpu')) engine.autoResolution = false;
+  if (engine.gpu?.software && !qs.has('rawgpu')) {
+    settings.set('quality', 'low');
+    showSoftwareWarning(container, engine.gpu.name);
+  }
   const mats = new MaterialLibrary(engine.renderer);
   const input = new Input(engine.renderer.domElement);
   const audio = new AudioManager(settings);
@@ -74,6 +87,8 @@ async function main() {
 
   // メニューの背景として、マップ上空をゆっくり周回させる
   const orbit = { t: 0, active: true };
+  // 出撃処理は非同期なので、二重に走らせない
+  let starting = false;
   engine.camera.position.set(0, 26, 44);
   engine.camera.lookAt(0, 3, 0);
 
@@ -97,9 +112,20 @@ async function main() {
     input.update();
 
     if (game.running && !game.paused) {
-      game.update(dt);
-      updateHud(game, hud, mobile, dt);
-      audio.setListener(engine.camera.position);
+      /*
+       * 更新中の例外で描画まで巻き添えにしない。
+       * ここを素通しにすると、例外が出たフレームは engine.render() まで
+       * 到達せず画面がまったく更新されない。毎フレーム出る類の不具合だと
+       * 「フリーズした」ようにしか見えず、原因も追えなくなる。
+       * 握り潰さずコンソールへは必ず出す。
+       */
+      try {
+        game.update(dt);
+        updateHud(game, hud, mobile, dt);
+        audio.setListener(engine.camera.position);
+      } catch (err) {
+        reportLoopError(err);
+      }
     } else if (orbit.active) {
       // メニュー背景のカメラワーク
       orbit.t += dt * 0.045;
@@ -119,7 +145,8 @@ async function main() {
       fps = Math.round(fpsFrames / fpsAcc); fpsAcc = 0; fpsFrames = 0;
       if (settings.get('showFps')) {
         fpsEl.style.display = 'block';
-        fpsEl.textContent = `${fps} FPS · ${engine.drawCalls} draws · ${(engine.triangles / 1000).toFixed(0)}k tris`;
+        fpsEl.textContent =
+          `${fps} FPS · ${engine.renderSize} (x${engine.renderScale}) · ${engine.drawCalls} draws · ${(engine.triangles / 1000).toFixed(0)}k tris`;
       } else {
         fpsEl.style.display = 'none';
       }
@@ -135,24 +162,30 @@ async function main() {
 
   function wireGame(game, hud, menu, mobile, settings, engine) {
     menu.onStart = async (sel) => {
+      if (starting) return;
+      starting = true;
       orbit.active = false;
       menu.showLoading(MAP_INFO);
-      for (let i = 0; i <= 10; i++) {
-        menu.setProgress(i / 10, i < 10 ? '部隊を展開中' : '完了');
-        await nextFrame();
-      }
-      menu.hideLoading();
-      menu.hide();
-      hud.show();
-      mobile?.show();
+      menu.setProgress(0.02, '準備中');
+      await nextFrame();
 
-      game.start({
+      // 進捗は game.start() の実作業から受け取る（見せかけの進捗にしない）
+      await game.start({
         mode: sel.mode,
         difficulty: sel.difficulty,
         botCount: 8,
         loadout: { primary: sel.primary, secondary: sel.secondary },
         attachments: sel.attachments,
-      });
+      }, (p, label) => menu.setProgress(p, label));
+
+      menu.setProgress(1, '完了');
+      await nextFrame();
+      menu.hideLoading();
+      menu.hide();
+      hud.show();
+      mobile?.show();
+      starting = false;
+
       hud.setModeName(GAME_MODES[sel.mode].nameJa);
       hud.announce(GAME_MODES[sel.mode].nameJa, MAP_INFO.nameJa);
       if (!isTouch) input.requestPointerLock();
@@ -172,12 +205,21 @@ async function main() {
       game.running = false;
       game.paused = false;
       hud.hide();
+      hud.clearFeed();
+      audio.stopAll();
       mobile?.hide();
       orbit.active = true;
       menu.showMenu();
     };
 
     menu.onSettingChange = (k, v) => applySettings(engine, input, settings, game, k, v);
+
+    // 解像度を下限まで落としてもフレーム時間が足りない場合、
+    // エンジンが自動で画質を落とす。設定表示と食い違わないよう同期する。
+    engine.onQualityAuto = (name) => {
+      settings.set('quality', name);
+      menu.syncQuality?.(name);
+    };
 
     if (mobile) {
       mobile.onPause = () => pauseGame(game, hud, menu, mobile, input);
@@ -211,6 +253,8 @@ async function main() {
     game.onScoreChange = (s) => hud.setScores(s);
     game.onMatchEnd = (r) => {
       hud.hide();
+      hud.clearFeed();
+      audio.stopAll();
       mobile?.hide();
       input.exitPointerLock();
       orbit.active = true;
@@ -238,7 +282,8 @@ function applySettings(engine, input, settings, game, key, val) {
   if (engine.compositePass) {
     engine.compositePass.uniforms.uGrain.value = s.filmGrain ? 0.016 : 0;
   }
-  if (engine.blurPass) engine.blurPass.enabled = s.motionBlur;
+  // モーションブラーは効果量 0 のときエンジン側で自動的に止まる。ここでは可否だけ渡す。
+  engine.motionBlurAllowed = s.motionBlur;
 
   if (key === 'quality' && QUALITY[val]) engine.setQuality(val);
 }
@@ -319,30 +364,82 @@ function updateHud(game, hud, mobile, dt) {
     }
   }
 
-  // ミニマップ
-  const allies = [], enemies = [];
-  for (const b of game.bots) {
-    if (!b.alive) continue;
-    const t = { x: b.char.position.x, z: b.char.position.z, yaw: b.char.yaw };
-    if (b.team === game.playerStats.team) allies.push(t);
-    else {
-      // 発砲直後 or 視界内の敵だけを表示する
-      const seen = !game.physics.losBlocked(game.player.getEyePosition(_v), b.char.getEyePosition(new THREE.Vector3()));
-      const fresh = b._fireTimer > 0 ? 1 : (seen ? 0.9 : 0);
-      if (fresh > 0.05) enemies.push({ ...t, fresh });
+  // ミニマップ。敵の可視判定はボット 1 体につきレイキャスト 1 本かかるので、
+  // ミニマップの描画頻度（30Hz）に合わせて間引く。
+  _miniT += dt;
+  if (_miniT >= 0.033) {
+    _miniT = 0;
+    const allies = [], enemies = [];
+    const eye = game.player.getEyePosition(_v);
+    for (const b of game.bots) {
+      if (!b.alive) continue;
+      const t = { x: b.char.position.x, z: b.char.position.z, yaw: b.char.yaw };
+      if (b.team === game.playerStats.team) allies.push(t);
+      else {
+        // 発砲直後 or 視界内の敵だけを表示する
+        const seen = !game.physics.losBlocked(eye, b.char.getEyePosition(_v2));
+        const fresh = b._fireTimer > 0 ? 1 : (seen ? 0.9 : 0);
+        if (fresh > 0.05) enemies.push({ ...t, fresh });
+      }
     }
-  }
-  const objectives = (game.mode?.getScores?.()?.zones || []).map((z, i) => {
-    const o = game.builder.objectives[i];
-    return { x: o.pos.x, z: o.pos.z, id: z.id, owner: z.owner };
-  });
+    const objectives = (game.mode?.getScores?.()?.zones || []).map((z, i) => {
+      const o = game.builder.objectives[i];
+      return { x: o.pos.x, z: o.pos.z, id: z.id, owner: z.owner };
+    });
 
-  hud.updateMinimap({
-    playerPos: game.player.position,
-    playerYaw: game.player.yaw,
-    fov: game.engine.camera.fov,
-    allies, enemies, objectives,
-  });
+    hud.updateMinimap({
+      playerPos: game.player.position,
+      playerYaw: game.player.yaw,
+      fov: game.engine.camera.fov,
+      allies, enemies, objectives,
+    });
+  }
+}
+let _miniT = 0;
+
+/**
+ * ソフトウェア描画（SwiftShader 等）で動いていることを知らせる。
+ * Chrome の「ハードウェア アクセラレーションが使用可能な場合は使用する」が
+ * 無効だと必ずこの状態になり、どんな軽量化をしても改善しない。
+ */
+function showSoftwareWarning(parent, rendererName) {
+  const el = document.createElement('div');
+  el.style.cssText = `position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:120;
+    max-width:min(560px,92vw);padding:14px 16px;border-radius:4px;
+    background:rgba(28,14,10,.96);border:1px solid rgba(217,119,87,.55);
+    color:#f2efe9;font:400 12.5px/1.75 -apple-system,"Hiragino Sans",sans-serif;
+    box-shadow:0 18px 48px rgba(0,0,0,.6)`;
+  el.innerHTML = `
+    <div style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.18em;color:#d97757;margin-bottom:9px">
+      GPU アクセラレーションが無効です
+    </div>
+    ブラウザが GPU ではなく CPU で描画しています（<span style="color:#8b9299">${esc(rendererName)}</span>）。
+    この状態では動作が極端に遅くなります。<br>
+    Chrome の <b>設定 → システム</b> で「グラフィック アクセラレーションが使用可能な場合は使用する」を有効にし、
+    ブラウザを再起動してください。<br>
+    <span style="color:#8b9299">画質は自動的に最低設定へ切り替えました。</span>
+    <button style="margin-top:11px;padding:8px 16px;border:1px solid rgba(242,239,233,.28);border-radius:2px;
+      background:none;color:#f2efe9;font:500 10px/1 ui-monospace,Menlo,monospace;letter-spacing:.16em;cursor:pointer">
+      閉じる</button>`;
+  el.querySelector('button').addEventListener('click', () => el.remove());
+  parent.appendChild(el);
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/**
+ * ゲームループ内の例外を記録する。
+ * 同じ例外が毎フレーム出てもログを埋め尽くさないよう、種類ごとに最初の数回だけ出す。
+ */
+const _loopErrs = new Map();
+function reportLoopError(err) {
+  const key = String(err && err.message || err);
+  const n = (_loopErrs.get(key) || 0) + 1;
+  _loopErrs.set(key, n);
+  if (n <= 3) console.error('[ゲーム更新]', err);
+  else if (n === 4) console.error(`[ゲーム更新] 同一の例外が繰り返し発生しています: ${key}`);
 }
 
 function makeFpsEl(parent) {

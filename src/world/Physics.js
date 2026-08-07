@@ -12,6 +12,16 @@ import * as THREE from 'three';
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
+// raycast 専用。呼び出し側と共有しないことで引数の破壊を防ぐ。
+const _rayO = new THREE.Vector3();
+const _rayD = new THREE.Vector3();
+// _rayBox 専用（raycast のループ内から呼ばれるため _v3 とは分ける）
+const _rbLocal = new THREE.Vector3();
+// 視線判定専用
+const _losDir = new THREE.Vector3();
+// 破片・薬莢の積分専用
+const _dbMove = new THREE.Vector3();
+const _dbDir = new THREE.Vector3();
 
 /** 表面種別（着弾エフェクト・足音の切り替えに使う） */
 export const SURFACE = {
@@ -341,28 +351,40 @@ export class Physics {
     const forBullets = opt.forBullets !== false;
     let best = null, bestT = maxDist;
 
+    /*
+     * 引数はまず専用の領域へ退避する。
+     * このメソッドは内部で _v1 / _v2 を作業用に使うため、呼び出し側が
+     * 同じ一時ベクトルを origin / dir として渡していると、
+     * ブロードフェーズ計算の途中で引数そのものが壊れてしまう。
+     * （実際に losBlocked と DebrisBody.step がこれで誤動作していた）
+     */
+    const ox = origin.x, oy = origin.y, oz = origin.z;
+    const dx = dir.x, dy = dir.y, dz = dir.z;
+    const o = _rayO.set(ox, oy, oz);
+    const d = _rayD.set(dx, dy, dz);
+
     // レイの AABB でブロードフェーズ
     const min = _v1.set(
-      Math.min(origin.x, origin.x + dir.x * maxDist),
-      Math.min(origin.y, origin.y + dir.y * maxDist),
-      Math.min(origin.z, origin.z + dir.z * maxDist)
+      Math.min(ox, ox + dx * maxDist),
+      Math.min(oy, oy + dy * maxDist),
+      Math.min(oz, oz + dz * maxDist)
     );
     const max = _v2.set(
-      Math.max(origin.x, origin.x + dir.x * maxDist),
-      Math.max(origin.y, origin.y + dir.y * maxDist),
-      Math.max(origin.z, origin.z + dir.z * maxDist)
+      Math.max(ox, ox + dx * maxDist),
+      Math.max(oy, oy + dy * maxDist),
+      Math.max(oz, oz + dz * maxDist)
     );
     const list = this.query(min, max, this._qr ??= []);
 
     for (const c of list) {
       if (forBullets && !c.blocksBullets) continue;
       if (!forBullets && !c.blocksMovement) continue;
-      const r = this._rayBox(c, origin, dir, bestT);
+      const r = this._rayBox(c, o, d, bestT);
       if (r && r.t < bestT) { bestT = r.t; best = { t: r.t, nx: r.nx, ny: r.ny, nz: r.nz, collider: c }; }
     }
 
     if (!best) return null;
-    const point = new THREE.Vector3().copy(dir).multiplyScalar(best.t).add(origin);
+    const point = new THREE.Vector3(ox + dx * best.t, oy + dy * best.t, oz + dz * best.t);
     const normal = new THREE.Vector3(best.nx, best.ny, best.nz);
     if (best.collider.rotated) best.collider.dirToWorld(normal, normal);
     return { hit: true, dist: best.t, point, normal, collider: best.collider };
@@ -371,7 +393,7 @@ export class Physics {
   /** スラブ法によるレイ vs ボックス。ローカル空間で判定する。 */
   _rayBox(c, origin, dir, maxT) {
     // ローカル空間へ
-    const o = _v3.copy(origin);
+    const o = _rbLocal.copy(origin);
     c.toLocal(o, o);
     let dx = dir.x, dy = dir.y, dz = dir.z;
     if (c.rotated) {
@@ -430,12 +452,11 @@ export class Physics {
    * 2点間に遮蔽物があるか（AI の視線判定用・高速版）
    */
   losBlocked(from, to) {
-    const dir = _v1.copy(to).sub(from);
+    const dir = _losDir.copy(to).sub(from);
     const dist = dir.length();
     if (dist < 0.01) return false;
     dir.divideScalar(dist);
-    const hit = this.raycast(from, dir, dist - 0.02);
-    return !!hit;
+    return !!this.raycast(from, dir, dist - 0.02);
   }
 }
 
@@ -462,10 +483,11 @@ export class DebrisBody {
     this.life += dt;
     this.vel.y += physics.gravity * dt;
 
-    const move = _v1.copy(this.vel).multiplyScalar(dt);
+    // physics.raycast が内部で使う領域とは別の場所を使う
+    const move = _dbMove.copy(this.vel).multiplyScalar(dt);
     const dist = move.length();
     if (dist > 1e-5) {
-      const dir = _v2.copy(move).divideScalar(dist);
+      const dir = _dbDir.copy(move).divideScalar(dist);
       const hit = physics.raycast(this.pos, dir, dist + this.radius, { forBullets: false });
       if (hit) {
         // 反射

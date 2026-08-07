@@ -123,9 +123,18 @@ export class Game {
 
   /**
    * 試合を開始する。
+   *
+   * 兵士モデルの生成は 1 体あたり数百の頂点バッファ生成を伴うため、
+   * 8 体をまとめて作ると 1 フレームが数秒〜十数秒ブロックし、
+   * 端末によっては「フリーズした」ように見える（実際 iOS では
+   * ウォッチドッグに落とされることもある）。
+   * そのため 1 体ごとにフレームを跨いで生成し、その間もローディング画面を
+   * 描き続けられるようにしている。
+   *
    * @param {object} cfg {mode, difficulty, botCount, loadout, attachments}
+   * @param {(p:number, label:string)=>void} onProgress 進捗通知（0..1）
    */
-  start(cfg = {}) {
+  async start(cfg = {}, onProgress = () => {}) {
     const modeId = cfg.mode || 'tdm';
     this.mode = GAME_MODES[modeId].create(this);
     this.difficulty = cfg.difficulty || 'regular';
@@ -137,11 +146,18 @@ export class Game {
     this.playerStats.bestStreak = 0;
 
     // 武器
+    onProgress(0.05, '装備を準備中');
+    await nextFrame();
     const lo = cfg.loadout || { primary: 'm4a1', secondary: 'pistol' };
     this.weapons.setLoadout([lo.primary, lo.secondary], cfg.attachments || {});
 
-    // ボット生成
-    this._spawnBots(cfg.botCount ?? 7, cfg.botWeapons);
+    // ボット生成（フレームを跨ぎながら 1 体ずつ）
+    await this._spawnBots(cfg.botCount ?? 7, cfg.botWeapons, onProgress);
+
+    // 試合中のカクつきを避けるため、シェーダはここで作り切っておく
+    onProgress(0.95, 'シェーダを準備中');
+    await nextFrame();
+    await this.engine.precompile();
 
     this.time = 0;
     this.matchOver = false;
@@ -152,7 +168,7 @@ export class Game {
     this.respawnPlayer(true);
   }
 
-  _spawnBots(total, botWeapons) {
+  async _spawnBots(total, botWeapons, onProgress = () => {}) {
     for (const b of this.bots) b.dispose();
     this.bots.length = 0;
 
@@ -162,22 +178,25 @@ export class Game {
     // 敵チーム（B）を多め、味方（A）も少し入れる
     const enemyCount = Math.ceil(total * 0.6);
     const allyCount = total - enemyCount;
+    const ctx = { scene: this.engine.scene, physics: this.physics, effects: this.effects, mats: this.mats, game: this };
 
+    const plan = [];
     for (let i = 0; i < enemyCount; i++) {
-      const bot = new Bot(
-        { scene: this.engine.scene, physics: this.physics, effects: this.effects, mats: this.mats, game: this },
-        { team: 'B', difficulty: this.difficulty, weaponId: pool[i % pool.length], name: names[i % names.length] }
-      );
-      this.bots.push(bot);
+      plan.push({ team: 'B', difficulty: this.difficulty, weaponId: pool[i % pool.length], name: names[i % names.length] });
     }
     for (let i = 0; i < allyCount; i++) {
-      const bot = new Bot(
-        { scene: this.engine.scene, physics: this.physics, effects: this.effects, mats: this.mats, game: this },
-        { team: 'A', difficulty: this.difficulty, weaponId: pool[(i + 3) % pool.length], name: names[(i + 6) % names.length] }
-      );
-      this.bots.push(bot);
+      plan.push({ team: 'A', difficulty: this.difficulty, weaponId: pool[(i + 3) % pool.length], name: names[(i + 6) % names.length] });
     }
 
+    for (let i = 0; i < plan.length; i++) {
+      // 生成前にフレームを譲る。これで 1 体ぶん（十数 ms）ずつに分割される。
+      await nextFrame();
+      onProgress(0.10 + 0.80 * (i / plan.length), `部隊を展開中 ${i + 1}/${plan.length}`);
+      this.bots.push(new Bot(ctx, plan[i]));
+    }
+
+    await nextFrame();
+    onProgress(0.92, '配置中');
     for (const bot of this.bots) this.respawnBot(bot, true);
   }
 
@@ -473,10 +492,8 @@ export class Game {
     for (const b of this.bots) {
       b.update(dt, this);
       b.updateShadowLod(camPos);
-      if (!b.alive) {
-        b.respawnTimer += 0; // update 内で加算済み
-        if (b.respawnTimer > 5.5 && !this.matchOver) this.respawnBot(b);
-      }
+      // respawnTimer は Bot.update 内で加算される
+      if (!b.alive && b.respawnTimer > 5.5 && !this.matchOver) this.respawnBot(b);
     }
 
     // --- エフェクト・ポスト ---
