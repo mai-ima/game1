@@ -73,7 +73,7 @@ const CSS = `
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   background: radial-gradient(ellipse at 50% 42%, #1a1c20 0%, #0a0b0d 68%);
-  transition: opacity .5s;
+  transition: opacity .5s; padding: 0 18px;
 }
 .title.out { opacity: 0; pointer-events: none; }
 .title .rule { width: min(560px, 78vw); height: 1px; background: var(--line); }
@@ -82,10 +82,12 @@ const CSS = `
   text-transform: uppercase; margin-bottom: 20px;
 }
 .title h1 {
-  font: 200 clamp(38px, 9vw, 92px)/0.95 var(--sans);
-  letter-spacing: .16em; text-indent: .16em; margin: 18px 0;
-  text-transform: uppercase; white-space: nowrap;
+  font: 200 clamp(30px, 7.2vw, 88px)/1.0 var(--sans);
+  letter-spacing: .15em; margin: 18px 0; text-transform: uppercase;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 0 .34em;
+  max-width: 92vw; text-align: center;
 }
+.title h1 span, .title h1 b { display: inline-block; text-indent: .15em; }
 .title h1 b { font-weight: 500; color: var(--coral); }
 .title .tag {
   margin-top: 18px; font: 400 11px/1.9 var(--sans); letter-spacing: .24em;
@@ -268,6 +270,12 @@ const CSS = `
 .loading .pct { margin-top: 13px; font: 500 9.5px/1 var(--mono); letter-spacing: .2em; color: var(--dim); }
 .loading .tip { position: absolute; bottom: calc(38px + var(--sb)); font: 400 11px/1.7 var(--sans); color: var(--dim); max-width: 520px; text-align: center; padding: 0 24px; }
 
+@media (max-height: 460px) {
+  .title .tag { margin-top: 10px; font-size: 10px; }
+  .title .cta { margin-top: 22px; padding: 12px 26px; }
+  .title h1 { margin: 10px 0; }
+  .title .eyebrow { margin-bottom: 12px; }
+}
 @media (max-width: 860px) {
   .mbody { flex-direction: column; gap: 14px; }
   .mnav { width: 100%; flex-direction: row; overflow-x: auto; gap: 0; }
@@ -372,7 +380,7 @@ export class Menu {
       <div class="title" id="title">
         <div class="eyebrow">Anthropic × Opus 5</div>
         <div class="rule"></div>
-        <h1>Operation <b>Crimson</b></h1>
+        <h1><span>Operation</span><b>Crimson</b></h1>
         <div class="rule"></div>
         <div class="tag">ブラウザで動作する タクティカル FPS</div>
         <button class="cta blink" id="btnStart">画面をクリックして開始</button>

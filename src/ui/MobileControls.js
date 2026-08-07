@@ -89,6 +89,24 @@ const CSS = `
 .mc .reload.busy .ring { display: block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* 横画面のスマートフォンは縦の余白が乏しいため、全体を圧縮する */
+@media (max-height: 460px) {
+  .mc .fire   { width: 72px; height: 72px; right: calc(16px + var(--sr)); bottom: calc(74px + var(--sb)); }
+  .mc .ads    { width: 54px; height: 54px; right: calc(98px + var(--sr)); bottom: calc(112px + var(--sb)); }
+  .mc .jump   { width: 46px; height: 46px; right: calc(24px + var(--sr)); bottom: calc(158px + var(--sb)); }
+  .mc .crouch { width: 46px; height: 46px; right: calc(96px + var(--sr)); bottom: calc(48px + var(--sb)); }
+  .mc .reload { width: 46px; height: 46px; right: calc(156px + var(--sr)); bottom: calc(74px + var(--sb)); }
+  .mc .swap   { width: 42px; height: 42px; right: calc(80px + var(--sr)); bottom: calc(170px + var(--sb)); }
+  .mc .melee  { width: 42px; height: 42px; left: calc(18px + var(--sl)); bottom: calc(146px + var(--sb)); }
+  .mc .sprint { width: 46px; height: 46px; left: calc(18px + var(--sl)); bottom: calc(92px + var(--sb)); }
+  .mc button .lbl { font-size: 7.5px; }
+  .mc button .ic { font-size: 14px; }
+  .mc .stick { width: 108px; height: 108px; margin: -54px 0 0 -54px; }
+  .mc .stick i { width: 44px; height: 44px; margin: -22px 0 0 -22px; }
+  .mc .pause, .mc .board { width: 32px; height: 32px; }
+  .mc .board { right: calc(54px + var(--sr)); }
+}
+
 /* 横向き推奨の案内 */
 .mc .rotate {
   position: fixed; inset: 0; background: rgba(10,11,13,.96); display: none;

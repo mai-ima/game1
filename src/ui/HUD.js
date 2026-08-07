@@ -247,6 +247,23 @@ const CSS = `
 .pin .ring { width: 18px; height: 18px; border: 1.4px solid currentColor; border-radius: 50%; }
 .pin .dist { font-size: 9px; opacity: .8; }
 
+@media (max-height: 460px) {
+  .mapbox { left: calc(10px + var(--safe-l)); top: calc(8px + var(--safe-t)); }
+  .mapbox .label { font-size: 7px; bottom: -15px; }
+  .scorebar { top: calc(6px + var(--safe-t)); padding: 5px 11px; gap: 10px; }
+  .scorebar .num { font-size: 15px; }
+  .scorebar .clock { font-size: 12px; padding: 0 9px; }
+  .vitals { left: calc(12px + var(--safe-l)); bottom: calc(10px + var(--safe-b)); width: 118px; }
+  .vitals .hpnum { font-size: 18px; }
+  .ammo { right: calc(14px + var(--safe-r)); bottom: calc(8px + var(--safe-b)); }
+  .ammo .mag { font-size: 24px; }
+  .ammo .res { font-size: 12px; }
+  .ammo .wname { font-size: 8.5px; margin-bottom: 4px; }
+  .ammo .ticks { height: 5px; margin-top: 5px; }
+  .feed { top: calc(44px + var(--safe-t)); }
+  .feed .row { font-size: 10px; padding: 3px 6px; }
+  .announce .big { font-size: 20px; }
+}
 @media (max-width: 780px) {
   .vitals { width: 150px; }
   .vitals .hpnum { font-size: 21px; }
@@ -349,8 +366,10 @@ export class HUD {
       board: $('hudBoard'),
     };
 
-    const isSmall = window.innerWidth < 780;
-    this.minimap = new Minimap(this.el.mapCanvas, { size: isSmall ? 128 : 176 });
+    // 横画面スマホは縦の余白が乏しいので、画面高からサイズを決める
+    const h = window.innerHeight;
+    const size = h < 460 ? 96 : (window.innerWidth < 780 ? 124 : 176);
+    this.minimap = new Minimap(this.el.mapCanvas, { size });
 
     this._dmgMarks = [];
     this._feedRows = [];
