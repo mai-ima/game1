@@ -214,7 +214,9 @@ export class PlayerController {
       this.targetStance = this.targetStance === STANCE.PRONE ? STANCE.STAND : STANCE.PRONE;
     } else if (inp.pressed('crouch')) {
       if (this.sliding) {
-        // スライディング中の しゃがみ は解除
+        // スライディング中にもう一度押したら切り上げてしゃがみへ移る
+        this._endSlide();
+        this.targetStance = STANCE.CROUCH;
       } else if (this.sprinting && this.speed2D > MOVE.walkSpeed * 1.1 && this._slideCooldown <= 0) {
         this._startSlide();
       } else {

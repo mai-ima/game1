@@ -346,6 +346,31 @@ export class AudioManager {
   }
 
   playSwap() { if (this.ready) this._tick(this.ctx.currentTime + 0.05, 1100, 0.07, 0.14); }
+
+  /** 近接攻撃の振り（風切り音 + 銃床の軋み） */
+  playMelee() {
+    if (!this.ready) return;
+    const t = this.ctx.currentTime;
+    const v = this._voice(0.34, true);
+    if (!v) return;
+    const out = this._spatial(v, null);
+
+    const src = this._noiseSource(v);
+    const bp = this._n(v, this.ctx.createBiquadFilter());
+    bp.type = 'bandpass'; bp.frequency.value = 1600; bp.Q.value = 0.7;
+    // 振り抜きに合わせて周波数を上げ下げすると「風を切る」感じになる
+    bp.frequency.setValueAtTime(700, t);
+    bp.frequency.exponentialRampToValueAtTime(2600, t + 0.12);
+    bp.frequency.exponentialRampToValueAtTime(900, t + 0.28);
+    const g = this._n(v, this.ctx.createGain());
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.18, t + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.30);
+    src.connect(bp); bp.connect(g); g.connect(out);
+    src.start(t); src.stop(t + 0.33);
+
+    this._tickIn(v, t + 0.02, 520, 0.05, 0.07, out);
+  }
   playDryFire() { if (this.ready) this._tick(this.ctx.currentTime, 2400, 0.04, 0.16); }
 
   playPlayerHit() {

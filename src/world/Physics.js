@@ -251,20 +251,48 @@ export class Physics {
     max.set(pos.x + radius, pos.y + height, pos.z + radius);
   }
 
-  _overlaps(pos, radius, height) {
+  /**
+   * その位置・その寸法で立てるだけの空間が空いているかを調べる。
+   *
+   * skin は判定を内側へ縮める量（メートル）。これが無いと、
+   * 接地しているキャラクタは足元が床の上面と厳密に一致するため
+   * （move() が pos.y を地面の高さへスナップする）、
+   * 自分が乗っている床そのものと接触していると判定されてしまう。
+   * その結果 _blockedAbove() が常に真になり、
+   * 「しゃがんだら二度と立ち上がれない」という不具合になっていた。
+   *
+   * @param {THREE.Vector3} pos 足元の位置
+   * @param {number} radius 円柱半径
+   * @param {number} height 全高
+   * @param {number} skin 判定を縮める余裕
+   */
+  _overlaps(pos, radius, height, skin = 0.03) {
+    const r = Math.max(0.02, radius - skin);
+    const y0 = pos.y + skin;
+    const h = Math.max(0.04, height - skin * 2);
+
     const min = _v1, max = _v2;
-    this._bounds(pos, radius, height, min, max);
+    min.set(pos.x - r, y0, pos.z - r);
+    max.set(pos.x + r, y0 + h, pos.z + r);
+
     const list = this.query(min, max, this._q ??= []);
     for (const c of list) {
       if (!c.blocksMovement) continue;
-      if (this._boxOverlap(c, pos, radius, height)) return true;
+      if (this._boxOverlapAt(c, pos.x, y0, pos.z, r, h)) return true;
     }
     return false;
   }
 
   _boxOverlap(c, pos, radius, height) {
-    // 円柱 vs ボックス（ローカル空間で AABB 近似）
-    const p = _v3.set(pos.x, pos.y + height / 2, pos.z);
+    return this._boxOverlapAt(c, pos.x, pos.y, pos.z, radius, height);
+  }
+
+  /**
+   * 円柱 vs ボックス（ボックスのローカル空間で AABB 近似）。
+   * @param {number} y0 円柱の下端
+   */
+  _boxOverlapAt(c, x, y0, z, radius, height) {
+    const p = _v3.set(x, y0 + height / 2, z);
     c.toLocal(p, p);
     const hy = height / 2;
     if (Math.abs(p.y) > c.half.y + hy) return false;

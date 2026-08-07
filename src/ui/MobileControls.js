@@ -228,6 +228,8 @@ export class MobileControls {
     this.root.classList.add('on');
     this.input.isTouch = true;
     this.inGameplay = true;
+    // 前の試合の押下・トグル状態を持ち越さない
+    this.resetButtons();
     this._applyLayout();
   }
 
@@ -235,6 +237,7 @@ export class MobileControls {
     this.root.classList.remove('on');
     this.inGameplay = false;
     this.root.classList.remove('needland');
+    this.resetButtons();
   }
 
   /** 縦画面で戦闘が始められない状態か */
@@ -256,37 +259,97 @@ export class MobileControls {
     this.input.stickSide = lefty ? 'right' : 'left';
   }
 
+  /*
+   * ボタンの束ね方について。
+   *
+   * タッチ端末では touchstart / touchend のあとにブラウザが
+   * 互換のマウスイベント（mousedown / mouseup / click）を続けて発火する。
+   * touchstart で preventDefault すれば大半の環境では抑制されるが、
+   * 抑制されない場合や、抑制の効かない経路（ペン入力・一部の WebView）が
+   * 残っており、そこでは 1 回の操作でハンドラが 2 度走る。
+   * トグル（覗き込み・スプリント）だと 2 回で元に戻るため
+   * 「押しても何も起きないボタン」になり、タップ系も二重に発火する。
+   *
+   * そこで、直前にタッチで処理した時刻を覚えておき、
+   * その直後に来たマウスイベントは互換イベントとみなして捨てる。
+   * マウス操作しかない環境（PC でのデバッグ）では従来どおり動く。
+   */
   _wire() {
+    const COMPAT_MS = 700;   // タッチ後、この時間内のマウスイベントは互換とみなす
+
+    /** タッチとマウスの両方から同じ処理を呼ぶ。互換イベントは捨てる。 */
+    const bindPress = (el, onDown, onUp) => {
+      /** @type {number|null} この要素を押している指の識別子 */
+      let touchId = null;
+
+      const touchDown = (e) => {
+        e.preventDefault(); e.stopPropagation();
+        this._lastTouchAt = performance.now();
+        // 既に別の指で押されているなら、その指を優先して二重発火を避ける
+        if (touchId !== null) return;
+        const t = e.changedTouches[0];
+        touchId = t ? t.identifier : 0;
+        onDown();
+      };
+      const touchUp = (e) => {
+        this._lastTouchAt = performance.now();
+        // 押し始めた指が離れたときだけ解除する。
+        // 別の指のイベントで解除すると、押しっぱなしが途中で切れる。
+        if (touchId !== null) {
+          let matched = false;
+          for (const t of e.changedTouches) if (t.identifier === touchId) matched = true;
+          if (!matched) return;
+        }
+        e.preventDefault(); e.stopPropagation();
+        touchId = null;
+        onUp?.();
+      };
+
+      const mouseDown = (e) => {
+        if (this._isCompatMouse()) return;
+        e.preventDefault(); e.stopPropagation();
+        onDown();
+      };
+      const mouseUp = (e) => {
+        if (this._isCompatMouse()) return;
+        e.preventDefault(); e.stopPropagation();
+        onUp?.();
+      };
+
+      el.addEventListener('touchstart', touchDown, { passive: false });
+      el.addEventListener('touchend', touchUp, { passive: false });
+      el.addEventListener('touchcancel', touchUp, { passive: false });
+      el.addEventListener('mousedown', mouseDown);
+      if (onUp) {
+        el.addEventListener('mouseup', mouseUp);
+        el.addEventListener('mouseleave', (e) => { if (e.buttons) mouseUp(e); });
+      }
+      // 互換 click が漏れてきても何も起こさない
+      el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+      // 長押しでの選択・コンテキストメニューを抑える
+      el.addEventListener('contextmenu', (e) => e.preventDefault());
+      return () => { touchId = null; };
+    };
+
+    this._resets = [];
+
     // 押している間だけ有効
     const hold = (el, action) => {
-      const down = (e) => {
-        e.preventDefault(); e.stopPropagation();
-        this.input.setAction(action, true);
-        el.classList.add('held');
-      };
-      const up = (e) => {
-        e.preventDefault(); e.stopPropagation();
-        this.input.setAction(action, false);
-        el.classList.remove('held');
-      };
-      el.addEventListener('touchstart', down, { passive: false });
-      el.addEventListener('touchend', up);
-      el.addEventListener('touchcancel', up);
-      el.addEventListener('mousedown', down);
-      el.addEventListener('mouseup', up);
-      el.addEventListener('mouseleave', up);
+      const reset = bindPress(el,
+        () => { this.input.setAction(action, true); el.classList.add('held'); },
+        () => { this.input.setAction(action, false); el.classList.remove('held'); });
+      this._resets.push(() => { reset(); this.input.setAction(action, false); el.classList.remove('held'); });
     };
 
     // 1 回押すと 1 フレームだけ有効
     const tap = (el, action) => {
-      const down = (e) => {
-        e.preventDefault(); e.stopPropagation();
+      const reset = bindPress(el, () => {
         this.input.tapAction(action);
         el.classList.add('held');
-        setTimeout(() => el.classList.remove('held'), 110);
-      };
-      el.addEventListener('touchstart', down, { passive: false });
-      el.addEventListener('mousedown', down);
+        clearTimeout(el._holdT);
+        el._holdT = setTimeout(() => el.classList.remove('held'), 110);
+      }, () => {});
+      this._resets.push(() => { reset(); el.classList.remove('held'); });
     };
 
     hold(this.el.fire, 'fire');
@@ -298,37 +361,42 @@ export class MobileControls {
 
     // 覗き込みとスプリントは押しっぱなしが辛いのでトグルにする
     const toggle = (el, action, key) => {
-      const fn = (e) => {
-        e.preventDefault(); e.stopPropagation();
-        this[key] = !this[key];
-        this.input.setAction(action, this[key]);
-        if (key === 'sprintLocked') this.input._sprintLocked = this[key];
-        el.classList.toggle('on', this[key]);
+      const apply = (on) => {
+        this[key] = on;
+        this.input.setAction(action, on);
+        if (key === 'sprintLocked') this.input._sprintLocked = on;
+        el.classList.toggle('on', on);
       };
-      el.addEventListener('touchstart', fn, { passive: false });
-      el.addEventListener('mousedown', fn);
+      const reset = bindPress(el, () => apply(!this[key]));
+      this._resets.push(() => { reset(); apply(false); });
+      return apply;
     };
-    toggle(this.el.ads, 'ads', 'adsToggled');
-    toggle(this.el.sprint, 'sprint', 'sprintLocked');
+    this._applyAds = toggle(this.el.ads, 'ads', 'adsToggled');
+    this._applySprint = toggle(this.el.sprint, 'sprint', 'sprintLocked');
 
-    const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
-    this.el.pause.addEventListener('touchstart', (e) => { stop(e); this.onPause?.(); }, { passive: false });
-    this.el.pause.addEventListener('click', (e) => { stop(e); this.onPause?.(); });
-
+    bindPress(this.el.pause, () => this.onPause?.());
     // スコアボードは押している間だけ表示
-    const boardDown = (e) => { stop(e); this.onBoard?.(true); };
-    const boardUp = (e) => { stop(e); this.onBoard?.(false); };
-    this.el.board.addEventListener('touchstart', boardDown, { passive: false });
-    this.el.board.addEventListener('touchend', boardUp);
-    this.el.board.addEventListener('mousedown', boardDown);
-    this.el.board.addEventListener('mouseup', boardUp);
+    bindPress(this.el.board, () => this.onBoard?.(true), () => this.onBoard?.(false));
+  }
+
+  /** 直前のタッチに続いて発火した互換マウスイベントか */
+  _isCompatMouse() {
+    return this._lastTouchAt !== undefined && performance.now() - this._lastTouchAt < 700;
+  }
+
+  /**
+   * すべてのボタンの押下・トグル状態を解除する。
+   * ポーズや死亡でゲーム側の入力が clear されると、UI 側の
+   * 「押しっぱなし」「トグル ON」の表示と実際の入力状態がずれるため、
+   * 同じ契機でこちらも戻す。
+   */
+  resetButtons() {
+    for (const r of this._resets || []) r();
   }
 
   /** 覗き込みを外部から解除（死亡時など） */
   resetAds() {
-    this.adsToggled = false;
-    this.input.setAction('ads', false);
-    this.el.ads.classList.remove('on');
+    this._applyAds?.(false);
   }
 
   setReloading(on) { this.el.reload.classList.toggle('busy', on); }

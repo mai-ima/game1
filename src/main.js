@@ -227,7 +227,7 @@ async function main() {
       // 対戦中に縦画面へ回されたら、横に戻すまで進行を止める
       mobile.onOrientationBlock = (blocked) => {
         if (!game.running) return;
-        if (blocked) { game.paused = true; input.clear(); }
+        if (blocked) { game.paused = true; input.clear(); mobile.resetButtons(); }
         else if (!menu.root.classList.contains('on')) game.paused = false;
       };
     }

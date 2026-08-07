@@ -255,6 +255,8 @@ export class Input {
   clear() {
     for (const k in this._state) this._state[k] = false;
     for (const k in this._dirs) this._dirs[k] = false;
+    // 消化されないまま残ったタップも捨てる（再開直後の暴発を防ぐ）
+    if (this._tapQueue) this._tapQueue.length = 0;
     this.move.x = this.move.y = 0;
     this.lookDelta.x = this.lookDelta.y = 0;
     this.stickVec.x = this.stickVec.y = 0;

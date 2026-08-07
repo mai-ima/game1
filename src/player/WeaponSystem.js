@@ -12,6 +12,15 @@ const _vmBase = new THREE.Vector3();
 const _vmAds = new THREE.Vector3();
 const _amPos = new THREE.Vector3();
 const _amRot = new THREE.Vector3();
+// 近接攻撃の判定専用
+const _mv1 = new THREE.Vector3();
+const _mv2 = new THREE.Vector3();
+
+/**
+ * 近接攻撃のパラメータ。
+ * 一撃で倒せる間合いを短く保ち、外したときの隙を作る。
+ */
+const MELEE = { duration: 0.62, range: 2.1, damage: 135 };
 
 /** 武器未装備時に返す既定ステータス（参照側で null チェックを不要にする） */
 const EMPTY_STATS = Object.freeze({
@@ -69,6 +78,8 @@ export class WeaponSystem {
     this._boltT = 0;
     this._sprintOut = 0;
     this._semiLatch = false;
+    /** 近接攻撃の残り時間（0 で待機） */
+    this.meleeT = 0;
 
     // ビューモデル演出
     this._kickPos = new THREE.Vector3();
@@ -90,6 +101,7 @@ export class WeaponSystem {
     this.onDryFire = null;
     this.onAdsChange = null;
     this.onAmmoChange = null;
+    this.onMelee = null;
 
     this.enabled = true;
   }
@@ -271,13 +283,72 @@ export class WeaponSystem {
     if (this._fireTimer > 0) this._fireTimer -= dt;
     if (this._boltT > 0) this._boltT -= dt;
 
+    this._updateWeaponSelect();
     this._updateSwap(dt);
     this._updateSprintOut(dt);
+    this._updateMelee(dt);
     this._updateAds(dt);
     this._updateReload(dt);
     this._updateFire(dt);
     this._updateRecoilRecovery(dt);
     this._updateViewModel(dt);
+  }
+
+  /**
+   * 武器の持ち替え入力。
+   * ホイール・数字キー・スマホの切替ボタンのいずれからも同じ経路を通す。
+   */
+  _updateWeaponSelect() {
+    if (!this.player.alive) return;
+    const inp = this.input;
+    if (inp.pressed('nextWeapon')) this.nextWeapon();
+    else if (inp.pressed('prevWeapon')) this.prevWeapon();
+    else if (inp.pressed('weapon1')) this.equip(0);
+    else if (inp.pressed('weapon2')) this.equip(1);
+  }
+
+  /**
+   * 近接攻撃。
+   * 銃を構えたまま素早く突き出す動作で、射撃より短い間合いを埋める。
+   * 命中判定は振り抜きの中盤で 1 度だけ行う。
+   */
+  _updateMelee(dt) {
+    if (this.meleeT > 0) {
+      const prev = this.meleeT;
+      this.meleeT = Math.max(0, this.meleeT - dt);
+      // 振りの中盤で判定（見た目と当たりのタイミングを合わせる）
+      const hitAt = MELEE.duration * 0.55;
+      if (prev > hitAt && this.meleeT <= hitAt) this._resolveMelee();
+      return;
+    }
+    if (!this.input.pressed('melee')) return;
+    if (!this.player.alive || this.swapping || this.player.mantling) return;
+
+    this.meleeT = MELEE.duration;
+    this.reloading = false;
+    this.ads = false;
+    this.onMelee?.();
+  }
+
+  _resolveMelee() {
+    const origin = this.player.getEyePosition(_mv1);
+    // 画面中央の向きをそのまま使う（反動や揺れも含めた実際の照準方向）
+    this.engine.camera.getWorldDirection(_mv2);
+
+    const charHit = this.characterRaycast?.(origin, _mv2, MELEE.range);
+    const worldHit = this.physics.raycast(origin, _mv2, MELEE.range);
+    // 壁越しには当てない
+    if (charHit && (!worldHit || charHit.dist <= worldHit.dist)) {
+      this.onHit?.({
+        type: 'char', target: charHit.target, point: charHit.point, normal: charHit.normal,
+        zone: charHit.zone, damage: MELEE.damage, surface: 'fabric', melee: true,
+      });
+    } else if (worldHit) {
+      this.onHit?.({
+        type: 'world', point: worldHit.point, normal: worldHit.normal,
+        surface: worldHit.collider.surface, melee: true,
+      });
+    }
   }
 
   _updateSwap(dt) {
@@ -304,7 +375,7 @@ export class WeaponSystem {
   }
 
   get canFire() {
-    return !this.reloading && !this.swapping && this._sprintOut <= 0
+    return !this.reloading && !this.swapping && this._sprintOut <= 0 && this.meleeT <= 0
       && this._fireTimer <= 0 && this._boltT <= 0 && this.player.alive && !this.player.mantling;
   }
 
@@ -312,7 +383,7 @@ export class WeaponSystem {
     const stats = this.getStats();
     const want = this.input.down('ads')
       && !this.player.sprinting && !this.player.sliding
-      && !this.swapping && this._sprintOut <= 0 && this.player.alive;
+      && !this.swapping && this._sprintOut <= 0 && this.meleeT <= 0 && this.player.alive;
 
     if (want !== this.ads) {
       this.ads = want;
@@ -660,6 +731,31 @@ export class WeaponSystem {
   _updateActionMotion(dt) {
     const target = _amPos.set(0, 0, 0);
     const targetRot = _amRot.set(0, 0, 0);
+
+    if (this.meleeT > 0) {
+      /*
+       * 近接: 引く → 突き出す → 戻す。
+       * 判定は MELEE.duration * 0.55 の時点なので、
+       * 突き出しの頂点がそこに来るよう曲線を作る。
+       */
+      const t = 1 - this.meleeT / MELEE.duration;   // 0..1
+      const wind = Math.min(1, t / 0.35);            // 引き
+      const thrust = t < 0.35 ? 0 : Math.sin(Math.min(1, (t - 0.35) / 0.45) * Math.PI);
+      target.set(
+        0.045 * wind - 0.115 * thrust,
+        -0.030 * wind + 0.022 * thrust,
+        0.070 * wind - 0.230 * thrust
+      );
+      targetRot.set(
+        -0.20 * wind + 0.16 * thrust,
+        0.55 * wind - 0.72 * thrust,
+        -0.42 * wind + 0.30 * thrust
+      );
+      // 近接は素早い動きなので追従も速くする
+      this._reloadOffset.lerp(target, Math.min(1, 26 * dt));
+      this._reloadRot.lerp(targetRot, Math.min(1, 26 * dt));
+      return;
+    }
 
     if (this.reloading) {
       const t = this._reloadT / Math.max(0.01, this._reloadDur);

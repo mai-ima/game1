@@ -338,6 +338,7 @@ export class Game {
     this.weapons.onReloadStart = (def, empty) => this.audio?.playReload(def, empty);
     this.weapons.onSwap = (def) => this.audio?.playSwap(def);
     this.weapons.onDryFire = () => this.audio?.playDryFire();
+    this.weapons.onMelee = () => this.audio?.playMelee();
   }
 
   /** ボットの発砲を解決する */
