@@ -65,6 +65,11 @@ export class Game {
     this.onAnnounce = null;      // (text, subtext)
 
     this._wireWeapon();
+
+    // GPU コンテキストが復帰したら、自前で作った環境マップを貼り直す
+    this.engine.onContextRestored = () => {
+      if (this.engine.envRT) this.mats.applyEnvironment(this.engine.envRT.texture, 1.0);
+    };
   }
 
   /* ================= 構築 ================= */
@@ -464,8 +469,10 @@ export class Game {
     }
 
     // --- ボット ---
+    const camPos = this.engine.camera.position;
     for (const b of this.bots) {
       b.update(dt, this);
+      b.updateShadowLod(camPos);
       if (!b.alive) {
         b.respawnTimer += 0; // update 内で加算済み
         if (b.respawnTimer > 5.5 && !this.matchOver) this.respawnBot(b);

@@ -13,6 +13,12 @@ const _vmAds = new THREE.Vector3();
 const _amPos = new THREE.Vector3();
 const _amRot = new THREE.Vector3();
 
+/** 武器未装備時に返す既定ステータス（参照側で null チェックを不要にする） */
+const EMPTY_STATS = Object.freeze({
+  adsTime: 0.25, adsSpreadMul: 1, recoilMul: 1, damageMul: 1, falloffMul: 1,
+  opticZoom: 1, silent: false, hideMuzzleFlash: false, pip: false,
+});
+
 /** ビューモデルの基本配置（カメラローカル座標） */
 const HIP_POS = new THREE.Vector3(0.148, -0.132, -0.30);
 const HIP_ROT = new THREE.Euler(0.028, -0.075, 0.022);
@@ -218,6 +224,8 @@ export class WeaponSystem {
 
   /** 装備中武器の実効ステータス（アタッチメント補正込み） */
   getStats() {
+    // 装備前や持ち替えの隙間で参照されても落ちないようにする
+    if (!this.def) return EMPTY_STATS;
     if (!this._statsCache || this._statsCacheFor !== this.loadout[this.current]) {
       const def = this.def;
       const atts = (this.attachments[def.id] || []).map((a) => ATTACHMENTS[a]).filter(Boolean);
@@ -244,7 +252,10 @@ export class WeaponSystem {
         if (a.hideMuzzleFlash) s.hideMuzzleFlash = true;
         if (a.pip) s.pip = true;
       }
-      if (def.scope) s.opticZoom = Math.max(s.opticZoom, def.scope.magnification);
+      if (def.scope) {
+        s.opticZoom = Math.max(s.opticZoom, def.scope.magnification);
+        s.pip = true;   // 狙撃銃は光学サイト前提
+      }
       this._statsCache = s;
       this._statsCacheFor = def.id;
     }
@@ -627,6 +638,23 @@ export class WeaponSystem {
       frz + this._swayRot.z + bobRZ + this._kickRot.z + this._reloadRot.z,
       'YXZ'
     );
+
+    // スコープを覗いている間は銃を隠す。
+    // 実際のスコープ視界では銃本体は見えないため、写り込むと没入感を損なう。
+    root.visible = !this.isScoped;
+  }
+
+  /**
+   * スコープ内の揺れ（画素）。
+   * 息を止められない状態（スタミナ低下）ほど大きく揺れる。
+   */
+  getScopeSway(out = { x: 0, y: 0 }) {
+    const stam = 1 - Math.max(0, Math.min(1, this.player.stamina / 5.2));
+    const amp = 2.0 + stam * 8.5;
+    const t = this._breath || 0;
+    out.x = Math.sin(t * 1.15) * amp + Math.sin(t * 2.7) * amp * 0.28;
+    out.y = Math.cos(t * 0.86) * amp * 0.72 + Math.cos(t * 2.1) * amp * 0.2;
+    return out;
   }
 
   _updateActionMotion(dt) {
@@ -669,7 +697,7 @@ export class WeaponSystem {
 
   /** スコープ（PiP）表示中か */
   get isScoped() {
-    return this.adsT > 0.82 && this.getStats().pip;
+    return !!this.def && this.adsT > 0.82 && this.getStats().pip;
   }
 
   dispose() {

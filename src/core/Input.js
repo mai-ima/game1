@@ -60,6 +60,8 @@ export class Input {
     this._touchLook = null;       // {id, x, y}
     this._touchMove = null;       // {id, ox, oy, x, y}
     this.stickRadius = 62;
+    // 移動スティックを置く側。左利き設定で 'right' になる。
+    this.stickSide = 'left';
     this.stickOrigin = { x: 0, y: 0 };
     this.stickVec = { x: 0, y: 0 };
     this.stickActive = false;
@@ -154,7 +156,10 @@ export class Input {
       const w = window.innerWidth;
       for (const t of e.changedTouches) {
         // UI ボタン上のタッチは無視（UI 側が stopPropagation する想定）
-        if (t.clientX < w * 0.46 && this._touchMove === null) {
+        const onStickSide = this.stickSide === 'right'
+          ? t.clientX > w * 0.54
+          : t.clientX < w * 0.46;
+        if (onStickSide && this._touchMove === null) {
           this._touchMove = { id: t.identifier, ox: t.clientX, oy: t.clientY, x: t.clientX, y: t.clientY };
           this.stickOrigin.x = t.clientX; this.stickOrigin.y = t.clientY;
           this.stickActive = true;

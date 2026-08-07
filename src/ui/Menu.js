@@ -1,17 +1,22 @@
 import { MODE_LIST, GAME_MODES } from '../game/GameModes.js';
 import { WEAPONS, ATTACHMENTS, WEAPON_CLASS } from '../player/weapons/WeaponDefs.js';
 import { DIFFICULTY } from '../ai/Bot.js';
+import { ICONS, MARK_CSS, BRAND, burstMarkHTML, burstStaticHTML, opusMarkHTML, engineMarkHTML } from './Icons.js';
 
 /**
  * タイトル・メインメニュー・設定・戦績画面。
  *
  * デザイン方針:
  *   ゲームメニューの定型（面取りパネル + ネオン）ではなく、
- *   「作戦文書」の体裁 — 罫線・見出し番号・等幅の指標・トンボ —
- *   を骨格にする。強い色はコーラル 1 色に絞り、他は無彩色で支える。
+ *   「作戦文書」の体裁 — 罫線・見出し番号・等幅の指標・トンボ — を骨格にする。
+ *   強い色はコーラル 1 色に絞り、他は無彩色で支える。
+ *
+ * PC とスマートフォンでレイアウトを切り替える:
+ *   PC   … 左に縦ナビ、右に広いパネル。マウス前提で情報密度を高くする。
+ *   スマホ … 下部にタブバー、1 カラムのカード。指で押せる大きさを確保する。
  */
 
-const CSS = `
+const CSS = MARK_CSS + `
 .ui {
   --ink:#0a0b0d; --ink2:#111316; --ink3:#191c20;
   --paper:#f2efe9; --steel:#9aa1a8; --dim:#5d646c; --line:rgba(242,239,233,.10);
@@ -26,310 +31,311 @@ const CSS = `
 .ui.on { display: block; }
 .ui * { box-sizing: border-box; }
 .ui button { font-family: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+.ui button:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
 
 /* ---------------- スプラッシュ ---------------- */
 .splash {
   position: absolute; inset: 0; background: var(--ink);
   display: flex; align-items: center; justify-content: center; flex-direction: column;
-  transition: opacity .7s cubic-bezier(.4,0,.2,1);
+  transition: opacity .7s cubic-bezier(.4,0,.2,1); padding: 0 20px;
 }
 .splash.out { opacity: 0; pointer-events: none; }
 .splash .stage { display: none; flex-direction: column; align-items: center; }
 .splash .stage.on { display: flex; }
-
-/* Anthropic のバーストマーク */
-.burst { width: 84px; height: 84px; position: relative; }
-.burst i {
-  position: absolute; left: 50%; top: 50%; width: 8.5px; height: 42px;
-  background: var(--coral); border-radius: 4.25px; transform-origin: 50% 0; opacity: 0;
-  animation: spoke .6s cubic-bezier(.16,1,.3,1) forwards;
-}
-@keyframes spoke {
-  from { opacity: 0; transform: translate(-50%,0) rotate(var(--r)) scaleY(.12); }
-  to   { opacity: 1; transform: translate(-50%,0) rotate(var(--r)) scaleY(1); }
-}
-/* Opus 5 のマーク: 5 本の弧が段階的に開く */
-.opus { width: 96px; height: 96px; position: relative; }
-.opus svg { width: 100%; height: 100%; overflow: visible; }
-.opus circle, .opus path { fill: none; stroke-linecap: round; }
-.opus .arc { stroke: var(--coral); stroke-dasharray: 200; stroke-dashoffset: 200; animation: arc .8s cubic-bezier(.16,1,.3,1) forwards; }
-@keyframes arc { to { stroke-dashoffset: 0; } }
-.opus .core { fill: var(--coral); opacity: 0; animation: pop .5s .55s cubic-bezier(.16,1,.3,1) forwards; }
-@keyframes pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
-
 .splash .wm {
-  margin-top: 30px; font: 500 12px/1 var(--sans); letter-spacing: .46em; text-indent: .46em;
-  color: #9aa0a6; text-transform: uppercase; opacity: 0;
+  margin-top: 28px; font: 500 13px/1 var(--sans); letter-spacing: .44em; text-indent: .44em;
+  color: #b9bfc5; text-transform: uppercase; opacity: 0; text-align: center;
   animation: fadeUp .8s .45s cubic-bezier(.16,1,.3,1) forwards;
 }
-.splash .sub {
-  margin-top: 12px; font: 400 9.5px/1 var(--mono); letter-spacing: .3em; color: var(--dim);
-  opacity: 0; animation: fadeUp .8s .7s cubic-bezier(.16,1,.3,1) forwards;
+.splash .role {
+  margin-top: 11px; font: 500 9px/1 var(--mono); letter-spacing: .3em; color: var(--dim);
+  opacity: 0; animation: fadeUp .8s .68s cubic-bezier(.16,1,.3,1) forwards; text-align: center;
 }
-@keyframes fadeUp { from { opacity: 0; transform: translateY(9px); } to { opacity: .9; transform: none; } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(9px); } to { opacity: .92; transform: none; } }
 
 /* ---------------- タイトル ---------------- */
 .title {
   position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
+  align-items: center; justify-content: center; padding: calc(20px + var(--st)) 18px calc(20px + var(--sb));
   background: radial-gradient(ellipse at 50% 42%, #1a1c20 0%, #0a0b0d 68%);
-  transition: opacity .5s; padding: 0 18px;
+  transition: opacity .5s;
 }
 .title.out { opacity: 0; pointer-events: none; }
-.title .rule { width: min(560px, 78vw); height: 1px; background: var(--line); }
+.title .rule { width: min(560px, 80vw); height: 1px; background: var(--line); }
 .title .eyebrow {
-  font: 500 9px/1 var(--mono); letter-spacing: .42em; color: var(--coral);
-  text-transform: uppercase; margin-bottom: 20px;
+  font: 500 9px/1 var(--mono); letter-spacing: .4em; color: var(--coral);
+  text-transform: uppercase; margin-bottom: 20px; text-align: center;
 }
 .title h1 {
-  font: 200 clamp(30px, 7.2vw, 88px)/1.0 var(--sans);
+  font: 200 clamp(28px, 7vw, 88px)/1.0 var(--sans);
   letter-spacing: .15em; margin: 18px 0; text-transform: uppercase;
   display: flex; flex-wrap: wrap; justify-content: center; gap: 0 .34em;
-  max-width: 92vw; text-align: center;
+  max-width: 94vw; text-align: center;
 }
 .title h1 span, .title h1 b { display: inline-block; text-indent: .15em; }
 .title h1 b { font-weight: 500; color: var(--coral); }
 .title .tag {
-  margin-top: 18px; font: 400 11px/1.9 var(--sans); letter-spacing: .24em;
+  margin-top: 18px; font: 400 11px/1.9 var(--sans); letter-spacing: .22em;
   color: var(--steel); text-align: center;
 }
 .title .cta {
-  margin-top: 46px; font: 500 11px/1 var(--mono); letter-spacing: .3em;
-  color: var(--paper); padding: 15px 34px; border: 1px solid rgba(242,239,233,.24);
+  margin-top: 42px; font: 500 11px/1 var(--mono); letter-spacing: .28em;
+  color: var(--paper); padding: 16px 34px; border: 1px solid rgba(242,239,233,.24);
   border-radius: 2px; transition: all .2s; text-transform: uppercase;
+  min-height: 48px;
 }
 .title .cta:hover { background: var(--coral); border-color: var(--coral); color: var(--ink); }
 .title .blink { animation: blink 2.1s ease-in-out infinite; }
-@keyframes blink { 0%,100%{opacity:.55} 50%{opacity:1} }
+@keyframes blink { 0%,100%{opacity:.6} 50%{opacity:1} }
+.title .credit {
+  position: absolute; bottom: calc(18px + var(--sb)); left: 0; right: 0; text-align: center;
+  font: 400 9px/1.8 var(--mono); letter-spacing: .16em; color: var(--dim);
+}
 
-/* ---------------- メニュー本体 ---------------- */
+/* ---------------- メニュー共通 ---------------- */
 .menu {
   position: absolute; inset: 0; display: none; flex-direction: column;
   background: linear-gradient(160deg, #0d0f12 0%, #0a0b0d 55%, #12100f 100%);
-  padding: calc(20px + var(--st)) calc(24px + var(--sr)) calc(20px + var(--sb)) calc(24px + var(--sl));
 }
 .menu.on { display: flex; }
 
-.mhead { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
-.mhead .mark { width: 22px; height: 22px; position: relative; flex: 0 0 auto; }
-.mhead .mark i {
-  position: absolute; left: 50%; top: 50%; width: 2.4px; height: 11px;
-  background: var(--coral); border-radius: 1.2px; transform-origin: 50% 0;
-  transform: translate(-50%,0) rotate(var(--r));
+.mhead {
+  display: flex; align-items: center; gap: 13px;
+  padding: calc(16px + var(--st)) calc(20px + var(--sr)) 13px calc(20px + var(--sl));
+  border-bottom: 1px solid var(--line); flex: 0 0 auto;
 }
-.mhead .t { font: 500 12px/1 var(--sans); letter-spacing: .3em; text-transform: uppercase; }
-.mhead .meta { margin-left: auto; font: 500 9px/1 var(--mono); letter-spacing: .2em; color: var(--dim); }
+.mhead .t { font: 500 12px/1 var(--sans); letter-spacing: .28em; text-transform: uppercase; }
+.mhead .meta { margin-left: auto; font: 500 9px/1 var(--mono); letter-spacing: .18em; color: var(--dim); }
 
-.mbody { flex: 1; display: flex; gap: 26px; padding-top: 22px; min-height: 0; }
-
-/* 左: ナビゲーション */
-.mnav { width: 224px; flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; }
-.mnav button {
-  display: flex; align-items: baseline; gap: 12px; padding: 13px 14px;
-  text-align: left; border-left: 2px solid transparent; transition: all .16s;
+.mbody { flex: 1; display: flex; min-height: 0; }
+.mpanel {
+  flex: 1; min-width: 0; overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
-.mnav button .n { font: 500 9px/1 var(--mono); color: var(--dim); letter-spacing: .1em; }
-.mnav button .l { font: 400 15px/1 var(--sans); letter-spacing: .1em; }
-.mnav button:hover { background: rgba(242,239,233,.04); }
-.mnav button.on { border-left-color: var(--coral); background: rgba(217,119,87,.09); }
-.mnav button.on .l { color: var(--coral); }
-.mnav .spacer { flex: 1; }
-.mnav .ver { font: 400 8.5px/1.7 var(--mono); color: var(--dim); letter-spacing: .12em; padding: 0 14px; }
-
-/* 右: パネル */
-.mpanel { flex: 1; min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 .mpanel::-webkit-scrollbar { width: 3px; }
 .mpanel::-webkit-scrollbar-thumb { background: rgba(242,239,233,.16); }
-.page { display: none; } .page.on { display: block; animation: pageIn .28s cubic-bezier(.16,1,.3,1); }
-@keyframes pageIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-.sec { margin-bottom: 28px; }
+.sec { margin-bottom: 26px; }
 .sec > h2 {
-  font: 500 9px/1 var(--mono); letter-spacing: .3em; color: var(--dim);
+  font: 500 9px/1 var(--mono); letter-spacing: .28em; color: var(--dim);
   text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 10px;
 }
 .sec > h2::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 
-/* カード（モード・マップ・武器の共通体裁） */
-.cards { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); }
+/* カード */
+.cards { display: grid; gap: 8px; }
 .card {
   text-align: left; padding: 15px 16px; border: 1px solid var(--line);
   border-radius: 3px; background: rgba(242,239,233,.02); transition: all .18s; position: relative;
+  display: block; width: 100%;
 }
 .card:hover { border-color: rgba(242,239,233,.24); background: rgba(242,239,233,.05); }
 .card.on { border-color: var(--coral); background: rgba(217,119,87,.10); }
-.card .ico { font-size: 15px; color: var(--coral); }
-.card .nm { font: 400 14px/1.2 var(--sans); letter-spacing: .08em; margin-top: 7px; }
-.card .en { font: 500 8.5px/1 var(--mono); letter-spacing: .18em; color: var(--dim); margin-top: 5px; text-transform: uppercase; }
-.card .ds { font: 400 11px/1.65 var(--sans); color: var(--steel); margin-top: 9px; }
+.card .ico { color: var(--coral); }
+.card .nm { font: 400 14px/1.2 var(--sans); letter-spacing: .06em; margin-top: 8px; }
+.card .en { font: 500 8.5px/1 var(--mono); letter-spacing: .16em; color: var(--dim); margin-top: 5px; text-transform: uppercase; }
+.card .ds { font: 400 11.5px/1.65 var(--sans); color: var(--steel); margin-top: 9px; }
 .card.on::after {
-  content: ''; position: absolute; right: 10px; top: 10px; width: 5px; height: 5px;
+  content: ''; position: absolute; right: 11px; top: 11px; width: 5px; height: 5px;
   border-radius: 50%; background: var(--coral);
 }
 
-/* 武器の性能バー */
+/* 性能バー */
 .stats { margin-top: 11px; display: flex; flex-direction: column; gap: 5px; }
 .stat { display: flex; align-items: center; gap: 8px; }
-.stat .k { font: 500 8.5px/1 var(--mono); letter-spacing: .12em; color: var(--dim); width: 46px; }
+.stat .k { font: 500 8.5px/1 var(--mono); letter-spacing: .1em; color: var(--dim); width: 44px; }
 .stat .b { flex: 1; height: 2px; background: rgba(242,239,233,.10); border-radius: 2px; overflow: hidden; }
 .stat .b > i { display: block; height: 100%; background: var(--coral); }
 .stat .v { font: 500 9px/1 var(--mono); color: var(--steel); width: 24px; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* 設定行 */
-.row {
-  display: flex; align-items: center; gap: 16px; padding: 12px 2px;
-  border-bottom: 1px solid var(--line);
-}
-.row .lab { flex: 1; }
-.row .lab .n { font: 400 13.5px/1.3 var(--sans); letter-spacing: .04em; }
-.row .lab .h { font: 400 10.5px/1.5 var(--sans); color: var(--dim); margin-top: 3px; }
+.row { display: flex; align-items: center; gap: 16px; padding: 13px 2px; border-bottom: 1px solid var(--line); }
+.row .lab { flex: 1; min-width: 0; }
+.row .lab .n { font: 400 13.5px/1.35 var(--sans); letter-spacing: .03em; }
+.row .lab .h { font: 400 10.5px/1.55 var(--sans); color: var(--dim); margin-top: 3px; }
 .row .ctl { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
 .row input[type=range] {
-  -webkit-appearance: none; appearance: none; width: 148px; height: 2px;
-  background: rgba(242,239,233,.16); border-radius: 2px; outline: none;
+  -webkit-appearance: none; appearance: none; width: 148px; height: 22px;
+  background: transparent; outline: none;
 }
+.row input[type=range]::-webkit-slider-runnable-track { height: 2px; background: rgba(242,239,233,.16); border-radius: 2px; }
+.row input[type=range]::-moz-range-track { height: 2px; background: rgba(242,239,233,.16); border-radius: 2px; }
 .row input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%;
+  -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%; margin-top: -6.5px;
   background: var(--coral); cursor: pointer; border: 2px solid var(--ink);
 }
 .row input[type=range]::-moz-range-thumb {
-  width: 13px; height: 13px; border-radius: 50%; background: var(--coral);
+  width: 15px; height: 15px; border-radius: 50%; background: var(--coral);
   cursor: pointer; border: 2px solid var(--ink);
 }
-.row .val { font: 500 11px/1 var(--mono); color: var(--steel); width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
+.row .val { font: 500 11px/1 var(--mono); color: var(--steel); width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
 .seg { display: flex; border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
-.seg button { padding: 7px 13px; font: 500 10px/1 var(--mono); letter-spacing: .1em; color: var(--steel); transition: all .15s; }
+.seg button { padding: 9px 13px; font: 500 10px/1 var(--mono); letter-spacing: .08em; color: var(--steel); transition: all .15s; min-height: 38px; }
 .seg button.on { background: var(--coral); color: var(--ink); }
-.tgl { width: 40px; height: 21px; border-radius: 11px; background: rgba(242,239,233,.14); position: relative; transition: background .18s; }
+.tgl { width: 44px; height: 24px; border-radius: 12px; background: rgba(242,239,233,.14); position: relative; transition: background .18s; cursor: pointer; flex: 0 0 auto; }
 .tgl::after {
-  content: ''; position: absolute; left: 3px; top: 3px; width: 15px; height: 15px;
+  content: ''; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px;
   border-radius: 50%; background: var(--paper); transition: transform .18s cubic-bezier(.4,0,.2,1);
 }
 .tgl.on { background: var(--coral); }
-.tgl.on::after { transform: translateX(19px); }
+.tgl.on::after { transform: translateX(20px); }
 
 /* 出撃ボタン */
 .deploy {
-  margin-top: 6px; width: 100%; padding: 18px; border-radius: 3px;
-  background: var(--coral); color: var(--ink);
-  font: 600 13px/1 var(--mono); letter-spacing: .34em; text-transform: uppercase;
-  transition: all .18s;
+  width: 100%; padding: 18px; border-radius: 3px; background: var(--coral); color: var(--ink);
+  font: 600 13px/1 var(--mono); letter-spacing: .32em; text-transform: uppercase;
+  transition: all .18s; display: flex; flex-direction: column; align-items: center; gap: 7px;
+  min-height: 56px;
 }
-.deploy:hover { background: #e58a68; transform: translateY(-1px); }
-.deploy:active { transform: none; }
-.deploy .sub { display: block; margin-top: 7px; font: 500 9px/1 var(--mono); letter-spacing: .18em; opacity: .65; }
+.deploy:hover { background: #e58a68; }
+.deploy .sub { font: 500 9px/1 var(--mono); letter-spacing: .16em; opacity: .68; }
 
-/* 結果画面 */
+/* ================= PC レイアウト ================= */
+.ui.desktop .mbody { gap: 26px; padding: 22px calc(24px + var(--sr)) 22px calc(24px + var(--sl)); }
+.ui.desktop .mnav { width: 224px; flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; }
+.ui.desktop .mnav button {
+  display: flex; align-items: center; gap: 12px; padding: 13px 14px;
+  text-align: left; border-left: 2px solid transparent; transition: all .16s;
+}
+.ui.desktop .mnav button .n { font: 500 9px/1 var(--mono); color: var(--dim); letter-spacing: .08em; }
+.ui.desktop .mnav button .l { font: 400 15px/1 var(--sans); letter-spacing: .08em; }
+.ui.desktop .mnav button .ico { color: var(--dim); margin-left: auto; }
+.ui.desktop .mnav button:hover { background: rgba(242,239,233,.04); }
+.ui.desktop .mnav button.on { border-left-color: var(--coral); background: rgba(217,119,87,.09); }
+.ui.desktop .mnav button.on .l,
+.ui.desktop .mnav button.on .ico { color: var(--coral); }
+.ui.desktop .mnav .spacer { flex: 1; }
+.ui.desktop .mnav .ver { font: 400 8.5px/1.7 var(--mono); color: var(--dim); letter-spacing: .1em; padding: 0 14px; }
+.ui.desktop .mpanel { padding-right: 4px; }
+.ui.desktop .cards { grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); }
+.ui.desktop .tabbar { display: none; }
+.ui.desktop .deploybar { display: none; }
+
+/* ================= スマートフォン レイアウト ================= */
+.ui.touch .mnav { display: none; }
+.ui.touch .mbody { flex-direction: column; }
+.ui.touch .mpanel { padding: 18px calc(18px + var(--sr)) 8px calc(18px + var(--sl)); }
+.ui.touch .cards { grid-template-columns: 1fr; gap: 9px; }
+.ui.touch .card { padding: 16px 17px; }
+.ui.touch .card .nm { font-size: 16px; }
+.ui.touch .card .ds { font-size: 12.5px; }
+.ui.touch .row { padding: 15px 2px; }
+.ui.touch .row .lab .n { font-size: 15px; }
+.ui.touch .row .lab .h { font-size: 11.5px; }
+.ui.touch .row input[type=range] { width: 128px; }
+.ui.touch .sec > h2 { font-size: 9.5px; }
+
+/* 出撃バー（スマホは常時表示で固定） */
+.ui.touch .deploybar {
+  flex: 0 0 auto; padding: 10px calc(16px + var(--sr)) calc(10px + var(--sb)) calc(16px + var(--sl));
+  border-top: 1px solid var(--line); background: rgba(9,10,12,.9);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.ui.touch .mpanel .deploy { display: none; }
+
+/* 下部タブバー */
+.ui.touch .tabbar {
+  flex: 0 0 auto; display: flex; border-top: 1px solid var(--line);
+  background: rgba(9,10,12,.94); padding-bottom: var(--sb);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.ui.touch .tabbar button {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 10px 4px 9px; color: var(--dim); transition: color .15s; min-height: 54px;
+}
+.ui.touch .tabbar button .l { font: 500 10px/1 var(--sans); letter-spacing: .1em; }
+.ui.touch .tabbar button.on { color: var(--coral); }
+.ui.touch .tabbar button.on .l { font-weight: 600; }
+
+/* 縦画面のスマホ */
+.ui.touch.portrait .mhead .t { font-size: 11px; letter-spacing: .2em; }
+.ui.touch.portrait .mhead .meta { display: none; }
+
+/* 横画面のスマホ（縦の余白が少ない） */
+.ui.touch.landscape .mhead { padding-top: calc(9px + var(--st)); padding-bottom: 9px; }
+.ui.touch.landscape .mpanel { padding-top: 12px; }
+.ui.touch.landscape .sec { margin-bottom: 18px; }
+.ui.touch.landscape .card { padding: 12px 14px; }
+.ui.touch.landscape .card .nm { font-size: 14px; margin-top: 6px; }
+.ui.touch.landscape .card .ds { font-size: 11.5px; margin-top: 6px; }
+.ui.touch.landscape .cards { grid-template-columns: repeat(2, 1fr); }
+.ui.touch.landscape .tabbar button { flex-direction: row; gap: 8px; min-height: 44px; padding: 7px; }
+.ui.touch.landscape .deploy { padding: 13px; min-height: 46px; }
+.ui.touch.landscape .title h1 { margin: 10px 0; }
+.ui.touch.landscape .title .cta { margin-top: 22px; padding: 13px 26px; }
+.ui.touch.landscape .title .tag { margin-top: 10px; }
+.ui.touch.landscape .title .eyebrow { margin-bottom: 12px; }
+
+/* ---------------- ローディング ---------------- */
+.loading {
+  position: absolute; inset: 0; display: none; flex-direction: column;
+  align-items: center; justify-content: center; background: var(--ink); padding: 0 24px;
+}
+.loading.on { display: flex; }
+.loading .mapname { font: 200 clamp(24px,6vw,48px)/1 var(--sans); letter-spacing: .18em; text-transform: uppercase; text-align: center; }
+.loading .mapdesc { margin-top: 14px; font: 400 12px/1.9 var(--sans); color: var(--steel); max-width: 460px; text-align: center; }
+.loading .bar { margin-top: 36px; width: min(300px,72vw); height: 2px; background: rgba(242,239,233,.10); border-radius: 2px; overflow: hidden; }
+.loading .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg,var(--coral),var(--crimson)); transition: width .3s; }
+.loading .pct { margin-top: 13px; font: 500 9.5px/1 var(--mono); letter-spacing: .18em; color: var(--dim); }
+.loading .tip { position: absolute; bottom: calc(30px + var(--sb)); font: 400 11px/1.7 var(--sans); color: var(--dim); max-width: 520px; text-align: center; padding: 0 24px; }
+
+/* ---------------- 結果 ---------------- */
 .result {
   position: absolute; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center; background: rgba(8,9,11,.94);
+  align-items: center; justify-content: center; background: rgba(8,9,11,.94); padding: 0 20px;
   backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
 }
 .result.on { display: flex; }
-.result .verdict { font: 200 clamp(34px,7vw,64px)/1 var(--sans); letter-spacing: .22em; text-indent: .22em; text-transform: uppercase; }
+.result .verdict { font: 200 clamp(30px,7vw,64px)/1 var(--sans); letter-spacing: .2em; text-indent: .2em; text-transform: uppercase; text-align: center; }
 .result .verdict.win { color: var(--coral); }
 .result .verdict.lose { color: var(--steel); }
-.result .score { margin-top: 20px; font: 500 15px/1 var(--mono); letter-spacing: .2em; color: var(--steel); }
-.result .grid { margin-top: 40px; display: flex; gap: 42px; }
+.result .score { margin-top: 18px; font: 500 14px/1 var(--mono); letter-spacing: .16em; color: var(--steel); text-align: center; }
+.result .grid { margin-top: 36px; display: flex; gap: 34px; flex-wrap: wrap; justify-content: center; }
 .result .cell { text-align: center; }
-.result .cell .k { font: 500 8.5px/1 var(--mono); letter-spacing: .22em; color: var(--dim); text-transform: uppercase; }
-.result .cell .v { margin-top: 9px; font: 300 32px/1 var(--mono); font-variant-numeric: tabular-nums; }
-.result .acts { margin-top: 52px; display: flex; gap: 10px; }
+.result .cell .k { font: 500 8.5px/1 var(--mono); letter-spacing: .2em; color: var(--dim); text-transform: uppercase; }
+.result .cell .v { margin-top: 9px; font: 300 30px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.result .acts { margin-top: 46px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .result .acts button {
-  padding: 14px 28px; border: 1px solid rgba(242,239,233,.22); border-radius: 2px;
-  font: 500 10px/1 var(--mono); letter-spacing: .24em; text-transform: uppercase; transition: all .18s;
+  padding: 15px 28px; border: 1px solid rgba(242,239,233,.22); border-radius: 2px;
+  font: 500 10px/1 var(--mono); letter-spacing: .22em; text-transform: uppercase; transition: all .18s;
+  min-height: 48px;
 }
 .result .acts button.primary { background: var(--coral); border-color: var(--coral); color: var(--ink); }
 .result .acts button:hover { border-color: var(--paper); }
 
-/* ポーズ */
+/* ---------------- ポーズ ---------------- */
 .pause {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-  background: rgba(8,9,11,.80); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: rgba(8,9,11,.82); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); padding: 20px;
 }
 .pause.on { display: flex; }
-.pause .box { width: min(340px, 84vw); }
-.pause h2 { font: 500 9px/1 var(--mono); letter-spacing: .3em; color: var(--dim); text-transform: uppercase; margin-bottom: 18px; }
+.pause .box { width: min(360px, 88vw); }
+.pause h2 { font: 500 9px/1 var(--mono); letter-spacing: .28em; color: var(--dim); text-transform: uppercase; margin-bottom: 16px; }
 .pause button {
-  display: block; width: 100%; text-align: left; padding: 15px 16px;
-  border-bottom: 1px solid var(--line); font: 400 14px/1 var(--sans); letter-spacing: .08em;
-  transition: all .15s;
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 16px;
+  border-bottom: 1px solid var(--line); font: 400 14px/1 var(--sans); letter-spacing: .06em;
+  transition: all .15s; min-height: 52px;
 }
-.pause button:hover { background: rgba(242,239,233,.05); padding-left: 22px; color: var(--coral); }
-
-/* ローディング */
-.loading {
-  position: absolute; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center; background: var(--ink);
-}
-.loading.on { display: flex; }
-.loading .mapname { font: 200 clamp(26px,6vw,48px)/1 var(--sans); letter-spacing: .2em; text-transform: uppercase; }
-.loading .mapdesc { margin-top: 14px; font: 400 12px/1.9 var(--sans); color: var(--steel); max-width: 460px; text-align: center; padding: 0 24px; }
-.loading .bar { margin-top: 40px; width: min(300px,70vw); height: 2px; background: rgba(242,239,233,.10); border-radius: 2px; overflow: hidden; }
-.loading .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg,var(--coral),var(--crimson)); transition: width .3s; }
-.loading .pct { margin-top: 13px; font: 500 9.5px/1 var(--mono); letter-spacing: .2em; color: var(--dim); }
-.loading .tip { position: absolute; bottom: calc(38px + var(--sb)); font: 400 11px/1.7 var(--sans); color: var(--dim); max-width: 520px; text-align: center; padding: 0 24px; }
-
-@media (max-height: 460px) {
-  .title .tag { margin-top: 10px; font-size: 10px; }
-  .title .cta { margin-top: 22px; padding: 12px 26px; }
-  .title h1 { margin: 10px 0; }
-  .title .eyebrow { margin-bottom: 12px; }
-}
-@media (max-width: 860px) {
-  .mbody { flex-direction: column; gap: 14px; }
-  .mnav { width: 100%; flex-direction: row; overflow-x: auto; gap: 0; }
-  .mnav button { border-left: none; border-bottom: 2px solid transparent; white-space: nowrap; padding: 11px 14px; }
-  .mnav button.on { border-left-color: transparent; border-bottom-color: var(--coral); }
-  .mnav .spacer, .mnav .ver { display: none; }
-  .cards { grid-template-columns: 1fr; }
-  .result .grid { gap: 22px; flex-wrap: wrap; justify-content: center; }
-}
+.pause button .ico { color: var(--dim); }
+.pause button:hover { background: rgba(242,239,233,.05); color: var(--coral); }
+.pause button:hover .ico { color: var(--coral); }
 `;
-
-/** Anthropic のバーストマーク（12 本のスポーク） */
-function burstHTML(cls = 'burst', delay = 0.05, step = 0.028) {
-  let s = '';
-  for (let i = 0; i < 12; i++) {
-    s += `<i style="--r:${i * 30}deg;animation-delay:${(delay + i * step).toFixed(3)}s"></i>`;
-  }
-  return `<div class="${cls}">${s}</div>`;
-}
-
-/** Opus 5 のマーク: 中心のコアから 5 本の弧が開く */
-function opusHTML() {
-  const arcs = [
-    { r: 20, d: 0.05 }, { r: 28, d: 0.13 }, { r: 36, d: 0.21 }, { r: 44, d: 0.29 },
-  ];
-  let paths = '';
-  arcs.forEach((a, i) => {
-    const sw = 3.4 - i * 0.35;
-    const span = 200 - i * 26;
-    const start = -90 - span / 2;
-    const p = describeArc(48, 48, a.r, start, start + span);
-    paths += `<path class="arc" d="${p}" stroke-width="${sw}" style="animation-delay:${a.d}s" />`;
-  });
-  return `<div class="opus"><svg viewBox="0 0 96 96">
-    ${paths}
-    <circle class="core" cx="48" cy="48" r="7" style="transform-origin:48px 48px" />
-  </svg></div>`;
-}
-
-function describeArc(cx, cy, r, a0, a1) {
-  const p = (a) => [cx + r * Math.cos(a * Math.PI / 180), cy + r * Math.sin(a * Math.PI / 180)];
-  const [x0, y0] = p(a0), [x1, y1] = p(a1);
-  const large = Math.abs(a1 - a0) > 180 ? 1 : 0;
-  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
-}
 
 const TIPS = [
   'スプリント中に しゃがみ を押すとスライディングできる。角を取るときに有効。',
   '壁や箱に向かってジャンプすると自動で乗り越える（マントル）。',
-  'Q / E で左右に体を傾けて、遮蔽から最小限の露出で覗ける。',
-  '腰だめ撃ちは近距離向け。中距離以遠は必ず ADS（右クリック）で狙う。',
+  'リーンを使うと、遮蔽から最小限の露出で覗ける。',
+  '腰だめ撃ちは近距離向け。中距離以遠は必ず覗き込んで狙う。',
   '連射すると反動が蓄積する。3〜5発ずつ区切って撃つと集弾が安定する。',
   'サプレッサーを付けると発砲時に敵のミニマップへ表示されない。',
   '体力は被弾後しばらく経つと自動回復する。不利なときは一度退く判断を。',
+];
+
+const PAGES = [
+  { id: 'deploy', n: '01', label: '出撃', icon: 'deploy' },
+  { id: 'loadout', n: '02', label: '装備', icon: 'loadout' },
+  { id: 'settings', n: '03', label: '設定', icon: 'settings' },
+  { id: 'about', n: '04', label: '操作', icon: 'help' },
 ];
 
 export class Menu {
@@ -345,6 +351,7 @@ export class Menu {
     parent.appendChild(this.root);
 
     this.settings = opts.settings;
+    this.isTouch = !!opts.isTouch;
     this.onStart = null;
     this.onResume = null;
     this.onQuit = null;
@@ -358,51 +365,81 @@ export class Menu {
       secondary: 'pistol',
       attachments: { m4a1: ['redDot'] },
     };
+    this.page = 'deploy';
 
     this._build();
+    this._applyDeviceClass();
+    this._onResize = () => this._applyDeviceClass();
+    window.addEventListener('resize', this._onResize);
+    window.addEventListener('orientationchange', () => setTimeout(this._onResize, 250));
+  }
+
+  /** 端末種別と画面の向きを CSS クラスへ反映する */
+  _applyDeviceClass() {
+    const r = this.root;
+    r.classList.toggle('touch', this.isTouch);
+    r.classList.toggle('desktop', !this.isTouch);
+    const portrait = window.innerHeight >= window.innerWidth;
+    r.classList.toggle('portrait', portrait);
+    r.classList.toggle('landscape', !portrait);
   }
 
   _build() {
+    const navBtns = PAGES.map((p, i) => `
+      <button data-page="${p.id}" class="${i === 0 ? 'on' : ''}">
+        <span class="n">${p.n}</span><span class="l">${p.label}</span>${ICONS[p.icon]({ size: 15 })}
+      </button>`).join('');
+
+    const tabBtns = PAGES.map((p, i) => `
+      <button data-page="${p.id}" class="${i === 0 ? 'on' : ''}">
+        ${ICONS[p.icon]({ size: 19 })}<span class="l">${p.label}</span>
+      </button>`).join('');
+
     this.root.innerHTML = `
       <div class="splash" id="splash">
         <div class="stage on" id="st1">
-          ${burstHTML()}
-          <div class="wm">Anthropic</div>
-          <div class="sub">POWERED BY CLAUDE</div>
+          ${opusMarkHTML(92)}
+          <div class="wm">${BRAND.studio}</div>
+          <div class="role">${BRAND.studioRole}</div>
         </div>
         <div class="stage" id="st2">
-          ${opusHTML()}
-          <div class="wm">Opus 5</div>
-          <div class="sub">REAL-TIME RENDERING ENGINE</div>
+          ${engineMarkHTML(92)}
+          <div class="wm">${BRAND.engineFull}</div>
+          <div class="role">${BRAND.engineTagline}</div>
+        </div>
+        <div class="stage" id="st3">
+          ${burstMarkHTML()}
+          <div class="wm">${BRAND.techName}</div>
+          <div class="role">${BRAND.techRole}</div>
         </div>
       </div>
 
       <div class="title" id="title">
-        <div class="eyebrow">Anthropic × Opus 5</div>
+        <div class="eyebrow">${BRAND.studio} ${BRAND.studioRole}</div>
         <div class="rule"></div>
         <h1><span>Operation</span><b>Crimson</b></h1>
         <div class="rule"></div>
         <div class="tag">ブラウザで動作する タクティカル FPS</div>
-        <button class="cta blink" id="btnStart">画面をクリックして開始</button>
+        <button class="cta blink" id="btnStart">${this.isTouch ? '画面をタップして開始' : '画面をクリックして開始'}</button>
+        <div class="credit">${BRAND.engineFull} &nbsp;/&nbsp; ${BRAND.techRole}: ${BRAND.techName}</div>
       </div>
 
       <div class="menu" id="menu">
         <div class="mhead">
-          <div class="mark">${Array.from({ length: 12 }, (_, i) => `<i style="--r:${i * 30}deg"></i>`).join('')}</div>
+          ${burstStaticHTML()}
           <div class="t">Operation Crimson</div>
           <div class="meta" id="metaLine">作戦準備</div>
         </div>
         <div class="mbody">
           <div class="mnav" id="nav">
-            <button class="on" data-page="deploy"><span class="n">01</span><span class="l">出撃</span></button>
-            <button data-page="loadout"><span class="n">02</span><span class="l">装備</span></button>
-            <button data-page="settings"><span class="n">03</span><span class="l">設定</span></button>
-            <button data-page="about"><span class="n">04</span><span class="l">操作方法</span></button>
+            ${navBtns}
             <div class="spacer"></div>
-            <div class="ver">BUILD 0.1.0<br>ENGINE OPUS 5</div>
+            <div class="ver">BUILD ${BRAND.version}<br>${BRAND.engineFull}</div>
           </div>
           <div class="mpanel" id="panel"></div>
         </div>
+        <div class="deploybar" id="deploybar"></div>
+        <div class="tabbar" id="tabbar">${tabBtns}</div>
       </div>
 
       <div class="loading" id="loading">
@@ -416,9 +453,9 @@ export class Menu {
       <div class="pause" id="pause">
         <div class="box">
           <h2>一時停止</h2>
-          <button data-act="resume">戦闘に戻る</button>
-          <button data-act="settings">設定</button>
-          <button data-act="quit">作戦を中止してメニューへ</button>
+          <button data-act="resume">${ICONS.deploy({ size: 17 })}<span>戦闘に戻る</span></button>
+          <button data-act="settings">${ICONS.settings({ size: 17 })}<span>設定</span></button>
+          <button data-act="quit">${ICONS.back({ size: 17 })}<span>作戦を中止してメニューへ</span></button>
         </div>
       </div>
 
@@ -426,18 +463,22 @@ export class Menu {
     `;
 
     this.el = {};
-    for (const id of ['splash', 'st1', 'st2', 'title', 'btnStart', 'menu', 'nav', 'panel',
-      'loading', 'ldName', 'ldDesc', 'ldBar', 'ldPct', 'ldTip', 'pause', 'result', 'metaLine']) {
+    for (const id of ['splash', 'st1', 'st2', 'st3', 'title', 'btnStart', 'menu', 'nav', 'panel',
+      'loading', 'ldName', 'ldDesc', 'ldBar', 'ldPct', 'ldTip', 'pause', 'result', 'metaLine',
+      'tabbar', 'deploybar']) {
       this.el[id] = this.root.querySelector('#' + id);
     }
 
     this.el.btnStart.addEventListener('click', () => this.showMenu());
-    this.el.nav.addEventListener('click', (e) => {
+
+    const navHandler = (e) => {
       const b = e.target.closest('button[data-page]');
       if (!b) return;
-      [...this.el.nav.querySelectorAll('button')].forEach((x) => x.classList.toggle('on', x === b));
-      this._renderPage(b.dataset.page);
-    });
+      this._setPage(b.dataset.page);
+    };
+    this.el.nav.addEventListener('click', navHandler);
+    this.el.tabbar.addEventListener('click', navHandler);
+
     this.el.pause.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-act]');
       if (!b) return;
@@ -446,26 +487,35 @@ export class Menu {
       else if (b.dataset.act === 'settings') { this.hidePause(); this.showMenu('settings'); }
     });
 
-    this._renderPage('deploy');
+    this._setPage('deploy');
+  }
+
+  _setPage(id) {
+    this.page = id;
+    for (const c of [this.el.nav, this.el.tabbar]) {
+      c.querySelectorAll('button[data-page]').forEach((x) => x.classList.toggle('on', x.dataset.page === id));
+    }
+    this._renderPage(id);
   }
 
   /* ================= フロー ================= */
 
-  /** スプラッシュ → タイトル */
+  /** スプラッシュ（製作 → エンジン → 使用技術）→ タイトル */
   async playIntro() {
     this.root.classList.add('on');
     this.el.title.classList.add('out');
     this.el.menu.classList.remove('on');
     this.el.splash.classList.remove('out');
 
-    await wait(2100);
-    this.el.st1.classList.remove('on');
-    this.el.st2.classList.add('on');
-    // アニメーションを再生し直す
-    this.el.st2.querySelectorAll('.arc, .core, .wm, .sub').forEach((n) => {
-      n.style.animation = 'none'; void n.offsetWidth; n.style.animation = '';
-    });
-    await wait(2200);
+    const stages = [this.el.st1, this.el.st2, this.el.st3];
+    for (let i = 0; i < stages.length; i++) {
+      stages.forEach((s, j) => s.classList.toggle('on', i === j));
+      // 表示のたびにアニメーションを再生し直す
+      stages[i].querySelectorAll('.arc, .core, .egrid, .ecore, .wm, .role, .burst i').forEach((n) => {
+        n.style.animation = 'none'; void n.offsetWidth; n.style.animation = '';
+      });
+      await wait(i === stages.length - 1 ? 1900 : 1750);
+    }
     this.el.splash.classList.add('out');
     await wait(700);
     this.el.splash.style.display = 'none';
@@ -488,13 +538,8 @@ export class Menu {
     this.el.pause.classList.remove('on');
     this.el.loading.classList.remove('on');
     this.el.menu.classList.add('on');
-    if (page) {
-      const b = this.el.nav.querySelector(`button[data-page="${page}"]`);
-      if (b) {
-        [...this.el.nav.querySelectorAll('button')].forEach((x) => x.classList.toggle('on', x === b));
-        this._renderPage(page);
-      }
-    }
+    this._applyDeviceClass();
+    if (page) this._setPage(page);
   }
 
   hide() { this.root.classList.remove('on'); }
@@ -527,7 +572,7 @@ export class Menu {
     const kd = r.player.deaths ? (r.player.kills / r.player.deaths).toFixed(2) : r.player.kills.toFixed(2);
     this.el.result.innerHTML = `
       <div class="verdict ${cls}">${verdict}</div>
-      <div class="score">${r.mode} — ALPHA ${r.scores.A} : ${r.scores.B} BRAVO</div>
+      <div class="score">${esc(r.mode)} — ALPHA ${r.scores.A} : ${r.scores.B} BRAVO</div>
       <div class="grid">
         <div class="cell"><div class="k">キル</div><div class="v">${r.player.kills}</div></div>
         <div class="cell"><div class="k">デス</div><div class="v">${r.player.deaths}</div></div>
@@ -551,14 +596,22 @@ export class Menu {
     else if (page === 'loadout') p.innerHTML = this._loadoutHTML();
     else if (page === 'settings') p.innerHTML = this._settingsHTML();
     else p.innerHTML = this._aboutHTML();
+
+    // スマホでは出撃ボタンを固定バーへ出す
+    this.el.deploybar.innerHTML = (this.isTouch && page === 'deploy') ? this._deployButtonHTML() : '';
     p.scrollTop = 0;
     this._wirePage(page);
+  }
+
+  _deployButtonHTML() {
+    return `<button class="deploy" data-deploy>出撃
+      <span class="sub">${esc(GAME_MODES[this.sel.mode].nameJa)} — コンパウンド</span></button>`;
   }
 
   _deployHTML() {
     const modes = MODE_LIST.map((m) => `
       <button class="card ${this.sel.mode === m.id ? 'on' : ''}" data-mode="${m.id}">
-        <div class="ico">${m.icon}</div>
+        ${ICONS[m.id] ? ICONS[m.id]({ size: 20 }) : ICONS.tdm({ size: 20 })}
         <div class="nm">${m.nameJa}</div>
         <div class="en">${m.name}</div>
         <div class="ds">${m.desc}</div>
@@ -566,37 +619,33 @@ export class Menu {
 
     const diffs = Object.entries(DIFFICULTY).map(([k, d]) => `
       <button class="card ${this.sel.difficulty === k ? 'on' : ''}" data-diff="${k}">
-        <div class="nm">${d.name}</div>
+        <div class="nm" style="margin-top:0">${d.name}</div>
         <div class="en">${k}</div>
-        <div class="ds">反応 ${(d.reaction * 1000).toFixed(0)}ms / 命中率 ${(d.accuracy * 100).toFixed(0)}% / 視認 ${d.sight}m</div>
+        <div class="ds">反応 ${(d.reaction * 1000).toFixed(0)}ms ／ 命中率 ${(d.accuracy * 100).toFixed(0)}% ／ 視認 ${d.sight}m</div>
       </button>`).join('');
 
     return `
       <div class="sec"><h2>ゲームモード</h2><div class="cards">${modes}</div></div>
       <div class="sec"><h2>マップ</h2><div class="cards">
         <button class="card on" data-map="compound">
-          <div class="ico">▣</div><div class="nm">コンパウンド</div><div class="en">COMPOUND</div>
+          ${ICONS.map({ size: 20 })}
+          <div class="nm">コンパウンド</div><div class="en">COMPOUND</div>
           <div class="ds">砂漠地帯の廃棄されたコンパウンド。西のコンテナ置き場・中央の主屋・東の市場通りによる 3 レーン構造。</div>
         </button>
       </div></div>
       <div class="sec"><h2>敵の練度</h2><div class="cards">${diffs}</div></div>
-      <div class="sec">
-        <button class="deploy" id="btnDeploy">
-          出撃
-          <span class="sub">${GAME_MODES[this.sel.mode].nameJa} — コンパウンド</span>
-        </button>
-      </div>`;
+      <div class="sec">${this._deployButtonHTML()}</div>`;
   }
 
   _loadoutHTML() {
     const bar = (k, v, max) => `
       <div class="stat"><span class="k">${k}</span>
         <span class="b"><i style="width:${Math.min(100, (v / max) * 100).toFixed(0)}%"></i></span>
-        <span class="v">${Math.round((v / max) * 100)}</span></div>`;
+        <span class="v">${Math.round(Math.min(100, (v / max) * 100))}</span></div>`;
 
     const prim = Object.values(WEAPONS).filter((w) => w.class !== WEAPON_CLASS.PISTOL).map((w) => `
       <button class="card ${this.sel.primary === w.id ? 'on' : ''}" data-prim="${w.id}">
-        <div class="nm">${w.nameJa}</div>
+        <div class="nm" style="margin-top:0">${w.nameJa}</div>
         <div class="en">${w.class}</div>
         <div class="ds">${w.desc}</div>
         <div class="stats">
@@ -610,7 +659,7 @@ export class Menu {
 
     const sec = Object.values(WEAPONS).filter((w) => w.class === WEAPON_CLASS.PISTOL).map((w) => `
       <button class="card ${this.sel.secondary === w.id ? 'on' : ''}" data-sec="${w.id}">
-        <div class="nm">${w.nameJa}</div><div class="en">${w.class}</div><div class="ds">${w.desc}</div>
+        <div class="nm" style="margin-top:0">${w.nameJa}</div><div class="en">${w.class}</div><div class="ds">${w.desc}</div>
       </button>`).join('');
 
     const cur = WEAPONS[this.sel.primary];
@@ -618,7 +667,7 @@ export class Menu {
     const atts = (cur.attachments || []).map((id) => {
       const a = ATTACHMENTS[id];
       return `<button class="card ${list.includes(id) ? 'on' : ''}" data-att="${id}">
-        <div class="nm">${a.name}</div><div class="ds">${a.desc}</div></button>`;
+        <div class="nm" style="margin-top:0">${a.name}</div><div class="ds">${a.desc}</div></button>`;
     }).join('') || '<div class="ds" style="color:var(--dim)">この武器に装着できるアタッチメントはありません</div>';
 
     return `
@@ -635,20 +684,25 @@ export class Menu {
         <span class="val" id="${id}Val">${fmt(val)}</span></div></div>`;
     const toggle = (id, label, help, on) => `
       <div class="row"><div class="lab"><div class="n">${label}</div><div class="h">${help}</div></div>
-        <div class="ctl"><div class="tgl ${on ? 'on' : ''}" id="${id}"></div></div></div>`;
+        <div class="ctl"><div class="tgl ${on ? 'on' : ''}" id="${id}" role="switch" aria-checked="${on}"></div></div></div>`;
     const seg = (id, label, help, opts, cur) => `
       <div class="row"><div class="lab"><div class="n">${label}</div><div class="h">${help}</div></div>
         <div class="ctl"><div class="seg" id="${id}">
           ${opts.map((o) => `<button data-v="${o.v}" class="${cur === o.v ? 'on' : ''}">${o.l}</button>`).join('')}
         </div></div></div>`;
 
+    // 端末に応じて出す項目を変える
+    const control = this.isTouch
+      ? `${range('touchSens', 'タッチ感度', '画面右側のドラッグでの視点移動量', 0.4, 3, 0.05, s.touchSensitivity, (v) => (+v).toFixed(2))}
+         ${range('adsSens', '照準時の感度倍率', '覗き込み中の感度（対 通常）', 0.2, 1.5, 0.02, s.adsSensitivity, (v) => (+v).toFixed(2))}
+         ${toggle('invertY', 'Y軸反転', '上下の視点操作を反転する', s.invertY)}
+         ${toggle('leftHanded', '左利き配置', '移動と視点、ボタンの左右を入れ替える', s.leftHanded)}`
+      : `${range('sens', 'マウス感度', '視点移動の速さ', 0.2, 3, 0.05, s.sensitivity, (v) => (+v).toFixed(2))}
+         ${range('adsSens', 'ADS 感度倍率', '覗き込み中の感度（対 通常）', 0.2, 1.5, 0.02, s.adsSensitivity, (v) => (+v).toFixed(2))}
+         ${toggle('invertY', 'Y軸反転', '上下の視点操作を反転する', s.invertY)}`;
+
     return `
-      <div class="sec"><h2>操作</h2>
-        ${range('sens', 'マウス感度', '視点移動の速さ', 0.2, 3, 0.05, s.sensitivity, (v) => (+v).toFixed(2))}
-        ${range('adsSens', 'ADS 感度倍率', '覗き込み中の感度（対 通常）', 0.2, 1.5, 0.02, s.adsSensitivity, (v) => (+v).toFixed(2))}
-        ${range('touchSens', 'タッチ感度', 'スマートフォンでの視点移動', 0.4, 3, 0.05, s.touchSensitivity, (v) => (+v).toFixed(2))}
-        ${toggle('invertY', 'Y軸反転', '上下の視点操作を反転する', s.invertY)}
-      </div>
+      <div class="sec"><h2>操作</h2>${control}</div>
       <div class="sec"><h2>画面</h2>
         ${range('fov', '視野角', '広いほど周辺が見えるが的が小さくなる', 65, 110, 1, s.fov, (v) => `${v}°`)}
         ${seg('quality', '画質', '描画負荷と見た目の釣り合い', [
@@ -667,39 +721,54 @@ export class Menu {
   }
 
   _aboutHTML() {
-    const keyRow = (k, d) => `<div class="row"><div class="lab"><div class="n">${d}</div></div>
+    const row = (k, d) => `<div class="row"><div class="lab"><div class="n">${d}</div></div>
       <div class="ctl"><span class="val" style="width:auto;font-size:11px">${k}</span></div></div>`;
-    return `
+
+    const controls = this.isTouch ? `
+      <div class="sec"><h2>タッチ操作</h2>
+        ${row('画面左側をドラッグ', '移動（大きく倒すとスプリント）')}
+        ${row('画面右側をドラッグ', '視点移動')}
+        ${row('射撃ボタン', '押している間ずっと射撃')}
+        ${row('照準ボタン', '覗き込み（押すたび切り替え）')}
+        ${row('走ボタン', 'スプリント（押すたび切り替え）')}
+        ${row('跳 / 伏 / 装填', 'ジャンプ・しゃがみ・リロード')}
+        ${row('切替ボタン', 'メイン武器とサブ武器の持ち替え')}
+      </div>` : `
       <div class="sec"><h2>キーボード / マウス</h2>
-        ${keyRow('W A S D', '移動')}
-        ${keyRow('Shift', 'スプリント')}
-        ${keyRow('Ctrl / C', 'しゃがみ（スプリント中はスライディング）')}
-        ${keyRow('X', '伏せ')}
-        ${keyRow('Space', 'ジャンプ / 乗り越え')}
-        ${keyRow('Q / E', '左右へ体を傾ける（リーン）')}
-        ${keyRow('左クリック', '射撃')}
-        ${keyRow('右クリック', '覗き込み（ADS）')}
-        ${keyRow('R', 'リロード')}
-        ${keyRow('1 / 2 / ホイール', '武器切り替え')}
-        ${keyRow('Tab', 'スコアボード')}
-        ${keyRow('Esc', '一時停止')}
-      </div>
-      <div class="sec"><h2>スマートフォン</h2>
-        ${keyRow('画面左側をドラッグ', '移動（大きく倒すとスプリント）')}
-        ${keyRow('画面右側をドラッグ', '視点移動')}
-        ${keyRow('右下の丸ボタン', '射撃')}
-        ${keyRow('照準ボタン', '覗き込み（トグル）')}
-        ${keyRow('各ボタン', 'ジャンプ / しゃがみ / リロード / 武器切替')}
-      </div>
+        ${row('W A S D', '移動')}
+        ${row('Shift', 'スプリント')}
+        ${row('Ctrl / C', 'しゃがみ（スプリント中はスライディング）')}
+        ${row('X', '伏せ')}
+        ${row('Space', 'ジャンプ / 乗り越え')}
+        ${row('Q / E', '左右へ体を傾ける（リーン）')}
+        ${row('左クリック', '射撃')}
+        ${row('右クリック', '覗き込み（ADS）')}
+        ${row('R', 'リロード')}
+        ${row('1 / 2 / ホイール', '武器切り替え')}
+        ${row('Tab', 'スコアボード')}
+        ${row('Esc', '一時停止')}
+      </div>`;
+
+    return `
+      ${controls}
       <div class="sec"><h2>クレジット</h2>
         <div class="row"><div class="lab">
-          <div class="n">OPERATION CRIMSON</div>
-          <div class="h">Three.js による手続き型生成のブラウザ FPS。テクスチャ・モデル・レベルは
-          すべてコードから生成しており、外部アセットを一切使用していません。</div>
+          <div class="n">${BRAND.gameTitle}</div>
+          <div class="h">テクスチャ・3Dモデル・レベル・効果音のすべてをコードから生成しており、
+          外部アセットを一切使用していません。</div>
         </div></div>
         <div class="row"><div class="lab">
-          <div class="n">Anthropic / Opus 5</div>
-          <div class="h">本作は Anthropic の Claude（Opus 5）によって実装されました。</div>
+          <div class="n">${BRAND.studio}</div>
+          <div class="h">${BRAND.studioRole}</div>
+        </div></div>
+        <div class="row"><div class="lab">
+          <div class="n">${BRAND.engineFull}</div>
+          <div class="h">${BRAND.engineTagline}。Three.js を基盤に、手続き型生成と
+          ポストプロセスを独自に組み上げています。</div>
+        </div></div>
+        <div class="row"><div class="lab">
+          <div class="n">${BRAND.techName}</div>
+          <div class="h">${BRAND.techNote}</div>
         </div></div>
       </div>`;
   }
@@ -708,6 +777,11 @@ export class Menu {
 
   _wirePage(page) {
     const p = this.el.panel;
+    const bar = this.el.deploybar;
+
+    const deploy = () => this.onStart?.(this.sel);
+    p.querySelectorAll('[data-deploy]').forEach((b) => b.addEventListener('click', deploy));
+    bar.querySelectorAll('[data-deploy]').forEach((b) => b.addEventListener('click', deploy));
 
     if (page === 'deploy') {
       p.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
@@ -718,7 +792,6 @@ export class Menu {
         this.sel.difficulty = b.dataset.diff;
         this._renderPage('deploy');
       }));
-      p.querySelector('#btnDeploy')?.addEventListener('click', () => this.onStart?.(this.sel));
     }
 
     if (page === 'loadout') {
@@ -772,11 +845,12 @@ export class Menu {
       bindRange('sfx', 'sfx', (v) => `${Math.round(v * 100)}`);
       bindRange('music', 'music', (v) => `${Math.round(v * 100)}`);
 
-      for (const [id, key] of [['invertY', 'invertY'], ['motionBlur', 'motionBlur'], ['filmGrain', 'filmGrain'], ['showFps', 'showFps']]) {
-        const el = p.querySelector('#' + id);
+      for (const key of ['invertY', 'motionBlur', 'filmGrain', 'showFps', 'leftHanded']) {
+        const el = p.querySelector('#' + key);
         el?.addEventListener('click', () => {
           const v = !el.classList.contains('on');
           el.classList.toggle('on', v);
+          el.setAttribute('aria-checked', String(v));
           s.set(key, v);
           this.onSettingChange?.(key, v);
         });
@@ -793,6 +867,15 @@ export class Menu {
   }
 
   setMeta(text) { this.el.metaLine.textContent = text; }
+
+  dispose() {
+    window.removeEventListener('resize', this._onResize);
+    this.root.remove();
+  }
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

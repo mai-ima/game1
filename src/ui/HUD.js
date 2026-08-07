@@ -31,18 +31,30 @@ const CSS = `
 .hud.hidden { display: none; }
 .hud [data-el] { position: absolute; }
 
-/* ---------- 照準 ---------- */
-.xh { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 64px; height: 64px; }
-.xh i {
-  position: absolute; left: 50%; top: 50%; background: var(--paper);
-  box-shadow: 0 0 0 1px rgba(0,0,0,.55);
-  transition: opacity .12s linear;
+/* ---------- 照準 ----------
+ * 中心の点と 4 本の線は「同じ基準点」から配置する必要がある。
+ * margin による中央寄せと transform:translate(-50%) を併用すると
+ * 2 重にずれて、点と線の中心が 1px 食い違う（狙点がずれて見える）。
+ * ここでは margin を使わず、transform だけで位置を決める。
+ */
+.xh {
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 96px; height: 96px;
 }
-.xh .v { width: 2px; height: 8px; margin-left: -1px; }
-.xh .h { width: 8px; height: 2px; margin-top: -1px; }
-.xh .dot { width: 2px; height: 2px; margin: -1px 0 0 -1px; border-radius: 50%; }
+.xh i {
+  position: absolute; left: 50%; top: 50%;
+  background: var(--paper); box-shadow: 0 0 0 1px rgba(0,0,0,.55);
+  transition: opacity .12s linear;
+  will-change: transform;
+}
+.xh .v { width: 2px; height: 9px; }
+.xh .h { width: 9px; height: 2px; }
+.xh .dot {
+  width: 2px; height: 2px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
 .xh.hide i { opacity: 0; }
-.xh.hide .dot { opacity: .85; }
+.xh.hide .dot { opacity: .9; }
 
 /* ヒットマーカー */
 .hitmark { left: 50%; top: 50%; transform: translate(-50%,-50%); width: 34px; height: 34px; opacity: 0; }
@@ -159,6 +171,41 @@ const CSS = `
 }
 .ammo.reloading .reload { opacity: 1; }
 
+/* ---------- スコープ ----------
+ * 円形のレンズ以外を黒で覆い、内側にミルドット照準線を描く。
+ * 黒縁は box-shadow を巨大な spread で広げて作る（マスク不要で軽い）。
+ */
+.scope {
+  inset: 0; opacity: 0; pointer-events: none;
+  transition: opacity .09s linear;
+}
+.scope.on { opacity: 1; }
+.scope .lens {
+  position: absolute; left: 50%; top: 50%;
+  width: var(--lens); height: var(--lens); margin: calc(var(--lens) / -2) 0 0 calc(var(--lens) / -2);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 9999px #000,
+    inset 0 0 34px 12px rgba(0,0,0,.92),
+    inset 0 0 4px 2px rgba(150,180,210,.30);
+}
+/* レンズ外周のわずかな色収差 */
+.scope .fringe {
+  position: absolute; left: 50%; top: 50%;
+  width: calc(var(--lens) - 4px); height: calc(var(--lens) - 4px);
+  margin: calc((var(--lens) - 4px) / -2) 0 0 calc((var(--lens) - 4px) / -2);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px rgba(120,170,220,.22), inset 0 0 0 3px rgba(210,140,110,.10);
+}
+.scope .reticle {
+  position: absolute; left: 50%; top: 50%;
+  width: var(--lens); height: var(--lens); margin: calc(var(--lens) / -2) 0 0 calc(var(--lens) / -2);
+  color: rgba(14,16,18,.92);
+}
+.scope .reticle svg { width: 100%; height: 100%; display: block; }
+/* 息づかいによる微細な揺れ */
+.scope .inner { position: absolute; inset: 0; will-change: transform; }
+
 /* ---------- 被弾方向 ---------- */
 .dmgring { left: 50%; top: 50%; width: 0; height: 0; }
 .dmgring i {
@@ -274,6 +321,57 @@ const CSS = `
 }
 `;
 
+/**
+ * ミルドット照準線の SVG を組み立てる。
+ * 実物の狙撃スコープに倣い、中心から等間隔の点で距離・偏差を読む。
+ * 100 の座標系で描き、表示時にレンズ径へスケールされる。
+ */
+function reticleSVG() {
+  const C = 50;          // 中心
+  const R = 50;          // 外周
+  const dot = 1.05;      // ミルドットの半径
+  const pitch = 5.2;     // ドット間隔
+  let marks = '';
+
+  // 上下左右のミルドット（中心付近は空けて視界を確保）
+  for (let i = 2; i <= 8; i++) {
+    const d = i * pitch;
+    if (d > R - 4) break;
+    const big = i % 2 === 0;
+    const r = big ? dot : dot * 0.62;
+    marks += `<circle cx="${C}" cy="${C + d}" r="${r}" />`;
+    marks += `<circle cx="${C}" cy="${C - d}" r="${r * 0.8}" />`;
+    marks += `<circle cx="${C - d}" cy="${C}" r="${r}" />`;
+    marks += `<circle cx="${C + d}" cy="${C}" r="${r}" />`;
+  }
+
+  // 下方向の距離目盛り（落下量の読み取り用）
+  let ticks = '';
+  for (let i = 1; i <= 4; i++) {
+    const y = C + i * pitch * 2;
+    if (y > R * 1.9) break;
+    ticks += `<line x1="${C - 3.4}" y1="${y}" x2="${C + 3.4}" y2="${y}" stroke-width="0.7" />`;
+  }
+
+  return `<svg viewBox="0 0 100 100" aria-hidden="true">
+    <g stroke="currentColor" fill="currentColor" stroke-linecap="round">
+      <!-- 太い外側の十字（薄明かりでも視認できる） -->
+      <line x1="0" y1="${C}" x2="${C - 12}" y2="${C}" stroke-width="1.9" />
+      <line x1="${C + 12}" y1="${C}" x2="100" y2="${C}" stroke-width="1.9" />
+      <line x1="${C}" y1="0" x2="${C}" y2="${C - 12}" stroke-width="1.9" />
+      <line x1="${C}" y1="${C + 12}" x2="${C}" y2="100" stroke-width="1.9" />
+      <!-- 細い内側の十字 -->
+      <line x1="${C - 12}" y1="${C}" x2="${C - 2.4}" y2="${C}" stroke-width="0.55" />
+      <line x1="${C + 2.4}" y1="${C}" x2="${C + 12}" y2="${C}" stroke-width="0.55" />
+      <line x1="${C}" y1="${C - 12}" x2="${C}" y2="${C - 2.4}" stroke-width="0.55" />
+      <line x1="${C}" y1="${C + 2.4}" x2="${C}" y2="${C + 12}" stroke-width="0.55" />
+      <g stroke="none">${marks}</g>
+      <g stroke="currentColor">${ticks}</g>
+      <circle cx="${C}" cy="${C}" r="0.62" stroke="none" />
+    </g>
+  </svg>`;
+}
+
 export class HUD {
   /**
    * @param {HTMLElement} parent
@@ -297,6 +395,14 @@ export class HUD {
         <i class="dot"></i>
       </div>
       <div data-el class="hitmark" id="hudHit"><span></span><span></span><span></span><span></span></div>
+
+      <div data-el class="scope" id="hudScope">
+        <div class="inner" id="scopeInner">
+          <div class="reticle">${reticleSVG()}</div>
+          <div class="fringe"></div>
+        </div>
+        <div class="lens"></div>
+      </div>
       <div data-el class="dmgring" id="hudDmg"></div>
 
       <div data-el class="scorebar">
@@ -354,6 +460,7 @@ export class HUD {
     this.el = {
       xh: $('hudXh'), xhT: $('xhT'), xhB: $('xhB'), xhL: $('xhL'), xhR: $('xhR'),
       hit: $('hudHit'), dmg: $('hudDmg'), pins: $('hudPins'),
+      scope: $('hudScope'), scopeInner: $('scopeInner'),
       scoreA: $('scoreA'), scoreB: $('scoreB'), clock: $('clock'), modeName: $('modeName'),
       map: $('hudMap'), mapCanvas: $('mapCanvas'), mapLabel: $('mapLabel'),
       feed: $('hudFeed'),
@@ -371,9 +478,20 @@ export class HUD {
     const size = h < 460 ? 96 : (window.innerWidth < 780 ? 124 : 176);
     this.minimap = new Minimap(this.el.mapCanvas, { size });
 
+    // 画面サイズが変わったらレンズ径とミニマップを作り直す
+    this._onResize = () => {
+      this.el.scope.style.setProperty('--lens', `${this._lensSize()}px`);
+      const h = window.innerHeight;
+      const size = h < 460 ? 96 : (window.innerWidth < 780 ? 124 : 176);
+      if (size !== this.minimap.size) this.minimap.resize(size);
+    };
+    window.addEventListener('resize', this._onResize);
+    window.addEventListener('orientationchange', () => setTimeout(this._onResize, 250));
+
     this._dmgMarks = [];
     this._feedRows = [];
-    this._xhSpread = 8;
+    this._xhSpread = -1;   // 初回は必ず反映されるよう範囲外にしておく
+    this._scopeOn = false;
     this._lastMag = -1;
     this.visible = false;
   }
@@ -427,17 +545,50 @@ export class HUD {
 
   setReloading(on) { this.el.ammo.classList.toggle('reloading', on); }
 
-  /** 照準の広がり（0..1 相当の拡散量をピクセルへ） */
-  setCrosshair(spreadPx, hidden = false) {
-    const s = Math.max(3, spreadPx);
-    if (Math.abs(s - this._xhSpread) > 0.4) {
-      this._xhSpread = s;
-      this.el.xhT.style.transform = `translate(-50%, -${s + 8}px)`;
-      this.el.xhB.style.transform = `translate(-50%, ${s}px)`;
-      this.el.xhL.style.transform = `translate(-${s + 8}px, -50%)`;
-      this.el.xhR.style.transform = `translate(${s}px, -50%)`;
+  /**
+   * 照準の広がりを設定する。
+   * @param {number} gapPx 中心から線の内側までの距離（ピクセル）
+   * @param {boolean} hidden 覗き込み中などに線を隠すか
+   *
+   * 線は長さ 9px なので、中心から線の中心までは gap + 4.5px。
+   * 全要素を translate(-50%,-50%) 起点に揃えることで、
+   * 点と線の中心が必ず一致する。
+   */
+  setCrosshair(gapPx, hidden = false) {
+    const g = Math.max(2, gapPx);
+    if (Math.abs(g - this._xhSpread) > 0.3) {
+      this._xhSpread = g;
+      const c = (g + 4.5).toFixed(1);
+      this.el.xhT.style.transform = `translate(-50%, -50%) translateY(-${c}px)`;
+      this.el.xhB.style.transform = `translate(-50%, -50%) translateY(${c}px)`;
+      this.el.xhL.style.transform = `translate(-50%, -50%) translateX(-${c}px)`;
+      this.el.xhR.style.transform = `translate(-50%, -50%) translateX(${c}px)`;
     }
     this.el.xh.classList.toggle('hide', hidden);
+  }
+
+  /**
+   * スコープ表示の更新。
+   * @param {number} t 0..1 覗き込みの進行度
+   * @param {number} swayX 息づかいによる横揺れ（画素）
+   * @param {number} swayY 縦揺れ（画素）
+   */
+  setScope(t, swayX = 0, swayY = 0) {
+    const on = t > 0.5;
+    if (on !== this._scopeOn) {
+      this._scopeOn = on;
+      this.el.scope.classList.toggle('on', on);
+      // レンズ径は短辺基準。覗き込み途中は少し広げて“寄る”感じを出す
+      this.el.scope.style.setProperty('--lens', `${this._lensSize()}px`);
+    }
+    if (on) {
+      this.el.scopeInner.style.transform = `translate(${swayX.toFixed(2)}px, ${swayY.toFixed(2)}px)`;
+    }
+  }
+
+  _lensSize() {
+    const short = Math.min(window.innerWidth, window.innerHeight);
+    return Math.round(short * 0.78);
   }
 
   hitmarker(isKill = false) {
@@ -565,7 +716,10 @@ export class HUD {
     }
   }
 
-  dispose() { this.root.remove(); }
+  dispose() {
+    window.removeEventListener('resize', this._onResize);
+    this.root.remove();
+  }
 }
 
 function esc(s) {

@@ -164,6 +164,18 @@ export class Bot {
 
   /* ================= 更新 ================= */
 
+  /**
+   * 影を落とすかを距離で切り替える。
+   * 影パスは本描画と同じ数のドローコールを消費するため、
+   * 遠方のボットまで影を出すと描画コストが倍増する。
+   */
+  updateShadowLod(cameraPos, maxDist = 26) {
+    const on = this.alive && this.char.position.distanceToSquared(cameraPos) < maxDist * maxDist;
+    if (on === this._shadowOn) return;
+    this._shadowOn = on;
+    this.char.model.traverse((o) => { if (o.isMesh) o.castShadow = on; });
+  }
+
   update(dt, world) {
     if (!this.alive) {
       this.char.update(dt, false);

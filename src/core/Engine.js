@@ -11,10 +11,10 @@ import { CompositeShader, RadialBlurShader } from '../render/PostFX.js';
 
 /** 画質プリセット */
 export const QUALITY = {
-  low:    { pixelRatio: 1.0,  shadowMap: 1024, gtao: false, bloom: true,  smaa: false, aniso: 4,  shadowDist: 45,  texSize: 256 },
-  medium: { pixelRatio: 1.25, shadowMap: 2048, gtao: false, bloom: true,  smaa: true,  aniso: 8,  shadowDist: 65,  texSize: 512 },
-  high:   { pixelRatio: 1.5,  shadowMap: 3072, gtao: true,  bloom: true,  smaa: true,  aniso: 16, shadowDist: 90,  texSize: 512 },
-  ultra:  { pixelRatio: 2.0,  shadowMap: 4096, gtao: true,  bloom: true,  smaa: true,  aniso: 16, shadowDist: 120, texSize: 1024 },
+  low:    { pixelRatio: 1.0,  shadowMap: 1024, gtao: false, bloom: false, smaa: false, aniso: 4,  shadowDist: 32,  texSize: 256 },
+  medium: { pixelRatio: 1.25, shadowMap: 1536, gtao: false, bloom: true,  smaa: true,  aniso: 8,  shadowDist: 45,  texSize: 512 },
+  high:   { pixelRatio: 1.5,  shadowMap: 2048, gtao: false, bloom: true,  smaa: true,  aniso: 16, shadowDist: 55,  texSize: 512 },
+  ultra:  { pixelRatio: 2.0,  shadowMap: 3072, gtao: true,  bloom: true,  smaa: true,  aniso: 16, shadowDist: 80,  texSize: 1024 },
 };
 
 export class Engine {
@@ -48,6 +48,27 @@ export class Engine {
     this.renderer.info.autoReset = false;
     container.appendChild(this.renderer.domElement);
     this.renderer.domElement.style.touchAction = 'none';
+
+    /*
+     * モバイルではメモリ逼迫やタブ復帰で WebGL コンテキストが失われることがある。
+     * 既定では以後まったく描画されず「クラッシュした」ように見えるため、
+     * 明示的に復帰を要求し、状態を外へ通知する。
+     */
+    this.contextLost = false;
+    this.onContextLost = null;
+    this.onContextRestored = null;
+    this.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();          // これを呼ばないと復帰イベントが来ない
+      this.contextLost = true;
+      this.onContextLost?.();
+    }, false);
+    this.renderer.domElement.addEventListener('webglcontextrestored', () => {
+      this.contextLost = false;
+      // シェーダとテクスチャは three 側が再構築するが、
+      // 環境マップは自前で作っているので作り直す
+      try { this.refreshEnvironment(); } catch { /* 復帰直後は失敗しうる */ }
+      this.onContextRestored?.();
+    }, false);
 
     /* ---------------- シーン / カメラ ---------------- */
     this.scene = new THREE.Scene();
@@ -401,6 +422,7 @@ export class Engine {
 
   /** 1フレーム描画 */
   render(dt) {
+    if (this.contextLost) return;
     this.elapsed += dt;
     if (this.compositePass) this.compositePass.uniforms.uTime.value = this.elapsed;
     if (this.sky) this.sky.material.uniforms.time.value = this.elapsed;

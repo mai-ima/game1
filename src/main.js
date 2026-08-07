@@ -20,6 +20,7 @@ const boot = window.__boot;
 const container = document.getElementById('app');
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const _v = new THREE.Vector3();
+const _sway = { x: 0, y: 0 };
 
 async function main() {
   if (window.__NO_WEBGL2__) return;
@@ -46,9 +47,9 @@ async function main() {
 
   // --- UI ---
   const hud = new HUD(container);
-  const menu = new Menu(container, { settings });
   const isTouch = MobileControls.isTouch();
-  const mobile = isTouch ? new MobileControls(container, input) : null;
+  const menu = new Menu(container, { settings, isTouch });
+  const mobile = isTouch ? new MobileControls(container, input, settings) : null;
 
   const game = new Game({ engine, mats, input, audio });
   wireGame(game, hud, menu, mobile, settings, engine);
@@ -181,6 +182,12 @@ async function main() {
     if (mobile) {
       mobile.onPause = () => pauseGame(game, hud, menu, mobile, input);
       mobile.onBoard = (on) => hud.setBoard(on, buildBoard(game));
+      // 対戦中に縦画面へ回されたら、横に戻すまで進行を止める
+      mobile.onOrientationBlock = (blocked) => {
+        if (!game.running) return;
+        if (blocked) { game.paused = true; input.clear(); }
+        else if (!menu.root.classList.contains('on')) game.paused = false;
+      };
     }
 
     game.onKill = (info) => {
@@ -301,7 +308,15 @@ function updateHud(game, hud, mobile, dt) {
     if (!game.player.grounded) spread *= sp.airMul;
     else if (game.player.speed2D > 0.6) spread *= 1 + (sp.moveMul - 1) * Math.min(1, game.player.speed2D / 4.4);
     const px = Math.tan(spread) / Math.tan(THREE.MathUtils.degToRad(game.engine.camera.fov) / 2) * (window.innerHeight / 2);
-    hud.setCrosshair(px * 0.9 + 4, game.weapons.isScoped || ads > 0.85);
+    hud.setCrosshair(px * 0.85 + 3, game.weapons.isScoped || ads > 0.85);
+
+    // スコープ表示（覗き込み進行度と息づかいの揺れ）
+    if (game.weapons.isScoped) {
+      const sway = game.weapons.getScopeSway(_sway);
+      hud.setScope(ads, sway.x, sway.y);
+    } else {
+      hud.setScope(0);
+    }
   }
 
   // ミニマップ

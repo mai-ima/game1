@@ -9,6 +9,7 @@ const DEFAULTS = {
   adsSensitivity: 0.62,
   touchSensitivity: 1.25,
   invertY: false,
+  leftHanded: false,
   fov: 80,
   quality: 'high',
   brightness: 1.0,
