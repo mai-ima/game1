@@ -428,16 +428,16 @@ const DEFS = {
 
   /* --- ガンメタル（武器本体） --- */
   gunMetal(u, v, o, S) {
-    const micro = valueNoise(u * 180, v * 180, 180, S);
-    const machine = valueNoise(u * 190, v * 6, 190, S + 3);
+    const micro = fbm(u * 26, v * 26, { octaves: 3, period: 26, seed: S });
+    const machine = valueNoise(u * 48, v * 5, 48, S + 3);
     const wear = smoothstep(0.62, 0.95, fbm(u * 9, v * 9, { octaves: 5, period: 9, seed: S + 11 }));
-    const edge = smoothstep(0.9, 1.0, ridged(u * 24, v * 24, { octaves: 3, period: 24, seed: S + 19 }));
+    const edge = smoothstep(0.88, 1.0, ridged(u * 12, v * 12, { octaves: 3, period: 12, seed: S + 19 }));
 
-    const base = 0.055 + micro * 0.03 + machine * 0.018;
+    const base = 0.048 + micro * 0.026 + machine * 0.014;
     const l = mix(base, 0.34, clamp01(wear * 0.55 + edge * 0.4));
     o.r = l * 1.0; o.g = l * 1.01; o.b = l * 1.04;
-    o.h = machine * 0.4 + micro * 0.3 + edge * 0.3;
-    o.rough = clamp01(0.4 + micro * 0.14 - wear * 0.2);
+    o.h = machine * 0.35 + micro * 0.35 + edge * 0.3;
+    o.rough = clamp01(0.44 + micro * 0.16 - wear * 0.18);
     o.metal = 1;
     o.ao = clamp01(0.9 + micro * 0.1);
   },
@@ -447,7 +447,7 @@ const DEFS = {
     const N = 26;
     const gx = (u * N) % 1, gy = (v * N) % 1;
     const stipple = smoothstep(0.55, 0.2, Math.hypot(gx - 0.5, gy - 0.5));
-    const micro = fbm(u * 130, v * 130, { octaves: 3, period: 130, seed: S });
+    const micro = fbm(u * 40, v * 40, { octaves: 3, period: 40, seed: S });
     const wear = fbm(u * 8, v * 8, { octaves: 4, period: 8, seed: S + 7 });
     const l = 0.045 + stipple * 0.028 + micro * 0.018 + wear * 0.012;
     o.r = l * 1.0; o.g = l * 1.0; o.b = l * 0.98;

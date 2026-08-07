@@ -15,10 +15,10 @@ export default defineConfig({
         map: 'map.html',
       },
       output: {
+        // three 本体だけを分離する。アプリ側を細かく割ると
+        // 共有モジュールが巨大な単一チャンクへ吸われて逆効果になる。
         manualChunks(id) {
           if (id.includes('node_modules/three')) return 'three';
-          if (id.includes('/src/world/maps/')) return 'maps';
-          if (id.includes('/src/render/')) return 'render';
         },
       },
     },
