@@ -42,6 +42,7 @@ const PRESETS = {
   wood:            { tex: 'wood',         repeat: 0.85,  params: { roughness: 1, metalness: 1 } },
   woodDark:        { tex: 'wood',         repeat: 0.85,  params: { roughness: 1, metalness: 1, color: 0x8a6a4c }, seed: 909 },
   plywood:         { tex: 'plywood',      repeat: 0.9, params: { roughness: 1, metalness: 1 } },
+  osb:             { tex: 'osb',          repeat: 0.8, params: { roughness: 1, metalness: 1 } },
   fabric:          { tex: 'fabric',       repeat: 0.8,  params: { roughness: 1, metalness: 1 } },
   camo:            { tex: 'camo',         repeat: 1.2,  params: { roughness: 1, metalness: 1 } },
   leather:         { tex: 'leather',      repeat: 1.6,  params: { roughness: 1, metalness: 1 } },
@@ -280,6 +281,15 @@ const PACK_ORM_NO_IBL_KEY = () => 'packedORM|noRoughIBL';
  * 影の縁は 1 テクセル幅で滑らかに繋がる。
  * 影マップが 1024 で範囲 42m なら 1 テクセルは 4cm。輪郭の差は出ない。
  * 失われるのは、それより広い範囲へ滲ませる「柔らかさ」だけ。
+ * 実測した絵の差は、影が出る画角でも 12/255 を超える画素が 0.19%
+ * （輪郭線の上だけ）にとどまる。
+ *
+ * ただし、効き目は環境によって大きく違う。
+ * 検証に使っているソフトウェア描画（SwiftShader）は CPU で走るため
+ * テクスチャ取得が相対的に安く、5 点を 1 点にしても有意差が出ない。
+ * テクスチャユニットが細い内蔵 GPU では効くと見込んで内蔵GPU設定にだけ
+ * 残しているが、「低」から上では 5 点のままにしてある。
+ * 効果を測れていない画質低下を、広い範囲へ入れるべきではない。
  *
  * ShaderChunk を直接差し替える。three はこのチャンクを
  * #include で展開するため、onBeforeCompile では手が届かない。

@@ -33,7 +33,7 @@ import { LightPool } from '../render/LightPool.js';
  * 遠くの光は元々減衰しきっているので、見える絵は変わらない。
  */
 export const QUALITY = {
-  low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 4, dropRoughIBL: true, cheapShadows: true },
+  low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 4, dropRoughIBL: true },
   medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 6 },
   high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.85, maxLights: 8 },
   /*

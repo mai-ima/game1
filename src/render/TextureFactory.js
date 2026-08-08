@@ -254,23 +254,79 @@ const DEFS = {
     o.ao = clamp01(mix(0.35, 0.95, seam) - knot * 0.25);
   },
 
-  /* --- 合板 / OSB --- */
+  /* --- 合板（構造用ラワン合板の表面） --- */
   plywood(u, v, o, S) {
-    const chips = worley(u * 9, v * 5, 9, S, 1);
-    const dir = chips.id * TAU;
-    const gu = u * Math.cos(dir) + v * Math.sin(dir);
-    const grain = valueNoise(gu * 140, chips.id * 50, 140, S + 3);
-    const glue = fbm(u * 7, v * 7, { octaves: 4, period: 7, seed: S + 11 });
-    const edge = smoothstep(0.0, 0.05, chips.f2 - chips.f1);
+    /*
+     * 合板の表面は、丸太を桂剥きにした 1 枚の連続した単板。
+     * 木目は板の長手方向へ流れ、ところどころに節と継ぎ目が入る。
+     *
+     * 以前は Worley のセルごとに木目の向きを変える OSB の作りで、
+     * さらにセル境界を高さ 0.45 の深い溝にしていた。
+     * 法線マップに落ちると目地そのもので、木ではなく石畳に見えていた。
+     */
 
-    const tone = 0.5 + chips.id * 0.4;
-    let l = (0.3 + grain * 0.13) * (0.7 + tone * 0.55) - glue * 0.05;
-    l *= mix(0.72, 1, edge);
-    o.r = l * 1.0; o.g = l * 0.79; o.b = l * 0.53;
-    o.h = grain * 0.25 + edge * 0.45;
-    o.rough = clamp01(0.78 + grain * 0.14);
+    // 単板の継ぎ目。1m 弱の幅で縦に切り替わり、色味がわずかに違う
+    const seamPos = v * 1.15 + valueNoise(u * 1.7, 0.5, 2, S + 5) * 0.22;
+    const sheet = Math.floor(seamPos);
+    const sheetTone = hash01(sheet * 37 + 11, 7, S + 5);
+    const seam = smoothstep(0.985, 1.0, seamPos - sheet) + smoothstep(0.015, 0.0, seamPos - sheet);
+
+    /*
+     * 木目。年輪が桂剥きで引き伸ばされるので、
+     * u 方向へ大きく、v 方向へ細かい縞になる。
+     * 少し歪ませて、定規で引いたような平行線にしない。
+     */
+    const wob = fbm(u * 2.4, v * 7, { octaves: 3, period: 7, seed: S + 2 }) * 0.10;
+    const grain = valueNoise(u * 5 + wob * 6, v * 96, 96, S);
+    const fine = valueNoise(u * 13, v * 260, 260, S + 7);
+    // 濃い夏目の筋（数本だけ強く出る）
+    const dark = smoothstep(0.62, 0.86, grain);
+
+    // 節。まばらに散らし、周りの木目を吸い寄せたように暗くする
+    const kn = worley(u * 3.2, v * 2.0, 4, S + 17, 1);
+    const knot = smoothstep(0.26, 0.05, kn.f1) * (kn.id > 0.74 ? 1 : 0);
+
+    let l = 0.40 + grain * 0.14 + fine * 0.045 - dark * 0.06;
+    l *= mix(0.90, 1.05, sheetTone);
+    l = mix(l, l * 0.46, knot);
+    l -= seam * 0.10;
+
+    // ラワンの赤みがかった黄土色
+    o.r = l * 1.0; o.g = l * 0.78; o.b = l * 0.53;
+    /*
+     * 研磨されているので凹凸はごく浅い。
+     * 高さに出すのは木目のわずかな導管と、継ぎ目の段差だけ。
+     */
+    o.h = grain * 0.14 + fine * 0.05 - knot * 0.12 - seam * 0.30;
+    o.rough = clamp01(0.80 + dark * 0.06 + knot * 0.09 - fine * 0.03);
     o.metal = 0;
-    o.ao = clamp01(0.6 + edge * 0.4);
+    o.ao = clamp01(0.92 - knot * 0.34 - seam * 0.22);
+  },
+
+  /* --- OSB（配向性ストランドボード） --- */
+  osb(u, v, o, S) {
+    /*
+     * 細長い木片を接着剤で圧縮した板。工事現場の仮囲いや型枠に使う。
+     * 木片は概ね一方向へ揃うので（配向性の名の通り）、
+     * 向きは 0 度前後に散らす。全方位に回すと木片ではなく
+     * 割れた石に見える。
+     */
+    const chips = worley(u * 7, v * 15, 7, S, 1);       // 横長のセル＝木片
+    const dir = (chips.id - 0.5) * 0.9;                 // ±25 度ほど
+    const gu = u * Math.cos(dir) + v * Math.sin(dir);
+    const grain = valueNoise(gu * 130, chips.id * 60, 130, S + 3);
+    const glue = fbm(u * 9, v * 9, { octaves: 4, period: 9, seed: S + 11 });
+    // 木片の境目。浅い段差にとどめる
+    const edge = smoothstep(0.0, 0.035, chips.f2 - chips.f1);
+
+    const tone = 0.45 + chips.id * 0.45;
+    let l = (0.34 + grain * 0.12) * (0.72 + tone * 0.5) - glue * 0.06;
+    l *= mix(0.84, 1, edge);
+    o.r = l * 1.0; o.g = l * 0.81; o.b = l * 0.55;
+    o.h = grain * 0.18 + edge * 0.16;
+    o.rough = clamp01(0.82 + grain * 0.10 - glue * 0.06);
+    o.metal = 0;
+    o.ao = clamp01(0.74 + edge * 0.26);
   },
 
   /* --- 土 / 乾いた地面 --- */
