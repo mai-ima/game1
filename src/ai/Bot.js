@@ -473,7 +473,9 @@ export class Bot {
       this._engagePositioning(dt);
     } else if (hasTarget) {
       this.state = BOT_STATE.SEEK;
-      this.moveTarget = _v.copy(this.lastSeenPos).setY(0).clone();
+      // 毎フレーム clone すると GC が細かく走る。専用の器に持つ。
+      this._seekTarget = this._seekTarget || new THREE.Vector3();
+      this.moveTarget = this._seekTarget.copy(this.lastSeenPos).setY(0);
     } else if (this._alertT > 0) {
       // 銃声のした方へ確かめに行く
       this.state = BOT_STATE.SEEK;

@@ -27,7 +27,13 @@ export const QUALITY = {
   low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.85 },
   medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.85 },
   high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.85 },
-  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 3072, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 85, texSize: 1024, bloomScale: 1.0,  minScale: 0.85 },
+  /*
+   * 最高はクオリティ最優先。
+   * 動的解像度で解像度を落とさず（minScale 1.0）、環境遮蔽も
+   * 半解像度ではなく等倍で掛ける。フレームレートより絵を優先する段。
+   */
+  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 4096, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 100, texSize: 2048, bloomScale: 1.0, minScale: 1.0,
+            gtaoScale: 1.0, gtaoSamples: 16 },
 
   /*
    * 内蔵 GPU 専用（Intel UHD / 第 10 世代 Core i5 相当）。
@@ -43,8 +49,8 @@ export const QUALITY = {
    *   GTAO                          → 無効（半解像度でも 3 パス相当）
    * とし、描画側もボットの更新間引きと影の距離短縮で軽くする。
    */
-  igpu:   { pixelRatio: 1.0,  shadows: true,  shadowMap: 1024, gtao: false, bloom: true, aa: 'fxaa', aniso: 4,  shadowDist: 40, texSize: 512,  bloomScale: 0.25, minScale: 0.62,
-            fusedPost: true, cheapBloom: true, lightweight: true },
+  igpu:   { pixelRatio: 1.0,  shadows: true,  shadowMap: 1024, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 42, texSize: 512,  bloomScale: 0.25, minScale: 0.78,
+            fusedPost: true, cheapBloom: true, lightweight: true, noFillLight: true, viewDistance: 220 },
 };
 
 /** 画質プリセットの説明（設定画面に出す） */
@@ -52,8 +58,8 @@ export const QUALITY_INFO = {
   low:    { label: '低',   desc: '影 1536・ブルーム・FXAA。軽いが平板にはならない構成。' },
   medium: { label: '中',   desc: '影 2048・SMAA・等倍以上の解像度。多くのノートPCで 60fps を狙える。' },
   high:   { label: '高',   desc: 'さらに環境遮蔽（GTAO）と高解像度テクスチャ。既定の推奨設定。' },
-  ultra:  { label: '最高', desc: '影 3072・環境遮蔽・全解像度ブルーム。要 dGPU。' },
-  igpu:   { label: '内蔵GPU最適化', desc: 'Intel UHD など内蔵 GPU 向け。ポスト処理を 1 パスに統合し、影とブルームも残したまま負荷だけを落とす。' },
+  ultra:  { label: '最高', desc: '影 4096・等倍の環境遮蔽・2048 テクスチャ。解像度を自動で下げないクオリティ最優先の段。要 dGPU。' },
+  igpu:   { label: '内蔵GPU最適化', desc: 'Intel UHD など内蔵 GPU 向け。ポスト処理を 1 パスに統合し、影・ブルームは残したまま徹底的に負荷を削る。旧世代の UHD でも動くことを狙った段。' },
 };
 
 /**
@@ -141,6 +147,13 @@ class CheapBloomPass extends Pass {
 const SCALE_STEPS = [1.0, 0.92, 0.85, 0.78, 0.70, 0.62, 0.55];
 /** 通常時に到達できる最下段（利用者が「性能優先」を選ぶと最後まで使う） */
 const SAFE_MIN_INDEX = 2;
+/*
+ * 軽量モードの下限（0.78）。
+ * ここから先は敵が読み取れないほど粗くなり、軽くなってもゲームとして
+ * 成立しない。負荷はパス構成や影の作りで削るべきで、
+ * 解像度を落として稼ぐのは最後の手段にとどめる。
+ */
+const LIGHT_MIN_INDEX = 3;
 /**
  * 目標フレーム時間（ms）。
  * 下げるのは 24ms（約 42fps）を割り込んだときだけにし、
@@ -213,8 +226,13 @@ export class Engine {
      * 初期値は 1 段下げた状態から始め、余裕があれば上げていく
      * （最初のフレームから重い、という印象を避けるため）。
      */
-    // 既定は等倍から始める。余裕が無ければ実測に応じて下がる。
-    this._scaleIdx = 0;
+    /*
+     * 既定は等倍から始める。余裕が無ければ実測に応じて下がる。
+     * ただし軽量モードは最初から 1 段下げて始める。
+     * 統合 GPU で等倍から入ると、開幕の数秒がはっきりカクつき、
+     * そこで受けた印象は解像度が下がったあとも残る。
+     */
+    this._scaleIdx = q.lightweight ? 1 : 0;
     this._frameMs = TARGET_MS;
     this._scaleCooldown = 2.5;
     /** 解像度の自動調整（利用者が切れる） */
@@ -226,7 +244,15 @@ export class Engine {
      */
     this.autoQualityDowngrade = false;
     /** 通常時に許す最下段。性能優先ではさらに下まで使う。 */
-    this._minScaleIndex = SAFE_MIN_INDEX;
+    /*
+     * 解像度を下げられる下限。
+     *
+     * 通常は 0.85 までしか下げない（45fps 出ている端末の絵を
+     * ぼかしてしまわないため）が、軽量モードは話が別で、
+     * 描けないよりは解像度を落として滑らかに動くほうがよい。
+     * 最下段（0.55）まで許可する。
+     */
+    this._minScaleIndex = q.lightweight ? LIGHT_MIN_INDEX : SAFE_MIN_INDEX;
 
     this.renderer.setPixelRatio(this._targetPixelRatio());
     this.renderer.setSize(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight);
@@ -265,7 +291,8 @@ export class Engine {
     /* ---------------- シーン / カメラ ---------------- */
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(
-      80, (container.clientWidth || window.innerWidth) / (container.clientHeight || window.innerHeight), 0.02, 800
+      80, (container.clientWidth || window.innerWidth) / (container.clientHeight || window.innerHeight),
+      0.02, q.viewDistance ?? 800
     );
     this.camera.rotation.order = 'YXZ';
 
@@ -333,6 +360,7 @@ export class Engine {
     for (const c of this.scene.children) {
       if (c !== this.sky && c.visible && !c.isLight) { c.visible = false; hidden.push(c); }
     }
+    if (this._skyBox) this._skyBox.visible = false;   // 焼く対象に自分を含めない
     const prevBg = this.scene.background;
     const prevTarget = this.renderer.getRenderTarget();
     this.scene.background = null;
@@ -343,8 +371,52 @@ export class Engine {
 
     this._skyRT?.dispose();
     this._skyRT = rt;
+
+    /*
+     * 焼いた空は scene.background ではなく「最後に描くメッシュ」として出す。
+     *
+     * scene.background は必ず最初に、画面いっぱいに描かれる。
+     * つまり建物で隠れる画素まで一度塗ることになり、
+     * 帯域の細い統合 GPU では 1 画面ぶんの無駄なオーバードローになる。
+     * 不透明を描いたあとに深度テスト付きで描けば、
+     * 実際に空が見えている画素だけで済む。
+     */
+    if (!this._skyBox) {
+      const geo = new THREE.BoxGeometry(1, 1, 1);
+      const mat = new THREE.ShaderMaterial({
+        uniforms: { tCube: { value: null } },
+        vertexShader: /* glsl */`
+          varying vec3 vDir;
+          void main() {
+            vDir = position;
+            // ビュー行列の平行移動を捨てて、常にカメラを包む位置に置く
+            mat4 rotOnly = mat4(mat3(viewMatrix));
+            vec4 p = projectionMatrix * rotOnly * vec4(position, 1.0);
+            gl_Position = p.xyww;      // 深度を必ず最遠にする
+          }
+        `,
+        fragmentShader: /* glsl */`
+          precision mediump float;
+          uniform samplerCube tCube;
+          varying vec3 vDir;
+          void main() { gl_FragColor = vec4(textureCube(tCube, normalize(vDir)).rgb, 1.0); }
+        `,
+        side: THREE.BackSide,
+        depthWrite: false,
+        depthTest: true,
+        fog: false,
+      });
+      const box = new THREE.Mesh(geo, mat);
+      box.name = 'SkyBox';
+      box.frustumCulled = false;
+      box.renderOrder = 1000;          // 不透明のあとに描く
+      this.scene.add(box);
+      this._skyBox = box;
+    }
+    this._skyBox.material.uniforms.tCube.value = rt.texture;
+    this._skyBox.visible = true;
     this.sky.visible = false;
-    this.scene.background = rt.texture;
+    this.scene.background = null;
     void prevBg;
   }
 
@@ -384,6 +456,7 @@ export class Engine {
   unbakeSky() {
     if (!this._skyRT) return;
     this.scene.background = null;
+    if (this._skyBox) this._skyBox.visible = false;
     this._skyRT.dispose();
     this._skyRT = null;
     if (this.sky) this.sky.visible = true;
@@ -551,6 +624,18 @@ export class Engine {
     this.scene.add(fill);
     this.fill = fill;
 
+    /*
+     * 軽量モードではフィルを切る。
+     * 平行光源が 1 つ減ると、その計算がすべての不透明フラグメントから
+     * 消える。統合 GPU では画素あたりの ALU がそのまま効くので、
+     * 光源を 1 つ落とすだけでも無視できない差になる。
+     * 代わりに半球光をわずかに上げ、暗部が黒く潰れないようにする。
+     */
+    if (QUALITY[this.quality]?.noFillLight) {
+      fill.visible = false;
+      hemi.intensity = 0.68;
+    }
+
     // ビューモデル用の専用ライティング（常に手元が見えるように）
     const vKey = new THREE.DirectionalLight(0xfff2dd, 2.1);
     vKey.position.set(0.6, 1.0, 0.8);
@@ -611,15 +696,17 @@ export class Engine {
     // AO は低周波なので半解像度で十分。全解像度だと深度・法線の再描画まで
     // 含めて基本パスの数倍のコストになる。
     if (q.gtao) {
-      const gw = Math.max(2, Math.floor(w * 0.5)), gh = Math.max(2, Math.floor(h * 0.5));
+      const gs = q.gtaoScale ?? 0.5;
+      const gw = Math.max(2, Math.floor(w * gs)), gh = Math.max(2, Math.floor(h * gs));
       const gtao = new GTAOPass(this.scene, this.camera, gw, gh);
+      this._gtaoScale = gs;
       gtao.output = GTAOPass.OUTPUT.Default;
       gtao.updateGtaoMaterial({
         radius: 0.32,
         distanceExponent: 1.0,
         thickness: 1.0,
         scale: 1.05,
-        samples: 8,
+        samples: q.gtaoSamples ?? 8,
         distanceFallOff: 1.0,
         screenSpaceRadius: false,
       });
@@ -840,7 +927,8 @@ export class Engine {
    */
   setPerformanceMode(on) {
     this.autoQualityDowngrade = !!on;
-    this._minScaleIndex = on ? SCALE_STEPS.length - 1 : SAFE_MIN_INDEX;
+    this._minScaleIndex = on ? SCALE_STEPS.length - 1
+      : (this.lightweight ? LIGHT_MIN_INDEX : SAFE_MIN_INDEX);
     if (!on && this._scaleIdx > SAFE_MIN_INDEX) this._applyScale(SAFE_MIN_INDEX);
   }
 
@@ -858,6 +946,15 @@ export class Engine {
     if (this.lightweight && !wasLight) this.bakeSky();
     else if (!this.lightweight && wasLight) this.unbakeSky();
     if (this.lightweight !== wasLight) this.applyShadowCasterPolicy(this.lightweight);
+    if (!this.autoQualityDowngrade) {
+      this._minScaleIndex = this.lightweight ? LIGHT_MIN_INDEX : SAFE_MIN_INDEX;
+    }
+    if (this.fill) {
+      this.fill.visible = !q.noFillLight;
+      if (this.hemi) this.hemi.intensity = q.noFillLight ? 0.68 : 0.55;
+    }
+    this.camera.far = q.viewDistance ?? 800;
+    this.camera.updateProjectionMatrix();
 
     this._scaleIdx = 1;
     this._frameMs = TARGET_MS;
@@ -900,7 +997,8 @@ export class Engine {
     const pw = Math.floor(w * pr), ph = Math.floor(h * pr);
     this.compositePass?.uniforms.uResolution.value.set(pw, ph);
     // GTAO とブルームは縮小解像度で動かしているので、その比率を保つ
-    this.gtaoPass?.setSize(Math.max(2, Math.floor(pw * 0.5)), Math.max(2, Math.floor(ph * 0.5)));
+    const gs = this._gtaoScale ?? 0.5;
+    this.gtaoPass?.setSize(Math.max(2, Math.floor(pw * gs)), Math.max(2, Math.floor(ph * gs)));
     if (this.cheapBloomPass) {
       const bs = this._bloomScale ?? 0.25;
       this.cheapBloomPass.setSize(Math.floor(pw * bs), Math.floor(ph * bs));

@@ -516,7 +516,8 @@ export class PlayerController {
       _right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
       const probe = _v.copy(this.position);
       probe.y += this.eyeHeight;
-      const hit = this.physics.raycast(probe, _right.clone().multiplyScalar(this.leanTarget), MOVE.leanOffset + 0.25, { forBullets: false });
+      const leanDir = _v2.copy(_right).multiplyScalar(this.leanTarget);
+      const hit = this.physics.raycast(probe, leanDir, MOVE.leanOffset + 0.25, { forBullets: false });
       if (hit) this.leanTarget = 0;
     }
     this.lean += (this.leanTarget - this.lean) * Math.min(1, MOVE.leanSpeed * dt);

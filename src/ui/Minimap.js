@@ -111,7 +111,15 @@ export class Minimap {
     g.fillStyle = 'rgba(9,10,12,0.82)';
     g.fillRect(0, 0, S, S);
 
-    const rot = this.rotateWithPlayer ? -s.playerYaw : 0;
+    /*
+     * 地図の回転角。
+     *
+     * ワールドの前方は (-sin yaw, -cos yaw)、画面は X が右・Z が下。
+     * 前方を画面の上（0,-1）へ持っていく回転は +yaw であって -yaw ではない。
+     * 符号が逆だと、南北を向いているときだけ偶然一致し、
+     * 東西を向くと前後が入れ替わる（実際そうなっていた）。
+     */
+    const rot = this.rotateWithPlayer ? s.playerYaw : 0;
     const pxPerM = R / this.worldRadius;
 
     // --- 地形 ---
@@ -158,9 +166,10 @@ export class Minimap {
     }
 
     // --- 味方 ---
+    // 矢印は「画面上向きから時計回りに yaw-rot」で描く（rot と同じ向きに回す）
     for (const a of s.allies || []) {
       const [x, y] = toScreen(a.x, a.z);
-      this._drawArrow(g, x, y, a.yaw + rot, '#4a90d9', 4.2);
+      this._drawArrow(g, x, y, a.yaw - rot, '#4a90d9', 4.2);
     }
 
     // --- 敵（発砲・視認時のみ） ---
@@ -168,7 +177,7 @@ export class Minimap {
       const [x, y] = toScreen(e.x, e.z);
       const alpha = e.fresh !== undefined ? Math.max(0.25, e.fresh) : 1;
       g.globalAlpha = alpha;
-      this._drawArrow(g, x, y, e.yaw + rot, '#d9482f', 4.6);
+      this._drawArrow(g, x, y, e.yaw - rot, '#d9482f', 4.6);
       g.globalAlpha = 1;
     }
 
