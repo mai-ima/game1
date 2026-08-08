@@ -50,6 +50,36 @@ const PRESETS = {
   rubber:          { tex: 'rubber',       repeat: 1.5,  params: { roughness: 1, metalness: 1 } },
   tireTread:       { tex: 'tireTread',    repeat: 1.2,  params: { roughness: 1, metalness: 1 } },
   polymer:         { tex: 'polymer',      repeat: 3.0,  params: { roughness: 1, metalness: 1 } },
+
+  /* ---- 屋内の仕上げ（マンション・博物館・駅） ---- */
+  marble:          { tex: 'marble',       repeat: 0.5,  params: { roughness: 1, metalness: 1 } },
+  marbleDark:      { tex: 'marble',       repeat: 0.5,  params: { roughness: 1, metalness: 1, color: 0x4a4e55 }, seed: 616 },
+  terrazzo:        { tex: 'terrazzo',     repeat: 2.0,  params: { roughness: 1, metalness: 1 } },
+  granite:         { tex: 'granite',      repeat: 1.2,  params: { roughness: 1, metalness: 1 } },
+  woodFloor:       { tex: 'woodFloor',    repeat: 0.85,  params: { roughness: 1, metalness: 1 } },
+  woodFloorDark:   { tex: 'woodFloor',    repeat: 0.85,  params: { roughness: 1, metalness: 1, color: 0x9a7550 }, seed: 424 },
+  carpet:          { tex: 'carpet',       repeat: 1.6,  params: { roughness: 1, metalness: 1 } },
+  carpetRed:       { tex: 'carpet',       repeat: 1.6,  params: { roughness: 1, metalness: 1, color: 0xa8564a }, seed: 733 },
+  wallpaper:       { tex: 'wallpaper',    repeat: 0.36, params: { roughness: 1, metalness: 1 } },
+  wallpaperWarm:   { tex: 'wallpaper',    repeat: 0.36, params: { roughness: 1, metalness: 1, color: 0xd6c8ac }, seed: 191 },
+  ceramicTile:     { tex: 'ceramicTile',  repeat: 0.77, params: { roughness: 1, metalness: 1 } },
+  ceilingPanel:    { tex: 'ceilingPanel', repeat: 0.42, params: { roughness: 1, metalness: 1 } },
+  velvet:          { tex: 'velvet',       repeat: 2.0,  params: { roughness: 1, metalness: 1 } },
+  brassPolished:   { tex: 'brassPolished', repeat: 2.5, params: { roughness: 1, metalness: 1 } },
+
+  /* ---- 街路・鉄道 ---- */
+  roadMarking:     { tex: 'roadMarking',  repeat: 0.13, params: { roughness: 1, metalness: 1 } },
+  tactilePaving:   { tex: 'tactilePaving', repeat: 1.0, params: { roughness: 1, metalness: 1 } },
+  ballast:         { tex: 'ballast',      repeat: 1.33, params: { roughness: 1, metalness: 1 } },
+  railSteel:       { tex: 'railSteel',    repeat: 6.0,  params: { roughness: 1, metalness: 1 } },
+  shutter:         { tex: 'shutter',      repeat: 0.5,  params: { roughness: 1, metalness: 1 } },
+
+  /* ---- 工事現場 ---- */
+  rebar:           { tex: 'rebar',        repeat: 2.7,  params: { roughness: 1, metalness: 1 } },
+  galvanized:      { tex: 'galvanized',   repeat: 2.5,  params: { roughness: 1, metalness: 1 } },
+  formPly:         { tex: 'formPly',      repeat: 0.55, params: { roughness: 1, metalness: 1 } },
+  tarp:            { tex: 'tarp',         repeat: 4.0,  params: { roughness: 1, metalness: 1 } },
+  tarpGreen:       { tex: 'tarp',         repeat: 4.0,  params: { roughness: 1, metalness: 1, color: 0x8fb87a }, seed: 355 },
 };
 
 /** テクスチャ無しの単色マテリアル定義 */

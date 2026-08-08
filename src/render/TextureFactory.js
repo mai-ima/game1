@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { fbm, fbmP, ridged, worley, voronoiEdge, valueNoise, warp, clamp01, smoothstep, mix } from './Noise.js';
+import { fbm, fbmP, ridged, worley, voronoiEdge, valueNoise, warp, clamp01, smoothstep, mix, hash2 } from './Noise.js';
 
 /**
  * 手続き型 PBR テクスチャ工房。
@@ -9,6 +9,14 @@ import { fbm, fbmP, ridged, worley, voronoiEdge, valueNoise, warp, clamp01, smoo
  */
 
 const TAU = Math.PI * 2;
+
+/**
+ * セル（ワーリー格子）ごとに 0..1 の固定値を返す。
+ * テラゾーの骨材や砕石のように「粒ごとに色を変えたい」ときに使う。
+ */
+function hash01(u, v, period, seed) {
+  return hash2(Math.floor(u * period), Math.floor(v * period), seed);
+}
 
 /* ------------------------------------------------------------------ *
  *  マテリアル定義
@@ -655,6 +663,474 @@ const DEFS = {
     o.rough = clamp01(0.55 + wear * 0.3);
     o.metal = clamp01(chip * 0.8);
     o.ao = clamp01(0.9 - chip * 0.2);
+  },
+
+  /* ================================================================
+   *  以下は追加マップ（工事現場・マンション・博物館・街中・鉄道駅）
+   *  のために足したもの。
+   *  明度はどれも 0.5 を超えないようにしてある。ACES のトーンカーブは
+   *  上端を強く圧縮するので、そこまで持ち上げると日向で凹凸が全部
+   *  つぶれて真っ白な板に見える（漆喰で一度やらかしている）。
+   * ================================================================ */
+
+  /* --- 磨き大理石（博物館・駅コンコース） --- */
+  marble(u, v, o, S) {
+    // 葉脈状の模様はドメインワープした fbm を細く絞ると出る
+    const [wx, wy] = warp(u * 2.2, v * 2.2, 0.85, { octaves: 4, period: 2.2, seed: S });
+    const vein = 1 - smoothstep(0.0, 0.055, Math.abs(fbmP(wx, wy, { octaves: 5, period: 2.2, seed: S + 3 }) - 0.5));
+    const vein2 = 1 - smoothstep(0.0, 0.022, Math.abs(fbmP(wx * 2.3, wy * 2.3, { octaves: 4, period: 5.06, seed: S + 17 }) - 0.5));
+    const cloud = fbm(u * 3.5, v * 3.5, { octaves: 5, period: 3.5, seed: S + 31 });
+    const grain = valueNoise(u * 300, v * 300, 300, S + 47);
+    // 研磨面の細かなうねり（映り込みが完全な鏡にならない理由）
+    const polish = fbm(u * 18, v * 18, { octaves: 3, period: 18, seed: S + 53 });
+
+    let l = 0.40 + cloud * 0.055 + grain * 0.012;
+    l -= vein * 0.115 + vein2 * 0.07;
+    o.r = l * 1.0; o.g = l * 0.985; o.b = l * 0.955;
+    o.h = -vein * 0.15 + cloud * 0.1;
+    o.rough = clamp01(0.09 + polish * 0.07 + vein * 0.12);
+    o.metal = 0;
+    o.ao = clamp01(0.97 - vein * 0.06);
+  },
+
+  /* --- テラゾー（研ぎ出し人造石。駅・公共建築の床） --- */
+  terrazzo(u, v, o, S) {
+    // 大小の骨材を 3 層重ねる。粒径が揃うと途端に嘘くさくなる
+    const c1 = worley(u * 26, v * 26, 26, S, 1);
+    const c2 = worley(u * 46, v * 46, 46, S + 11, 1);
+    const c3 = worley(u * 78, v * 78, 78, S + 23, 1);
+    const chipA = smoothstep(0.30, 0.16, c1.f1);
+    const chipB = smoothstep(0.20, 0.11, c2.f1);
+    const chipC = smoothstep(0.13, 0.07, c3.f1);
+    const idA = hash01(u, v, 26, S);
+    const idB = hash01(u, v, 46, S + 11);
+
+    const base = 0.34 + fbm(u * 6, v * 6, { octaves: 4, period: 6, seed: S + 5 }) * 0.03;
+    let r = base, g = base * 0.995, b = base * 0.975;
+    // 骨材ごとに色を振る（灰・黒・赤茶・白）
+    if (chipA > 0) {
+      const t = idA;
+      const cr = t < 0.3 ? 0.16 : t < 0.6 ? 0.30 : t < 0.85 ? 0.26 : 0.44;
+      const cg = t < 0.3 ? 0.16 : t < 0.6 ? 0.30 : t < 0.85 ? 0.17 : 0.43;
+      const cb = t < 0.3 ? 0.17 : t < 0.6 ? 0.29 : t < 0.85 ? 0.13 : 0.41;
+      r = mix(r, cr, chipA); g = mix(g, cg, chipA); b = mix(b, cb, chipA);
+    }
+    if (chipB > 0) {
+      const t = idB;
+      const c = t < 0.5 ? 0.20 : 0.40;
+      r = mix(r, c, chipB * 0.9); g = mix(g, c * 0.99, chipB * 0.9); b = mix(b, c * 0.97, chipB * 0.9);
+    }
+    r = mix(r, 0.42, chipC * 0.5); g = mix(g, 0.42, chipC * 0.5); b = mix(b, 0.40, chipC * 0.5);
+
+    const buff = fbm(u * 40, v * 40, { octaves: 3, period: 40, seed: S + 61 });
+    o.r = r; o.g = g; o.b = b;
+    // 研ぎ出しなので骨材と地の段差はほぼ無い
+    o.h = (chipA + chipB) * 0.06 + buff * 0.05;
+    o.rough = clamp01(0.16 + buff * 0.09);
+    o.metal = 0;
+    o.ao = 0.98;
+  },
+
+  /* --- フローリング（マンション住戸） --- */
+  woodFloor(u, v, o, S) {
+    /*
+     * 板は「幅の 10 倍以上の長さ」がないとフローリングに見えず、
+     * 木レンガを敷いたような見た目になる。
+     * repeat 0.85（1 タイル ≒ 1.18m）と合わせて
+     * 板幅 98mm / 板長 1.0m 相当にしてある。
+     */
+    const ROWS = 12;         // 幅方向の板数
+    const row = Math.floor(v * ROWS);
+    // 板ごとに継ぎ目の位置をずらす（乱尺張り）
+    const shift = ((row * 37) % 100) / 100;
+    const LEN = 1.15;        // 1 行あたりの板の枚数
+    const gx = (u + shift) * LEN;
+    const col = Math.floor(gx);
+    const lx = gx - col, ly = v * ROWS - row;
+
+    const G = 0.012;
+    const seam = smoothstep(0, G, lx) * smoothstep(0, G, 1 - lx)
+               * smoothstep(0, G * LEN / ROWS * 3, ly) * smoothstep(0, G * LEN / ROWS * 3, 1 - ly);
+    const id = ((col * 71 + row * 131) % 97) / 97;
+
+    /*
+     * 木目は板の長手方向（u）に沿って走る。
+     * 幅方向（ly）に細かく、長手方向にはゆっくり変化させないと
+     * 横縞になってしまい、板ではなく縞模様の板材に見える。
+     */
+    const grain = fbm((u + id * 4) * 9, (v + id * 6) * 230, { octaves: 4, period: 230, seed: S + col * 7 + row * 13 });
+    const sway = fbm((u + id) * 3, v * 20, { octaves: 3, period: 20, seed: S + col * 3 });
+    const ring = Math.abs(Math.sin((ly * 5.5 + sway * 2.6 + id * 11) * Math.PI));
+    const knot = smoothstep(0.93, 0.995, fbm((u + id * 2) * 16, v * 16, { octaves: 3, period: 16, seed: S + 41 }));
+
+    let l = 0.24 + id * 0.05 + ring * 0.055 + grain * 0.03 - knot * 0.10;
+    l = mix(l * 0.42, l, seam);                      // 継ぎ目は影
+    o.r = l * 1.0; o.g = l * 0.71; o.b = l * 0.44;
+    o.h = seam * 0.8 + ring * 0.12 + grain * 0.1 - knot * 0.25;
+    // ウレタン塗装なのでかなり滑らか。歩行帯だけ曇る
+    const traffic = smoothstep(0.55, 0.95, fbm(u * 3, v * 3, { octaves: 4, period: 3, seed: S + 83 }));
+    o.rough = clamp01(0.22 + traffic * 0.22 + knot * 0.2);
+    o.metal = 0;
+    o.ao = clamp01(mix(0.55, 0.99, seam));
+  },
+
+  /* --- カーペット（マンション共用廊下・博物館） --- */
+  carpet(u, v, o, S) {
+    // ループパイルの粒
+    const pile = valueNoise(u * 420, v * 420, 420, S);
+    const pile2 = valueNoise(u * 190, v * 190, 190, S + 7);
+    // 織りの筋
+    const weft = Math.sin(v * TAU * 150) * 0.5 + 0.5;
+    const warpL = Math.sin(u * TAU * 150) * 0.5 + 0.5;
+    const blotch = fbm(u * 4, v * 4, { octaves: 5, period: 4, seed: S + 19 });
+    const stain = smoothstep(0.70, 0.95, fbm(u * 6, v * 6, { octaves: 4, period: 6, seed: S + 37 }));
+
+    const l = 0.15 + pile * 0.045 + pile2 * 0.03 + blotch * 0.028
+      + (weft * warpL) * 0.012 - stain * 0.035;
+    o.r = l * 0.86; o.g = l * 0.80; o.b = l * 0.90;   // やや紫がかった灰
+    o.h = pile * 0.55 + pile2 * 0.3 + weft * 0.1;
+    o.rough = clamp01(0.95 + pile * 0.05);
+    o.metal = 0;
+    o.ao = clamp01(0.7 + pile2 * 0.3 - stain * 0.1);
+  },
+
+  /* --- ビニールクロス（住戸の内壁） --- */
+  wallpaper(u, v, o, S) {
+    // 石目調エンボスの細かい凹凸
+    const emboss = worley(u * 150, v * 150, 150, S, 1).f1;
+    const emb = smoothstep(0.0, 0.35, emboss);
+    const micro = valueNoise(u * 400, v * 400, 400, S + 3);
+    // 継ぎ目（幅 92cm のクロスを想定 → タイル内に約 3 本）
+    const seamX = Math.abs(((u * 3) % 1) - 0.5);
+    const seam = 1 - smoothstep(0.0, 0.008, seamX);
+    const yellow = fbm(u * 2, v * 2, { octaves: 4, period: 2, seed: S + 29 });   // 経年の黄ばみ
+    const scuff = smoothstep(0.72, 0.96, fbm(u * 10, v * 4, { octaves: 4, period: 10, seed: S + 53 }))
+      * smoothstep(0.45, 0.0, v);                     // 下部ほど汚れる
+
+    let l = 0.36 + emb * 0.022 + micro * 0.012 - seam * 0.05 - scuff * 0.055;
+    o.r = l * 1.0; o.g = l * (0.985 - yellow * 0.02); o.b = l * (0.945 - yellow * 0.055);
+    o.h = emb * 0.5 + micro * 0.2 - seam * 0.8;
+    o.rough = clamp01(0.72 + emb * 0.12 + scuff * 0.1);
+    o.metal = 0;
+    o.ao = clamp01(0.92 - seam * 0.25);
+  },
+
+  /* --- 小口タイル（駅の壁・浴室） --- */
+  ceramicTile(u, v, o, S) {
+    const NX = 9, NY = 26;                             // 108×45mm 相当の横長
+    const gx = u * NX, gy = v * NY;
+    const cx = Math.floor(gx), cy = Math.floor(gy);
+    const lx = gx - cx, ly = gy - cy;
+    const G = 0.07;
+    const inside = smoothstep(0, G, lx) * smoothstep(0, G, 1 - lx)
+                 * smoothstep(0, G * NX / NY, ly) * smoothstep(0, G * NX / NY, 1 - ly);
+    const id = ((cx * 53 + cy * 29) % 61) / 61;
+    // 施釉のムラ
+    const glaze = fbm((u + id) * 70, (v + id) * 70, { octaves: 3, period: 70, seed: S + cx + cy * 5 });
+    // 目地の汚れは下ほど濃い
+    const groutDirt = fbm(u * 25, v * 25, { octaves: 4, period: 25, seed: S + 13 }) * (0.4 + v * 0.6);
+    const crack = smoothstep(0.93, 1.0, ridged(u * 40, v * 40, { octaves: 3, period: 40, seed: S + cx * 7 })) * (id > 0.92 ? 1 : 0);
+
+    const tileL = 0.40 + id * 0.03 + glaze * 0.035;
+    const groutL = 0.24 - groutDirt * 0.08;
+    const l = mix(groutL, tileL, inside);
+    o.r = l * 0.98; o.g = l * 0.995; o.b = l * 0.98;
+    o.h = inside * 0.9 - crack * 0.3;
+    o.rough = clamp01(mix(0.88, 0.10 + glaze * 0.08 + crack * 0.4, inside));
+    o.metal = 0;
+    o.ao = clamp01(mix(0.42, 0.99, inside));
+  },
+
+  /* --- 点字ブロック（駅ホーム・歩道） --- */
+  tactilePaving(u, v, o, S) {
+    // 300mm 角に 5×5 の点（警告ブロック）
+    const N = 3.3333;                                  // 1m あたり 3.33 枚 = 300mm
+    const gx = u * N, gy = v * N;
+    const cx = Math.floor(gx), cy = Math.floor(gy);
+    const lx = gx - cx, ly = gy - cy;
+    const G = 0.03;
+    const plate = smoothstep(0, G, lx) * smoothstep(0, G, 1 - lx)
+                * smoothstep(0, G, ly) * smoothstep(0, G, 1 - ly);
+    // 点の格子
+    const dx = ((lx * 5) % 1) - 0.5, dy = ((ly * 5) % 1) - 0.5;
+    const dr = Math.hypot(dx, dy);
+    const dot = smoothstep(0.30, 0.20, dr) * plate;
+
+    const wear = fbm(u * 14, v * 14, { octaves: 5, period: 14, seed: S });
+    const grime = smoothstep(0.55, 0.9, fbm(u * 7, v * 7, { octaves: 4, period: 7, seed: S + 23 }));
+    // 黄色。踏まれる点の頭は色が抜ける
+    let l = 0.38 - wear * 0.05 - grime * 0.07;
+    let r = l * 1.0, g = l * 0.80, b = l * 0.14;
+    const rub = dot * smoothstep(0.4, 0.9, wear);
+    r = mix(r, l * 0.72, rub); g = mix(g, l * 0.68, rub); b = mix(b, l * 0.5, rub);
+    // 目地
+    r = mix(r * 0.5, r, plate); g = mix(g * 0.5, g, plate); b = mix(b * 0.55, b, plate);
+
+    o.r = r; o.g = g; o.b = b;
+    o.h = plate * 0.3 + dot * 0.7;
+    o.rough = clamp01(0.68 + wear * 0.2 - rub * 0.18);
+    o.metal = 0;
+    o.ao = clamp01(mix(0.5, 0.95, plate) - (1 - dot) * 0.05);
+  },
+
+  /* --- 白線入りアスファルト（車道） --- */
+  roadMarking(u, v, o, S) {
+    const grit = worley(u * 55, v * 55, 55, S, 1).f1;
+    const stone = smoothstep(0.24, 0.05, grit);
+    const bind = fbm(u * 9, v * 9, { octaves: 5, period: 9, seed: S + 7 });
+    const crack = (1 - smoothstep(0, 0.012, voronoiEdge(u * 6, v * 6, 6, S + 19, 1)))
+      * smoothstep(0.55, 0.85, fbm(u * 3, v * 3, { octaves: 3, period: 3, seed: S + 67 }));
+
+    let l = 0.068 + bind * 0.030 + stone * 0.016 - crack * 0.025;
+    let r = l, g = l * 1.005, b = l * 1.02;
+
+    // 中央に破線（進行方向 = v）。実寸で 5m 塗って 5m 空けるくらい
+    const lineX = Math.abs(u - 0.5);
+    const dash = smoothstep(0.06, 0.12, ((v * 1.5) % 1)) * (1 - smoothstep(0.52, 0.58, ((v * 1.5) % 1)));
+    const paint = (1 - smoothstep(0.014, 0.022, lineX)) * dash;
+    // 塗料は擦り減って下地が透ける
+    const worn = smoothstep(0.35, 0.85, fbm(u * 30, v * 12, { octaves: 4, period: 30, seed: S + 91 }));
+    const pm = paint * (1 - worn * 0.55);
+    r = mix(r, 0.46, pm); g = mix(g, 0.455, pm); b = mix(b, 0.43, pm);
+
+    o.r = r; o.g = g; o.b = b;
+    o.h = stone * 0.6 + bind * 0.2 - crack * 0.5 + pm * 0.15;
+    o.rough = clamp01(0.88 + stone * 0.1 - pm * 0.2);
+    o.metal = 0;
+    o.ao = clamp01(0.85 - crack * 0.4);
+  },
+
+  /* --- 道床バラスト（線路の砕石） --- */
+  ballast(u, v, o, S) {
+    const c1 = worley(u * 15, v * 15, 15, S, 1);
+    const c2 = worley(u * 27, v * 27, 27, S + 9, 1);
+    const edge = smoothstep(0.0, 0.05, voronoiEdge(u * 15, v * 15, 15, S, 1));
+    const id = hash01(u, v, 15, S);
+    // 割石なので面が平ら。f2-f1 で「面」を作る
+    const facet = clamp01((c1.f2 - c1.f1) * 2.2);
+    const grit = valueNoise(u * 260, v * 260, 260, S + 31);
+    const oil = smoothstep(0.62, 0.92, fbm(u * 5, v * 5, { octaves: 4, period: 5, seed: S + 47 }));
+
+    let l = 0.17 + id * 0.075 + facet * 0.05 + grit * 0.025;
+    l = mix(l * 0.35, l, edge);                        // 石と石の間は暗い
+    l *= 1 - oil * 0.3;                                // 油と鉄粉で黒ずむ
+    o.r = l * 1.0; o.g = l * 0.975; o.b = l * 0.94;
+    o.h = mix(0.0, 0.45 + facet * 0.55, edge) + smoothstep(0.35, 0.1, c2.f1) * 0.12;
+    o.rough = clamp01(0.9 + grit * 0.09 - oil * 0.12);
+    o.metal = 0;
+    o.ao = clamp01(mix(0.25, 0.95, edge));
+  },
+
+  /* --- レール鋼（頭頂部だけ磨かれている） --- */
+  railSteel(u, v, o, S) {
+    // v が断面方向。中央（レール頭頂）だけ列車に磨かれて鏡面になる
+    const crown = 1 - smoothstep(0.10, 0.34, Math.abs(v - 0.5));
+    const rust = fbm(u * 7, v * 12, { octaves: 5, period: 7, seed: S });
+    const pit = smoothstep(0.18, 0.06, worley(u * 40, v * 40, 40, S + 13, 1).f1);
+    const roll = valueNoise(u * 200, v * 9, 200, S + 5);   // 圧延の筋
+
+    const rustL = 0.10 + rust * 0.075 + pit * 0.02;
+    const shineL = 0.34 + roll * 0.05;
+    const l = mix(rustL, shineL, crown);
+    o.r = l * mix(1.0, 0.99, crown);
+    o.g = l * mix(0.62, 0.99, crown);
+    o.b = l * mix(0.42, 1.0, crown);
+    o.h = roll * 0.2 - pit * 0.5 + (1 - crown) * 0.15;
+    o.rough = clamp01(mix(0.82 + rust * 0.15, 0.10 + roll * 0.05, crown));
+    o.metal = clamp01(mix(0.45, 1.0, crown) - pit * 0.2);
+    o.ao = clamp01(0.9 - pit * 0.3);
+  },
+
+  /* --- 鉄筋（工事現場） --- */
+  rebar(u, v, o, S) {
+    // 竹節状のリブ。u を軸方向とする
+    const ribA = Math.abs(Math.sin((u * 16 + v * 2.2) * Math.PI));
+    const ribB = Math.abs(Math.sin((u * 16 - v * 2.2) * Math.PI));
+    const rib = Math.max(smoothstep(0.80, 1.0, ribA), smoothstep(0.80, 1.0, ribB));
+    const line = smoothstep(0.42, 0.5, Math.abs(v - 0.5)) * 0.0;    // 縦リブは省略
+    const rust = fbm(u * 12, v * 12, { octaves: 5, period: 12, seed: S });
+    const scale = smoothstep(0.55, 0.9, fbm(u * 4, v * 4, { octaves: 4, period: 4, seed: S + 17 }));
+
+    let l = 0.115 + rust * 0.085 + rib * 0.03;
+    o.r = l * 1.0; o.g = l * (0.66 - scale * 0.08); o.b = l * (0.45 - scale * 0.1);
+    o.h = rib * 0.9 + rust * 0.15 + line;
+    o.rough = clamp01(0.86 + rust * 0.12);
+    o.metal = clamp01(0.55 - scale * 0.35);
+    o.ao = clamp01(0.8 + rib * 0.2);
+  },
+
+  /* --- 亜鉛メッキ鋼（単管足場・ガードレール） --- */
+  galvanized(u, v, o, S) {
+    // スパングル（メッキの結晶模様）
+    const cell = worley(u * 20, v * 20, 20, S, 1);
+    const spangleId = hash01(u, v, 20, S);
+    const edge = smoothstep(0.0, 0.035, voronoiEdge(u * 20, v * 20, 20, S, 1));
+    const micro = valueNoise(u * 300, v * 300, 300, S + 11);
+    const grime = fbm(u * 6, v * 6, { octaves: 5, period: 6, seed: S + 29 });
+    const whiteRust = smoothstep(0.68, 0.93, fbm(u * 9, v * 9, { octaves: 4, period: 9, seed: S + 43 }));
+
+    let l = 0.30 + spangleId * 0.055 + micro * 0.02 - (1 - edge) * 0.05;
+    l *= 1 - grime * 0.22;
+    let r = l * 0.98, g = l * 0.99, b = l * 1.0;
+    // 白錆は艶が消えて粉っぽくなる
+    r = mix(r, l * 1.05, whiteRust); g = mix(g, l * 1.05, whiteRust); b = mix(b, l * 1.03, whiteRust);
+    o.r = r; o.g = g; o.b = b;
+    o.h = micro * 0.3 + (1 - edge) * 0.2;
+    o.rough = clamp01(0.30 + grime * 0.25 + whiteRust * 0.45 + (1 - edge) * 0.08);
+    o.metal = clamp01(1.0 - whiteRust * 0.6);
+    o.ao = clamp01(0.92 - (1 - edge) * 0.1);
+  },
+
+  /* --- 防炎シート / ブルーシート（工事現場） --- */
+  tarp(u, v, o, S) {
+    // 平織のクロス。糸の交差が見える
+    const wx = Math.abs(Math.sin(u * TAU * 90));
+    const wy = Math.abs(Math.sin(v * TAU * 90));
+    const weave = wx > wy ? wx : wy;
+    const over = wx > wy ? 1 : 0;                       // 上に乗っている糸
+    const fold = fbm(u * 4, v * 4, { octaves: 4, period: 4, seed: S });
+    const dust = smoothstep(0.5, 0.9, fbm(u * 8, v * 8, { octaves: 4, period: 8, seed: S + 21 }));
+    const tear = smoothstep(0.94, 1.0, fbm(u * 16, v * 16, { octaves: 3, period: 16, seed: S + 37 }));
+
+    let l = 0.17 + weave * 0.035 + fold * 0.045 - dust * 0.05;
+    o.r = l * (0.42 + dust * 0.35); o.g = l * (0.62 + dust * 0.2); o.b = l * 1.0;
+    o.h = weave * 0.5 + over * 0.15 + fold * 0.35 - tear * 0.4;
+    o.rough = clamp01(0.62 + dust * 0.28);
+    o.metal = 0;
+    o.ao = clamp01(0.8 + weave * 0.2 - tear * 0.2);
+  },
+
+  /* --- ベルベット（博物館の展示台・ロープ） --- */
+  velvet(u, v, o, S) {
+    const nap = valueNoise(u * 500, v * 500, 500, S);      // 起毛
+    const nap2 = valueNoise(u * 160, v * 160, 160, S + 5);
+    const sheen = fbm(u * 5, v * 5, { octaves: 4, period: 5, seed: S + 13 });
+    const dust = smoothstep(0.75, 0.98, fbm(u * 10, v * 10, { octaves: 3, period: 10, seed: S + 31 }));
+
+    const l = 0.085 + nap * 0.022 + nap2 * 0.018 + sheen * 0.03;
+    o.r = l * 1.0; o.g = l * 0.30; o.b = l * 0.33;         // 深い臙脂
+    o.h = nap * 0.35 + nap2 * 0.4;
+    // 起毛は角度で表情が変わる。粗さを揺らして近い雰囲気を出す
+    o.rough = clamp01(0.78 + nap2 * 0.18 - sheen * 0.14 + dust * 0.06);
+    o.metal = 0;
+    o.ao = clamp01(0.78 + nap2 * 0.22);
+  },
+
+  /* --- 磨き真鍮（博物館の手すり・額縁） --- */
+  brassPolished(u, v, o, S) {
+    const buff = valueNoise(u * 260, v * 14, 260, S);      // 研磨の目
+    const swirl = fbm(u * 22, v * 22, { octaves: 3, period: 22, seed: S + 7 });
+    // 緑青は「隅に少しだけ」。面積を広げると磨いた真鍮に見えなくなる
+    const patina = smoothstep(0.86, 0.99, fbm(u * 6, v * 6, { octaves: 5, period: 6, seed: S + 23 }));
+    const finger = smoothstep(0.80, 0.97, fbm(u * 13, v * 13, { octaves: 3, period: 13, seed: S + 41 }));
+
+    let l = 0.44 + buff * 0.03 + swirl * 0.02;
+    let r = l * 1.0, g = l * 0.80, b = l * 0.36;
+    // 緑青は隅に溜まる
+    r = mix(r, l * 0.36, patina); g = mix(g, l * 0.56, patina); b = mix(b, l * 0.46, patina);
+    o.r = r; o.g = g; o.b = b;
+    o.h = buff * 0.25 - patina * 0.3;
+    o.rough = clamp01(0.13 + buff * 0.06 + patina * 0.6 + finger * 0.18);
+    o.metal = clamp01(1.0 - patina * 0.45);
+    o.ao = clamp01(0.95 - patina * 0.15);
+  },
+
+  /* --- 店舗シャッター（街中） --- */
+  shutter(u, v, o, S) {
+    // 水平のスラット。v が上下方向
+    const p = (v * 26) % 1;
+    const curve = Math.sin(p * Math.PI);                   // 断面のふくらみ
+    const seam = smoothstep(0.0, 0.06, p) * smoothstep(0.0, 0.06, 1 - p);
+    const paint = fbm(u * 8, v * 8, { octaves: 5, period: 8, seed: S });
+    const scratch = smoothstep(0.86, 0.99, ridged(u * 3, v * 60, { octaves: 3, period: 60, seed: S + 11 }));
+    const rust = smoothstep(0.72, 0.95, fbm(u * 5, v * 5, { octaves: 4, period: 5, seed: S + 29 }))
+      * smoothstep(0.35, 0.0, v);                          // 下端から錆びる
+    const dent = smoothstep(0.55, 0.9, fbm(u * 11, v * 11, { octaves: 3, period: 11, seed: S + 53 }));
+
+    let l = (0.20 + curve * 0.055 + paint * 0.03) * seam;
+    l = Math.max(l, 0.055);
+    let r = l * 0.94, g = l * 0.97, b = l * 1.0;
+    r = mix(r, l * 1.25, rust); g = mix(g, l * 0.78, rust); b = mix(b, l * 0.5, rust);
+    r = mix(r, l * 1.35, scratch); g = mix(g, l * 1.35, scratch); b = mix(b, l * 1.38, scratch);
+    o.r = r; o.g = g; o.b = b;
+    o.h = curve * 0.75 + seam * 0.2 - dent * 0.12;
+    o.rough = clamp01(0.42 + paint * 0.2 + rust * 0.45 - scratch * 0.25);
+    o.metal = clamp01(0.75 - rust * 0.5 + scratch * 0.25);
+    o.ao = clamp01(0.55 + seam * 0.45);
+  },
+
+  /* --- システム天井（屋内の見上げ） --- */
+  ceilingPanel(u, v, o, S) {
+    const N = 4;                                           // 600mm 角相当
+    const gx = u * N, gy = v * N;
+    const cx = Math.floor(gx), cy = Math.floor(gy);
+    const lx = gx - cx, ly = gy - cy;
+    const G = 0.035;
+    const inside = smoothstep(0, G, lx) * smoothstep(0, G, 1 - lx)
+                 * smoothstep(0, G, ly) * smoothstep(0, G, 1 - ly);
+    // 岩綿吸音板の孔
+    const hole = smoothstep(0.16, 0.08, worley(u * 90, v * 90, 90, S + cx * 3 + cy * 7, 1).f1) * inside;
+    const fiber = valueNoise(u * 340, v * 340, 340, S + 3);
+    const stain = smoothstep(0.80, 0.98, fbm(u * 5, v * 5, { octaves: 4, period: 5, seed: S + 19 }));
+    const id = ((cx * 17 + cy * 43) % 53) / 53;
+
+    let l = 0.40 + id * 0.012 + fiber * 0.02 - hole * 0.16;
+    l -= stain * 0.09;                                     // 雨漏り跡
+    let r = l * 1.0, g = l * (0.99 - stain * 0.05), b = l * (0.965 - stain * 0.12);
+    // T バーは金属
+    const bar = 1 - inside;
+    r = mix(r, 0.30, bar); g = mix(g, 0.305, bar); b = mix(b, 0.31, bar);
+    o.r = r; o.g = g; o.b = b;
+    o.h = inside * 0.5 - hole * 0.5;
+    o.rough = clamp01(mix(0.35, 0.92 + fiber * 0.08, inside));
+    o.metal = clamp01(bar * 0.8);
+    o.ao = clamp01(mix(0.7, 0.95 - hole * 0.25, inside));
+  },
+
+  /* --- 型枠合板（コンパネ。工事現場） --- */
+  formPly(u, v, o, S) {
+    const grain = fbm(u * 100, v * 6, { octaves: 4, period: 100, seed: S });
+    const ply = Math.abs(Math.sin(v * TAU * 1.5)) * 0.02;
+    // 剥離剤とコンクリートのノロが残る
+    const laitance = smoothstep(0.5, 0.9, fbm(u * 4, v * 4, { octaves: 5, period: 4, seed: S + 13 }));
+    const nail = smoothstep(0.05, 0.0, worley(u * 7, v * 7, 7, S + 31, 1).f1);
+    const edgeWear = smoothstep(0.42, 0.5, Math.abs(u - 0.5)) * 0.6;
+    const stamp = smoothstep(0.88, 0.94, fbm(u * 2.5, v * 2.5, { octaves: 3, period: 2.5, seed: S + 61 }));
+
+    let l = 0.235 + grain * 0.055 + ply - edgeWear * 0.05;
+    let r = l * 1.0, g = l * 0.80, b = l * 0.52;
+    // 表面に残るセメント分は白っぽい
+    r = mix(r, l * 1.12, laitance); g = mix(g, l * 1.14, laitance); b = mix(b, l * 1.18, laitance);
+    r = mix(r, l * 0.55, stamp * 0.7); g = mix(g, l * 0.5, stamp * 0.7); b = mix(b, l * 0.5, stamp * 0.7);
+    o.r = r; o.g = g; o.b = b;
+    o.h = grain * 0.3 - nail * 0.8 + laitance * 0.1;
+    o.rough = clamp01(0.6 + laitance * 0.3 + edgeWear * 0.15);
+    o.metal = 0;
+    o.ao = clamp01(0.9 - nail * 0.4);
+  },
+
+  /* --- 御影石（外構・駅の腰壁） --- */
+  granite(u, v, o, S) {
+    const q = worley(u * 120, v * 120, 120, S, 1).f1;        // 石英
+    const f = worley(u * 70, v * 70, 70, S + 11, 1).f1;      // 長石
+    const m = worley(u * 190, v * 190, 190, S + 23, 1).f1;   // 黒雲母
+    const quartz = smoothstep(0.13, 0.05, q);
+    const feld = smoothstep(0.16, 0.07, f);
+    const mica = smoothstep(0.07, 0.025, m);
+    const base = 0.26 + fbm(u * 8, v * 8, { octaves: 4, period: 8, seed: S + 5 }) * 0.025;
+
+    let r = base, g = base * 0.99, b = base * 0.975;
+    r = mix(r, 0.40, feld * 0.8); g = mix(g, 0.385, feld * 0.8); b = mix(b, 0.365, feld * 0.8);
+    r = mix(r, 0.34, quartz * 0.7); g = mix(g, 0.35, quartz * 0.7); b = mix(b, 0.36, quartz * 0.7);
+    r = mix(r, 0.055, mica); g = mix(g, 0.055, mica); b = mix(b, 0.06, mica);
+
+    // ジェットバーナー仕上げなら粗く、本磨きなら滑らか。中間の水磨き想定
+    const rough = fbm(u * 45, v * 45, { octaves: 3, period: 45, seed: S + 37 });
+    o.r = r; o.g = g; o.b = b;
+    o.h = quartz * 0.15 + mica * 0.1 + rough * 0.2;
+    o.rough = clamp01(0.28 + rough * 0.12 + mica * 0.25);
+    o.metal = 0;
+    o.ao = clamp01(0.96 - mica * 0.06);
   },
 };
 

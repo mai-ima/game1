@@ -283,11 +283,46 @@ const balance = await page.evaluate(`(() => {
   };
   return 'ok';
 })()`);
-// プレイヤーは動かず、敵の中央へ立たせる
+/*
+ * 敵と正対させる。
+ * 自然なスポーン位置のまま 30 秒待っても両者は出会わず、
+ * 「発砲数 4・命中率 0%」というバランスの判定に使えない数字しか出ない。
+ * 開けた場所で 4 人と向かい合わせ、自機は棒立ちで反撃しない
+ * 最悪条件を作り、そこで削られる速さを見る。
+ */
 await page.evaluate(`(() => {
-  const d = window.__DEV;
-  d.game._spawnProtect = 0;
-  d.game.playerStats.hp = 100;
+  const d = window.__DEV, g = d.game, THREE = d.THREE;
+  const ground = (x, z) => {
+    const h = g.physics.raycast(new THREE.Vector3(x, 8, z), new THREE.Vector3(0, -1, 0), 20, { forBullets: false });
+    return h ? h.point.y + 0.05 : 0.05;
+  };
+  // 敵が狙うのは自機だけにする（味方に気を取られると計測がぶれる）
+  const origEnemies = g.enemiesOf.bind(g);
+  g.enemiesOf = function* (team) {
+    const enemySide = team !== g.playerStats.team;
+    for (const e of origEnemies(team)) {
+      if (enemySide && g.bots.includes(e)) continue;
+      yield e;
+    }
+  };
+  g._spawnProtect = 0;
+  g.playerStats.maxHp = 1e6;      // 途中で倒れると配置が崩れて計測にならない
+  g.playerStats.hp = 1e6;
+  g.player.enabled = false;
+  // yaw の前方は (-sin, 0, -cos)。yaw=0 が -Z、yaw=π が +Z。
+  g.player.position.set(0, ground(0, 24), 24);
+  g.player.yaw = 0;
+  let i = 0;
+  for (const b of g.bots) {
+    if (b.team === g.playerStats.team) {
+      b.spawn(new THREE.Vector3(30, ground(30, 30), 30), 0);
+      b.ammo = 0; b.reserve = 0;
+      continue;
+    }
+    const x = (i - 1.5) * 2.2;
+    b.spawn(new THREE.Vector3(x, ground(x, 12), 12), Math.PI);
+    i++;
+  }
 })()`);
 await waitGame(30);
 const bal = JSON.parse(await page.evaluate(`JSON.stringify({
@@ -295,16 +330,19 @@ const bal = JSON.parse(await page.evaluate(`JSON.stringify({
   自機被弾数: window.__DEV.game.__hitsOnPlayer,
   累計ダメージ: Math.round(window.__DEV.game.__dmg),
   自機の死亡数: window.__DEV.game.playerStats.deaths,
-  自機HP: Math.round(window.__DEV.game.playerStats.hp),
+  被ダメージ毎秒: +(window.__DEV.game.__dmg / 30).toFixed(1),
   生存ボット: window.__DEV.game.bots.filter((b) => b.alive).length,
   A側: window.__DEV.game.bots.filter((b) => b.team === 'A').length,
   B側: window.__DEV.game.bots.filter((b) => b.team === 'B').length,
 })`));
 console.log(' ', JSON.stringify(bal));
 const hitRate = bal.ボット発砲数 ? bal.自機被弾数 / bal.ボット発砲数 : 0;
-console.log(`  ボットの対自機命中率: ${(hitRate * 100).toFixed(1)}%`);
-ok(bal.A側 === bal.B側 - 1 || bal.A側 === bal.B側, `チーム人数が均衡（味方${bal.A側} + 自分 vs 敵${bal.B側}）`);
-ok(bal.自機の死亡数 <= 6, `ゲーム内30秒での死亡回数が多すぎない: ${bal.自機の死亡数}`);
+const ttk = bal.被ダメージ毎秒 > 0 ? 100 / bal.被ダメージ毎秒 : Infinity;
+console.log(`  ボットの対自機命中率: ${(hitRate * 100).toFixed(1)}%   体力100を失うまで: ${ttk === Infinity ? '∞' : ttk.toFixed(1) + '秒'}`);
+ok(bal.A側 === bal.B側 - 1, `チーム人数が均衡（味方${bal.A側} + 自分 vs 敵${bal.B側}）`);
+ok(bal.ボット発砲数 >= 60, `敵がきちんと撃ってくる: ${bal.ボット発砲数}発`);
+ok(hitRate > 0.08 && hitRate < 0.40, `命中率が妥当な範囲（8〜40%）: ${(hitRate * 100).toFixed(1)}%`);
+ok(ttk >= 2.5 && ttk <= 9, `4人に正対して倒れるまでが即死でも過疎でもない（2.5〜9秒）: ${ttk === Infinity ? '∞' : ttk.toFixed(1) + '秒'}`);
 
 /* =============== 5. ゲームモード =============== */
 console.log('\n=== 5. 各ゲームモードの成立 ===');
