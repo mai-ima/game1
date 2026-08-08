@@ -46,17 +46,23 @@ export class Minimap {
     this.bounds = bounds;
     const W = bounds.max.x - bounds.min.x;
     const H = bounds.max.z - bounds.min.z;
-    const RES = 1024;
-    const scale = RES / Math.max(W, H);
+    /*
+     * 正方形の 1024px に押し込むと、横長のマップでは
+     * 1m あたりの画素が長辺に引きずられて半分近くまで落ちる。
+     * 縦横を実寸に比例させ、解像度は m あたりで決める。
+     */
+    const PX_PER_M = 13;
+    const scale = Math.min(PX_PER_M, 2048 / Math.max(W, H));
     this.terrainScale = scale;
     this.terrainOrigin = { x: bounds.min.x, z: bounds.min.z };
 
     const cv = document.createElement('canvas');
-    cv.width = cv.height = RES;
+    cv.width = Math.ceil(W * scale);
+    cv.height = Math.ceil(H * scale);
     const g = cv.getContext('2d');
 
     g.fillStyle = 'rgba(10,11,13,0)';
-    g.fillRect(0, 0, RES, RES);
+    g.fillRect(0, 0, cv.width, cv.height);
 
     // 高さ別に色を変えて立体感を出す
     const colliders = [...physics.colliders].sort((a, b) => (a.max.y - b.max.y));

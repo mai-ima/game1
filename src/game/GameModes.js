@@ -537,13 +537,50 @@ class GunGame extends BaseMode {
 
 /* ================================================================= */
 
+/**
+ * マップ見学。
+ *
+ * 敵も味方も居らず、時間制限も勝敗も無い。
+ * マップの造りを確かめたり、経路を覚えたりするためのモード。
+ * 撃つことはできるが誰も居ないので、実質は自由歩行になる。
+ *
+ * 飛行（ノークリップ）への切り替えは Game 側で受け持つ。
+ * ここでは「終わらない・採点しない」ことだけを保証する。
+ */
+class MapView extends BaseMode {
+  start() {
+    super.start();
+    this.remaining = Infinity;
+    // 見学中に自陣・敵陣の区別は要らない
+    this.game.playerStats.team = 'A';
+  }
+
+  update() { /* 何も進まない */ }
+
+  isOver() { return false; }
+
+  getScores() {
+    return { A: 0, B: 0, remaining: Infinity, limit: 0, freeCam: !!this.game.freeCam };
+  }
+
+  getResult() {
+    return {
+      mode: this.cfg.nameJa,
+      winner: null,
+      playerTeam: 'A',
+      victory: false,
+      scores: { A: 0, B: 0 },
+      player: { kills: 0, deaths: 0, score: 0, bestStreak: 0 },
+    };
+  }
+}
+
 export const GAME_MODES = {
   tdm: {
     id: 'tdm',
     name: 'TEAM DEATHMATCH',
     nameJa: 'チームデスマッチ',
     desc: '2チームに分かれて撃ち合う基本ルール。先に規定キル数へ到達したチームの勝利。',
-    icon: '⚔',
     cfg: { scoreLimit: 75, timeLimit: 600 },
     create(game) { return new TeamDeathmatch(game, { ...this.cfg, nameJa: this.nameJa }); },
   },
@@ -552,7 +589,6 @@ export const GAME_MODES = {
     name: 'FREE FOR ALL',
     nameJa: 'フリーフォーオール',
     desc: '全員が敵。個人技が全て。規定キル数に最初に到達した者が勝つ。',
-    icon: '☠',
     cfg: { scoreLimit: 30, timeLimit: 480 },
     create(game) { return new FreeForAll(game, { ...this.cfg, nameJa: this.nameJa }); },
   },
@@ -561,7 +597,6 @@ export const GAME_MODES = {
     name: 'DOMINATION',
     nameJa: 'ドミネーション',
     desc: '3つの拠点を確保し続けてポイントを稼ぐ。維持した拠点数だけ毎秒加点される。',
-    icon: '⚑',
     cfg: { scoreLimit: 200, timeLimit: 720 },
     create(game) { return new Domination(game, { ...this.cfg, nameJa: this.nameJa }); },
   },
@@ -570,7 +605,6 @@ export const GAME_MODES = {
     name: 'KILL CONFIRMED',
     nameJa: 'キルコンファームド',
     desc: '倒しただけでは加点されない。落ちたドッグタグを回収して初めてキルが確定する。',
-    icon: '⬢',
     cfg: { scoreLimit: 50, timeLimit: 600 },
     create(game) { return new KillConfirmed(game, { ...this.cfg, nameJa: this.nameJa }); },
   },
@@ -579,7 +613,6 @@ export const GAME_MODES = {
     name: 'SEARCH & DESTROY',
     nameJa: '捜索と破壊',
     desc: 'リスポーン無しのラウンド制。攻撃側は爆弾設置、防衛側は阻止を目指す。',
-    icon: '✱',
     cfg: { roundsToWin: 4, roundTime: 100, fuseTime: 45, plantTime: 3.0, defuseTime: 4.5, timeLimit: 1800 },
     create(game) { return new SearchAndDestroy(game, { ...this.cfg, nameJa: this.nameJa }); },
   },
@@ -588,9 +621,17 @@ export const GAME_MODES = {
     name: 'GUN GAME',
     nameJa: 'ガンゲーム',
     desc: 'キルするたび武器が変わる。全ての武器で1キットずつ倒し切れば勝利。',
-    icon: '⟐',
     cfg: { timeLimit: 600, ladder: ['pistol', 'mp5', 'm4a1', 'ak47', 'shotgun', 'sniper'] },
     create(game) { return new GunGame(game, { ...this.cfg, nameJa: this.nameJa }); },
+  },
+  // 対戦ではないので一覧の最後に置く
+  mapview: {
+    id: 'mapview',
+    name: 'MAP VIEW',
+    nameJa: 'マップ見学',
+    desc: '誰も居ないマップを自由に歩いて構造を確かめる。時間制限も勝敗も無い。F キー（モバイルは「浮遊」ボタン）で飛行に切り替えられる。',
+    cfg: { timeLimit: Infinity, botCount: 0 },
+    create(game) { return new MapView(game, { ...this.cfg, nameJa: this.nameJa }); },
   },
 };
 

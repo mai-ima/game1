@@ -25,9 +25,9 @@ const errors = [];
 page.on('pageerror', (e) => { if (!/Pointer Lock/.test(e.message)) errors.push(e.message); });
 
 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-await page.waitForFunction('!!window.__DEV', { timeout: 300000 });
+await page.waitForFunction('!!window.__DEV', null, { timeout: 300000 });
 await page.evaluate('window.__DEV.startMatch()');
-await page.waitForFunction('window.__DEV.game.running===true', { timeout: 300000 }).catch(() => {});
+await page.waitForFunction('window.__DEV.game.running===true', null, { timeout: 300000 }).catch(() => {});
 
 /*
  * ミニマップだけを大きく描いた検証用キャンバスを作る。

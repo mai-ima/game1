@@ -156,8 +156,13 @@ export class Game {
     this.matchOver = false;
 
     const modeId = cfg.mode || 'tdm';
+    this.modeId = modeId;
     this.mode?.dispose?.();
     this.mode = GAME_MODES[modeId].create(this);
+    // 見学モードは浮遊の切り替えを持つ。他のモードでは必ず切っておく
+    this.freeCam = false;
+    this.player.noclip = false;
+    this.weapons.holder.visible = true;
     this.difficulty = cfg.difficulty || 'regular';
 
     this.playerStats.kills = 0;
@@ -212,7 +217,9 @@ export class Game {
      * 以前は allyCount = total - enemyCount - 1 としており、
      * total=7 のとき 敵4・味方2・自機1 の 4 対 3 になっていた。
      * 「味方が弱すぎる」という体感の主因はこの人数差だった。
+     * total が 0 のとき（マップ見学）は誰も出さない。
      */
+    if (total <= 0) { onProgress(0.92, 'マップを確認中'); return; }
     const perTeam = Math.max(1, Math.floor((total + 1) / 2));
     const enemyCount = perTeam;
     const allyCount = perTeam - 1;      // 残る 1 枠が自機
@@ -647,6 +654,19 @@ export class Game {
       this._respawnT += dt;
       const allowed = this.mode?.allowRespawn ? this.mode.allowRespawn(this.playerStats.team) : true;
       if (this._respawnT > 3.2 && !this.matchOver && allowed) this.respawnPlayer();
+    }
+
+    /*
+     * 見学モードの浮遊切り替え。
+     * 使用キー（F）は他のモードでは爆弾設置などに使うので、
+     * このモードのときだけ拾う。
+     */
+    if (this.modeId === 'mapview' && this.input.pressed('interact')) {
+      this.freeCam = !this.freeCam;
+      this.player.noclip = this.freeCam;
+      // 浮遊中は手元の銃が視界の 1/4 を潰すので下げる
+      this.weapons.holder.visible = !this.freeCam;
+      this.onNotice?.(this.freeCam ? '浮遊: オン（F で解除 / Shift で加速）' : '浮遊: オフ');
     }
 
     // --- ボット ---

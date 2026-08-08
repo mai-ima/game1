@@ -91,9 +91,7 @@ async function main() {
   );
 
   hud.setMapName(MAP_INFO.nameJa);
-  hud.minimap.bake(game.physics, {
-    min: { x: -38, z: -38 }, max: { x: 38, z: 38 },
-  });
+  hud.minimap.bake(game.physics, MAP_INFO.bounds);
 
   boot?.set(98, '準備完了');
   await nextFrame();
@@ -185,10 +183,12 @@ async function main() {
       await nextFrame();
 
       // 進捗は game.start() の実作業から受け取る（見せかけの進捗にしない）
+      // モードが人数を指定していればそれに従う（マップ見学は 0 人）
+      const modeCfg = GAME_MODES[sel.mode]?.cfg || {};
       await game.start({
         mode: sel.mode,
         difficulty: sel.difficulty,
-        botCount: 8,
+        botCount: modeCfg.botCount ?? 8,
         loadout: { primary: sel.primary, secondary: sel.secondary },
         attachments: sel.attachments,
       }, (p, label) => menu.setProgress(p, label));
@@ -204,8 +204,9 @@ async function main() {
       applySettings(engine, input, settings, game);
       hud.setModeName(GAME_MODES[sel.mode].nameJa);
       hud.setPlayerTeam(game.playerStats.team);
-      // 「使用」操作があるモードでだけボタンを出す
-      mobile?.setUseVisible(sel.mode === 'snd');
+      // 「使用」操作があるモードでだけボタンを出す（見学モードでは浮遊の切り替え）
+      mobile?.setUseVisible(sel.mode === 'snd' || sel.mode === 'mapview');
+      mobile?.setUseLabel(sel.mode === 'mapview' ? '浮遊' : '使用');
       hud.announce(GAME_MODES[sel.mode].nameJa, MAP_INFO.nameJa);
       if (!isTouch) input.requestPointerLock();
       audio.init(); audio.resume();
@@ -257,6 +258,9 @@ async function main() {
         else if (!menu.root.classList.contains('on')) game.paused = false;
       };
     }
+
+    // 短い通知（浮遊の切り替えなど）は既存のアナウンス枠を使う
+    game.onNotice = (text) => hud.announce(text, '');
 
     game.onKill = (info) => {
       hud.addKill(info);
@@ -424,6 +428,15 @@ function updateHud(game, hud, mobile, dt) {
       const o = game.builder.objectives[i];
       return { x: o.pos.x, z: o.pos.z, id: z.id, owner: z.owner };
     });
+
+    /*
+     * 見学モードで浮くと視野はどんどん広がるのに、
+     * ミニマップだけ半径 34m のままでは何を見ているのか分からなくなる。
+     * 高度に合わせて表示範囲を広げ、目とミニマップの縮尺を合わせる。
+     */
+    hud.minimap.worldRadius = game.freeCam
+      ? Math.min(96, 34 + Math.max(0, game.player.position.y - 8) * 0.72)
+      : 34;
 
     hud.updateMinimap({
       playerPos: game.player.position,

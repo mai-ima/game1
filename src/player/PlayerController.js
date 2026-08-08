@@ -74,6 +74,8 @@ export class PlayerController {
     this.targetStance = STANCE.STAND;
     this.height = STANCE_DIM[STANCE.STAND].height;
     this.eyeHeight = STANCE_DIM[STANCE.STAND].eye;
+    /** 見学モードの浮遊（重力・当たり判定を無視する） */
+    this.noclip = false;
     this.radius = MOVE.radius;
 
     this.grounded = false;
@@ -183,6 +185,17 @@ export class PlayerController {
 
     this._updateLook(dt);
 
+    /*
+     * 見学用の浮遊。
+     * 重力も当たり判定も無視して視線方向へ動く。
+     * マップの造りを確かめるためのもので、対戦中には入らない。
+     */
+    if (this.noclip) {
+      this._updateNoclip(dt);
+      this._updateCamera(dt);
+      return;
+    }
+
     if (this.mantling) {
       this._updateMantle(dt);
     } else {
@@ -192,6 +205,29 @@ export class PlayerController {
 
     this._updateCamera(dt);
     this._updateStamina(dt);
+  }
+
+  /** 浮遊移動（見学モード専用） */
+  _updateNoclip(dt) {
+    const mv = this.input.move;
+    const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
+    // 視線方向（上下を含む）と、その真横
+    const fx = -Math.sin(this.yaw) * cp, fy = sp, fz = -Math.cos(this.yaw) * cp;
+    const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
+    const speed = (this.input.down('sprint') ? 34 : 13) * dt;
+
+    this.position.x += (fx * mv.y + rx * mv.x) * speed;
+    this.position.y += (fy * mv.y) * speed;
+    this.position.z += (fz * mv.y + rz * mv.x) * speed;
+    if (this.input.down('jump')) this.position.y += speed;
+    if (this.input.down('crouch')) this.position.y -= speed;
+
+    // 地面より下と、空の彼方には行かせない
+    this.position.y = Math.max(-2, Math.min(140, this.position.y));
+    this.velocity.set(0, 0, 0);
+    this.grounded = false;
+    this.stance = 0;
+    this.sprinting = false;
   }
 
   /* ---------------- 視点 ---------------- */

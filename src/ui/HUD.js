@@ -90,6 +90,11 @@ const CSS = `
 }
 .scorebar .clock.urgent { color: var(--crimson); }
 .scorebar .mode { font: 500 9px/1 var(--mono); letter-spacing: .22em; color: var(--dim); text-transform: uppercase; }
+/* 見学モード: 得点も残り時間も無いので、チーム表示と区切り線を落とす */
+.scorebar.untimed .team { display: none; }
+.scorebar.untimed .clock {
+  border: 0; padding: 0 2px; font-size: 11px; letter-spacing: .12em; color: var(--dim);
+}
 
 /* ---------- 目標表示（モード別の状況） ---------- */
 .objbar {
@@ -429,7 +434,7 @@ export class HUD {
       </div>
       <div data-el class="dmgring" id="hudDmg"></div>
 
-      <div data-el class="scorebar">
+      <div data-el class="scorebar" id="scorebar">
         <div class="team"><span class="pip a"></span><span class="num" id="scoreA">0</span></div>
         <span class="clock" id="clock">10:00</span>
         <div class="team"><span class="num" id="scoreB">0</span><span class="pip b"></span></div>
@@ -491,7 +496,7 @@ export class HUD {
       xh: $('hudXh'), xhT: $('xhT'), xhB: $('xhB'), xhL: $('xhL'), xhR: $('xhR'),
       hit: $('hudHit'), dmg: $('hudDmg'), pins: $('hudPins'),
       scope: $('hudScope'), scopeInner: $('scopeInner'),
-      scoreA: $('scoreA'), scoreB: $('scoreB'), clock: $('clock'), modeName: $('modeName'),
+      scorebar: $('scorebar'), scoreA: $('scoreA'), scoreB: $('scoreB'), clock: $('clock'), modeName: $('modeName'),
       map: $('hudMap'), mapCanvas: $('mapCanvas'), mapLabel: $('mapLabel'),
       feed: $('hudFeed'),
       obj: $('hudObj'), objT: $('objT'), objS: $('objS'), objBar: $('objBar'),
@@ -713,12 +718,24 @@ export class HUD {
 
   setScores(s, modeName) {
     if (!s) return;
-    this.el.scoreA.textContent = s.A ?? 0;
-    this.el.scoreB.textContent = s.B ?? 0;
-    const t = Math.max(0, s.remaining ?? 0);
-    const m = Math.floor(t / 60), sec = Math.floor(t % 60);
-    this.el.clock.textContent = `${m}:${String(sec).padStart(2, '0')}`;
-    this.el.clock.classList.toggle('urgent', t < 30);
+    /*
+     * 見学モードには勝敗も制限時間も無い。
+     * remaining が有限でないときは得点と時計を出さない
+     * （Math.floor(Infinity/60) は Infinity になり "Infinity:NaN" と出てしまう）。
+     */
+    const timed = Number.isFinite(s.remaining);
+    this.el.scorebar.classList.toggle('untimed', !timed);
+    if (timed) {
+      this.el.scoreA.textContent = s.A ?? 0;
+      this.el.scoreB.textContent = s.B ?? 0;
+      const t = Math.max(0, s.remaining);
+      const m = Math.floor(t / 60), sec = Math.floor(t % 60);
+      this.el.clock.textContent = `${m}:${String(sec).padStart(2, '0')}`;
+      this.el.clock.classList.toggle('urgent', t < 30);
+    } else {
+      this.el.clock.textContent = '自由行動';
+      this.el.clock.classList.remove('urgent');
+    }
     if (modeName) this.el.modeName.textContent = modeName;
     this._updateObjective(s);
   }

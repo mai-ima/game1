@@ -140,6 +140,25 @@ export class Physics {
     return c;
   }
 
+  /**
+   * 円柱を箱で近似して置く。
+   *
+   * 箱ひとつで囲むと、角が半径の √2 倍まで張り出す。
+   * タンクやドラム缶では、見た目には何も無い空中で弾が止まる
+   * 「見えない壁」になってしまう。
+   * 角が円周にちょうど乗る大きさにし、半径が大きいものは
+   * 45 度ずらした 2 枚を重ねて八角形に近づける。
+   *
+   * @returns {Collider} 主となるコライダ
+   */
+  addCylinder(cx, cy, cz, r, hy, opt = {}) {
+    const s = r * Math.SQRT1_2;
+    const main = this.addBox(cx, cy, cz, s, hy, s, 0, opt);
+    // 細いものは 1 枚で十分（辺の中央の欠けが 13cm 以下に収まる）
+    if (r > 0.45) this.addBox(cx, cy, cz, s, hy, s, Math.PI / 4, opt);
+    return main;
+  }
+
   /** Mesh (BoxGeometry 前提) からコライダを生成 */
   addFromMesh(mesh, opt = {}) {
     mesh.updateWorldMatrix(true, false);

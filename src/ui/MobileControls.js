@@ -420,5 +420,12 @@ export class MobileControls {
    */
   setUseVisible(on) { this.root.classList.toggle('showuse', !!on); }
 
+  /** 「使用」ボタンの見出しを変える（見学モードでは「浮遊」になる） */
+  setUseLabel(text) {
+    const lbl = this.el.use.querySelector('.lbl');
+    if (lbl) lbl.textContent = text;
+    this.el.use.setAttribute('aria-label', text);
+  }
+
   dispose() { this.root.remove(); }
 }

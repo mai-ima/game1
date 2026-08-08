@@ -23,18 +23,29 @@ export const MAP_INFO = {
   players: '6〜12人',
   sun: { elevation: 42, azimuth: 132 },
   fog: { color: 0xc8b898, near: 55, far: 210, density: 0.0016 },
+  /*
+   * 遊べる範囲。ミニマップの焼き込みなど、
+   * 「マップがどこまであるか」を要る側がここを見る。
+   * 以前は呼び出し側が ±38 と直書きしており、
+   * 東西に伸ばしたぶんがミニマップから丸ごと欠けていた。
+   */
+  bounds: { min: { x: -66, z: -39 }, max: { x: 66, z: 39 } },
 };
 
 /*
  * マップの範囲。
  *
- * 元は南北・東西とも 37m（74m 四方）だったが、西側へ 18m 広げて
- * 工事現場を足した。東西で長さが違うので、外周壁の位置は
- * WEST / EAST を別々に持つ。
+ * 元は 74m 四方だったが、東西に伸ばして 128×74m の横長にした。
+ *
+ * 縦長・正方形のままでは、端に足したエリアが動線から外れて
+ * 誰も足を運ばない。横長にして west → east の一本道に
+ *   工事現場 → コンテナ置き場 → 主屋 → 市場 → 車両基地
+ * を並べ、両陣営が east / west の端から攻め上がる形にすると、
+ * すべてのエリアが必ず戦闘に絡む。
  */
 const HALF = 37;          // 南北の半径
-const EAST = 37;          // 東の端
-const WEST = -55;         // 西の端（工事現場のぶん広い）
+const EAST = 64;          // 東の端
+const WEST = -64;         // 西の端
 
 export function buildCompound(b) {
   const rand = mulberry32(20250807);
@@ -136,24 +147,35 @@ export function buildCompound(b) {
   /* ============ 西の増築: 工事現場 ============ */
   constructionSite(b, rand);
 
-  /* ============ 南北のスポーン建物 ============ */
-  spawnStructure(b, 0, 27, 0, 'A');
-  spawnStructure(b, 0, -27, Math.PI, 'B');
+  /* ============ 東西のスポーン建物 ============ */
+  // A は東端、B は西端。互いに向かい合う
+  spawnStructure(b, 52, 0, -Math.PI / 2, 'A');
+  spawnStructure(b, -52, 0, Math.PI / 2, 'B');
+
+  /* ============ 東の増築: 車両基地 ============ */
+  motorPool(b, rand);
+
+  /* ============ 南北に中立の構造物（横長の間延びを防ぐ） ============ */
+  outpost(b, -22, 28, 0.15);
+  outpost(b, 8, -29, -0.2);
 
   /* ============ 散在プロップ ============ */
   scatter(b, rand);
 
   /* ============ スポーン地点 ============ */
+  // A は東端で西を向き、B は西端で東を向く
   for (let i = 0; i < 6; i++) {
-    b.spawn('A', -6 + i * 2.4, 0, 29 + (i % 2) * 2.0, Math.PI);
-    b.spawn('B', -6 + i * 2.4, 0, -29 - (i % 2) * 2.0, 0);
+    const dz = -6 + i * 2.4;
+    b.spawn('A', 55 + (i % 2) * 2.0, 0, dz, -Math.PI / 2);
+    b.spawn('B', -55 - (i % 2) * 2.0, 0, dz, Math.PI / 2);
   }
 
   /* ============ 目標地点 ============ */
-  b.objective('A', -14.5, 0, -2.0, 4.0);   // コンテナ置き場
-  b.objective('B', 15.5, 0, 3.0, 4.0);     // 市場
-  b.objective('C', 0, 0, 0, 4.5);          // 中央広場
-  b.objective('D', -41, 0, -6.0, 4.2);     // 工事現場の躯体
+  b.objective('A', -18.0, 0, -2.0, 4.2);   // コンテナ置き場（西寄り）
+  b.objective('B', 0, 0, 0, 4.5);          // 中央広場
+  b.objective('C', 20.0, 0, 3.0, 4.2);     // 市場（東寄り）
+  b.objective('D', -46, 0, -6.0, 4.2);     // 工事現場の躯体
+  b.objective('E', 42, 0, 2.0, 4.2);       // 車両基地
 
   return b;
 }
@@ -337,7 +359,7 @@ function mainBuilding(b, ox, oz) {
  */
 function constructionSite(b, rand) {
   const R = (a, c) => a + rand() * (c - a);
-  const CX = -41;                    // 躯体の中心
+  const CX = -46;                    // 躯体の中心
   const CZ = -6;
 
   /* ---- 造成された地面 ---- */
@@ -346,12 +368,12 @@ function constructionSite(b, rand) {
   b.box({ x: CX - 6, y: 0.022, z: CZ - 17, w: 14, h: 0.03, d: 10, mat: 'concreteRaw', surface: SURFACE.CONCRETE, collide: false });
 
   /* ---- 仮囲い（既存エリアとの境。2 か所だけ開ける） ---- */
-  P.chainFence(b, { x1: -30, z1: -35, x2: -30, z2: -14, h: 2.1, tarp: 'tarp' });
-  P.chainFence(b, { x1: -30, z1: -8, x2: -30, z2: 6, h: 2.1, tarp: 'tarpGreen' });
-  P.chainFence(b, { x1: -30, z1: 12, x2: -30, z2: 35, h: 2.1, tarp: 'tarp' });
+  P.chainFence(b, { x1: -33, z1: -35, x2: -33, z2: -14, h: 2.1, tarp: 'tarp' });
+  P.chainFence(b, { x1: -33, z1: -8, x2: -33, z2: 6, h: 2.1, tarp: 'tarpGreen' });
+  P.chainFence(b, { x1: -33, z1: 12, x2: -33, z2: 35, h: 2.1, tarp: 'tarp' });
   // 入口のゲート柱
   for (const gz of [-14, -8, 6, 12]) {
-    b.box({ x: -30, y: 1.4, z: gz, w: 0.34, h: 2.8, d: 0.34, mat: 'galvanized', surface: SURFACE.METAL });
+    b.box({ x: -33, y: 1.4, z: gz, w: 0.34, h: 2.8, d: 0.34, mat: 'galvanized', surface: SURFACE.METAL });
   }
 
   /* ================= 建設中の躯体 ================= */
@@ -510,9 +532,13 @@ function constructionSite(b, rand) {
       });
     }
   }
-  // ジブ（腕）を伸ばして、遠目にもクレーンだと分かるようにする
-  b.box({ x: CX + 5.0, y: 12.4, z: CZ - 12, w: 13.5, h: 0.5, d: 0.5, mat: 'hazardStripe', surface: SURFACE.METAL, collide: false });
-  b.box({ x: CX + 15.5, y: 12.4, z: CZ - 12, w: 5.0, h: 0.4, d: 0.4, mat: 'hazardStripe', surface: SURFACE.METAL, collide: false });
+  /*
+   * ジブ（腕）を伸ばして、遠目にもクレーンだと分かるようにする。
+   * 判定を持たせるのは、鉄骨の腕を弾がすり抜けるのは不自然なため。
+   * 高さ 12.4m なので歩行の妨げにはならない。
+   */
+  b.box({ x: CX + 5.0, y: 12.4, z: CZ - 12, w: 13.5, h: 0.5, d: 0.5, mat: 'hazardStripe', surface: SURFACE.METAL });
+  b.box({ x: CX + 15.5, y: 12.4, z: CZ - 12, w: 5.0, h: 0.4, d: 0.4, mat: 'hazardStripe', surface: SURFACE.METAL });
   b.box({ x: CX + 11.5, y: 13.6, z: CZ - 12, w: 0.3, h: 2.0, d: 0.3, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
   // 吊りワイヤとフック
   b.box({ x: CX + 1.5, y: 9.6, z: CZ - 12, w: 0.05, h: 5.2, d: 0.05, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
@@ -572,10 +598,169 @@ function constructionSite(b, rand) {
     b.light({ x: CX + lx, y: 5.0, z: CZ + lz, color: 0xfff2d8, intensity: 8, distance: 16 });
   }
 
-  /* ---- 工事現場のスポーン（人数が増えたとき用） ---- */
-  for (let i = 0; i < 3; i++) {
-    b.spawn('B', CX - 8 + i * 3.0, 0, CZ - 16.5, 0.4);
+}
+
+/**
+ * 東の増築: 車両基地。
+ *
+ * 工事現場（西）と釣り合う規模の拠点を東に置く。
+ * 整備場の大屋根・給油所・給水塔の 3 つで高さを作り、
+ * どれも上に登れるようにして、東側にも高所の取り合いを用意する。
+ */
+function motorPool(b, rand) {
+  const R = (a, c) => a + rand() * (c - a);
+  const CX = 44, CZ = 0;
+
+  /* ---- 舗装 ---- */
+  b.box({ x: CX, y: 0.018, z: CZ, w: 30, h: 0.03, d: 44, mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
+  b.box({ x: CX - 8, y: 0.022, z: CZ - 16, w: 12, h: 0.03, d: 10, mat: 'gravel', surface: SURFACE.GRAVEL, collide: false });
+  // 油染みは車が停まる場所だけ。全面に敷くと路面が濡れているように光る
+  for (const [ox2, oz2, ow, od] of [[-1.5, -3.2, 4.0, 6.0], [1.0, 6.5, 3.4, 4.6], [-13, 5.5, 3.0, 5.0], [-13, 11.5, 3.4, 5.6]]) {
+    b.box({ x: CX + ox2, y: 0.024, z: CZ + oz2, w: ow, h: 0.03, d: od, mat: 'oilStain', surface: SURFACE.CONCRETE, collide: false });
   }
+
+  /* ---- 整備場（柱と大屋根。壁は 2 面だけ） ---- */
+  const GW = 16, GD = 13, GH = 5.0;
+  b.floor({ x: CX, y: 0.06, z: CZ, w: GW, d: GD, mat: 'concreteFloor', surface: SURFACE.CONCRETE });
+  for (const lx of [-GW / 2 + 0.6, 0, GW / 2 - 0.6]) {
+    for (const lz of [-GD / 2 + 0.6, GD / 2 - 0.6]) {
+      b.box({ x: CX + lx, y: GH / 2, z: CZ + lz, w: 0.5, h: GH, d: 0.5, mat: 'concrete', surface: SURFACE.CONCRETE });
+    }
+  }
+  // 折板の大屋根（登れる）
+  b.box({ x: CX, y: GH + 0.22, z: CZ, w: GW + 1.6, h: 0.44, d: GD + 1.6, mat: 'metalRoof', surface: SURFACE.METAL });
+  // 東と北の壁（西と南は開けて通り抜けられる）
+  b.wallWithGap({
+    x1: CX + GW / 2, z1: CZ - GD / 2, x2: CX + GW / 2, z2: CZ + GD / 2, h: GH,
+    gapStart: GD / 2 - 1.6, gapWidth: 3.2, gapTop: 3.4,
+    mat: 'sidingMetal', surface: SURFACE.METAL, thickness: 0.3,
+  });
+  b.wall({ x1: CX - GW / 2, z1: CZ - GD / 2, x2: CX + GW / 2, z2: CZ - GD / 2, h: GH, mat: 'sidingMetal', thickness: 0.3, surface: SURFACE.METAL });
+  // 屋上の胸壁と設備
+  for (const [x1, z1, x2, z2] of [
+    [CX - GW / 2, CZ - GD / 2, CX + GW / 2, CZ - GD / 2],
+    [CX - GW / 2, CZ + GD / 2, CX + GW / 2, CZ + GD / 2],
+  ]) {
+    b.wall({ x1, z1, x2, z2, h: 0.9, y: GH + 0.44, mat: 'corrugated', thickness: 0.22, surface: SURFACE.METAL });
+  }
+  P.acUnit(b, { x: CX + 4.5, y: GH + 0.44, z: CZ - 3.0, yaw: 0.2 });
+  b.box({ x: CX - 3.5, y: GH + 0.60, z: CZ + 2.0, w: 3.4, h: 0.08, d: 2.2, rx: -0.18, mat: 'solarPanel', surface: SURFACE.GLASS, collide: false });
+  // 屋根に上がる外階段
+  b.stairs({ x: CX - GW / 2 - 1.3, y: 0, z: CZ + 4.0, width: 1.2, rise: 0.24, run: 0.28, steps: 23, yaw: 0, mat: 'expandedMetal', surface: SURFACE.METAL });
+  P.railing(b, { x1: CX - GW / 2 - 0.65, z1: CZ + 4.0, x2: CX - GW / 2 - 0.65, z2: CZ - 2.5, y: 0, height: 1.0 });
+
+  // 整備場の中身
+  b.box({ x: CX + 2.0, y: 0.55, z: CZ + 3.0, w: 3.2, h: 1.0, d: 1.0, mat: 'stainless', surface: SURFACE.METAL });   // 作業台
+  b.box({ x: CX + 2.0, y: 1.12, z: CZ + 3.0, w: 3.0, h: 0.14, d: 0.9, mat: 'perforatedMetal', surface: SURFACE.METAL, collide: false });
+  b.box({ x: CX + 5.5, y: 1.4, z: CZ - 2.0, w: 0.3, h: 2.6, d: 3.0, mat: 'perforatedMetal', surface: SURFACE.METAL, collide: false });  // 工具板
+  P.barrel(b, { x: CX - 5.0, y: 0.06, z: CZ - 4.0, mat: 'rustedMetal' });
+  P.barrel(b, { x: CX - 5.8, y: 0.06, z: CZ - 4.6, mat: 'paintedMetal' });
+  P.tireStack(b, { x: CX - 6.2, y: 0.06, z: CZ + 3.5, count: 4 });
+  P.tireStack(b, { x: CX - 5.0, y: 0.06, z: CZ + 4.6, count: 2 });
+  P.woodCrate(b, { x: CX + 6.0, y: 0.06, z: CZ + 4.5, yaw: 0.3 });
+  P.pallet(b, { x: CX + 4.4, y: 0.06, z: CZ + 5.2, yaw: 0.8 });
+  b.light({ x: CX, y: GH - 0.6, z: CZ, color: 0xfff0d0, intensity: 9, distance: 15 });
+  b.light({ x: CX + 5, y: GH - 0.8, z: CZ + 4, color: 0xffe8c0, intensity: 5, distance: 9 });
+
+  // 整備中の車両（片側を持ち上げてある）
+  P.vehicle(b, { x: CX - 1.5, y: 0, z: CZ - 3.2, yaw: 0.06, type: 'truck', mat: 'paintedMetalTan' });
+  P.vehicle(b, { x: CX + 1.0, y: 0, z: CZ + 6.5, yaw: -1.55, type: 'car', mat: 'plasticGlossRed' });
+
+  /* ---- 給油所 ---- */
+  const FX = CX - 11, FZ = CZ - 13;
+  b.box({ x: FX, y: 0.09, z: FZ, w: 9, h: 0.18, d: 7, mat: 'concreteFloor', surface: SURFACE.CONCRETE });
+  for (const sx of [-1, 1]) {
+    b.cylinder({ x: FX + sx * 3.4, y: 0.18, z: FZ - 2.4, radius: 0.16, height: 3.6, segments: 10, mat: 'paintedMetal', surface: SURFACE.METAL });
+    b.cylinder({ x: FX + sx * 3.4, y: 0.18, z: FZ + 2.4, radius: 0.16, height: 3.6, segments: 10, mat: 'paintedMetal', surface: SURFACE.METAL });
+  }
+  b.box({ x: FX, y: 3.95, z: FZ, w: 8.4, h: 0.35, d: 6.4, mat: 'metalRoof', surface: SURFACE.METAL });
+  b.box({ x: FX, y: 4.25, z: FZ - 3.3, w: 8.4, h: 0.5, d: 0.2, mat: 'plasticGlossRed', surface: SURFACE.METAL, collide: false });
+  // 計量機
+  for (const sx of [-1, 1]) {
+    b.box({ x: FX + sx * 1.6, y: 0.75, z: FZ, w: 0.7, h: 1.3, d: 1.1, mat: 'plasticGloss', surface: SURFACE.METAL });
+    b.box({ x: FX + sx * 1.6, y: 1.25, z: FZ + 0.58, w: 0.45, h: 0.35, d: 0.05, mat: 'screenPanel', surface: SURFACE.GLASS, collide: false });
+  }
+  P.jerryCan(b, { x: FX + 3.0, y: 0.18, z: FZ + 2.0, yaw: 0.5 });
+  P.jerryCan(b, { x: FX + 3.4, y: 0.18, z: FZ + 2.5, yaw: -0.3 });
+  b.light({ x: FX, y: 3.7, z: FZ, color: 0xe8f4ff, intensity: 7, distance: 12 });
+
+  /* ---- 給水塔（東側の高所） ---- */
+  const TX = CX + 11, TZ = CZ + 13;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    b.box({ x: TX + sx * 1.6, y: 3.4, z: TZ + sz * 1.6, w: 0.24, h: 6.8, d: 0.24, mat: 'galvanized', surface: SURFACE.METAL });
+  }
+  for (const ly of [2.2, 4.6]) {
+    for (const [ax, az, ww, dd] of [[0, -1.6, 3.2, 0.1], [0, 1.6, 3.2, 0.1], [-1.6, 0, 0.1, 3.2], [1.6, 0, 0.1, 3.2]]) {
+      b.box({ x: TX + ax, y: ly, z: TZ + az, w: ww, h: 0.1, d: dd, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    }
+  }
+  b.box({ x: TX, y: 6.95, z: TZ, w: 4.6, h: 0.3, d: 4.6, mat: 'expandedMetal', surface: SURFACE.METAL });
+  b.cylinder({ x: TX, y: 7.1, z: TZ, radius: 1.9, height: 3.2, segments: 16, mat: 'rustHeavy', surface: SURFACE.METAL });
+  b.cylinder({ x: TX, y: 10.3, z: TZ, radius: 1.95, height: 0.2, segments: 16, mat: 'corrugated', surface: SURFACE.METAL, collide: false });
+  P.railing(b, { x1: TX - 2.3, z1: TZ - 2.3, x2: TX + 2.3, z2: TZ - 2.3, y: 7.25, height: 1.0 });
+  P.railing(b, { x1: TX - 2.3, z1: TZ + 2.3, x2: TX + 2.3, z2: TZ + 2.3, y: 7.25, height: 1.0 });
+  // 昇降ばしご代わりの箱段
+  b.box({ x: TX - 3.2, y: 0.7, z: TZ - 1.0, w: 1.4, h: 1.4, d: 1.4, mat: 'concreteBlock', surface: SURFACE.CONCRETE });
+  b.box({ x: TX - 3.2, y: 2.2, z: TZ + 0.6, w: 1.4, h: 4.4, d: 1.4, mat: 'concreteBlock', surface: SURFACE.CONCRETE });
+  b.box({ x: TX - 1.6, y: 4.9, z: TZ + 1.4, w: 1.6, h: 0.2, d: 2.0, mat: 'expandedMetal', surface: SURFACE.METAL });
+  b.stairs({ x: TX - 1.0, y: 5.0, z: TZ + 2.2, width: 1.2, rise: 0.25, run: 0.28, steps: 8, yaw: 0, mat: 'expandedMetal', surface: SURFACE.METAL });
+
+  /* ---- 駐車帯と遮蔽 ---- */
+  for (let i = 0; i < 4; i++) {
+    b.box({ x: CX - 13, y: 0.019, z: CZ + 4 + i * 3.0, w: 5.5, h: 0.03, d: 0.12, mat: 'plasticGloss', surface: SURFACE.CONCRETE, collide: false });
+  }
+  P.vehicle(b, { x: CX - 13, y: 0, z: CZ + 5.5, yaw: Math.PI / 2 + 0.04, type: 'car', mat: 'paintedMetal' });
+  P.vehicle(b, { x: CX - 13, y: 0, z: CZ + 11.5, yaw: Math.PI / 2 - 0.03, type: 'truck', mat: 'rustedMetal' });
+  P.container(b, { x: CX + 12, y: 0, z: CZ - 8, yaw: 0.05, mat: 'paintedMetalTan' });
+  P.container(b, { x: CX + 12, y: 2.59, z: CZ - 8, yaw: -0.04, mat: 'corrugated' });
+  P.sandbagStack(b, { x: CX - 2, y: 0, z: CZ + 16, yaw: 0, rows: 3, perRow: 6, length: 3.6 });
+  P.chainFence(b, { x1: CX + 15.5, z1: CZ - 20, x2: CX + 15.5, z2: CZ + 20, h: 2.2 });
+  P.rubble(b, { x: CX - 9, y: 0, z: CZ + 17, radius: 2.6, count: 9 });
+  for (let i = 0; i < 6; i++) P.litter(b, { x: CX + R(-13, 13), y: 0, z: CZ + R(-19, 19), count: 4 });
+  P.streetLight(b, { x: CX - 14, y: 0, z: CZ - 6, yaw: 0.2 });
+  P.streetLight(b, { x: CX + 8, y: 0, z: CZ + 18, yaw: -1.4 });
+}
+
+/**
+ * 中立の小拠点。
+ * 横長にしたぶん南北が間延びするので、通り道に小さな足場を置く。
+ * 屋根に上がれば隣のレーンが見渡せる、程度の高さに留める。
+ */
+function outpost(b, ox, oz, yaw) {
+  const W = 7.5, D = 6.0, H = 3.0;
+  const s = Math.sin(yaw), c = Math.cos(yaw);
+  const tx = (lx, lz) => ox + c * lx + s * lz;
+  const tz = (lx, lz) => oz - s * lx + c * lz;
+
+  b.floor({ x: ox, y: 0.05, z: oz, w: W, d: D, mat: 'concreteFloor', surface: SURFACE.CONCRETE });
+  // 3 面の壁（1 面は開口）
+  b.wallWithGap({
+    x1: tx(-W / 2, -D / 2), z1: tz(-W / 2, -D / 2), x2: tx(W / 2, -D / 2), z2: tz(W / 2, -D / 2), h: H,
+    gapStart: W / 2 - 1.0, gapWidth: 2.0, gapTop: 2.3,
+    mat: 'concreteBlock', surface: SURFACE.CONCRETE, thickness: 0.3,
+  });
+  b.wallWithGap({
+    x1: tx(-W / 2, D / 2), z1: tz(-W / 2, D / 2), x2: tx(W / 2, D / 2), z2: tz(W / 2, D / 2), h: H,
+    gapStart: 1.2, gapWidth: 1.6, gapBottom: 1.0, gapTop: 2.4,
+    mat: 'concreteBlock', surface: SURFACE.CONCRETE, thickness: 0.3,
+  });
+  b.wall({ x1: tx(-W / 2, -D / 2), z1: tz(-W / 2, -D / 2), x2: tx(-W / 2, D / 2), z2: tz(-W / 2, D / 2), h: H, mat: 'concreteBlock', thickness: 0.3, surface: SURFACE.CONCRETE });
+  // 屋根（登れる）と胸壁
+  b.box({ x: ox, y: H + 0.15, z: oz, w: W + 0.6, h: 0.3, d: D + 0.6, yaw, mat: 'concrete', surface: SURFACE.CONCRETE });
+  for (const [x1, z1, x2, z2] of [
+    [tx(-W / 2, -D / 2), tz(-W / 2, -D / 2), tx(W / 2, -D / 2), tz(W / 2, -D / 2)],
+    [tx(-W / 2, D / 2), tz(-W / 2, D / 2), tx(W / 2, D / 2), tz(W / 2, D / 2)],
+  ]) {
+    b.wall({ x1, z1, x2, z2, h: 0.85, y: H + 0.3, mat: 'concreteBlock', thickness: 0.24, surface: SURFACE.CONCRETE });
+  }
+  // 上がるための土嚢と箱
+  P.sandbagStack(b, { x: tx(W / 2 + 1.2, -1.0), y: 0, z: tz(W / 2 + 1.2, -1.0), yaw, rows: 4, perRow: 4, length: 2.4 });
+  b.box({ x: tx(W / 2 + 1.2, 1.6), y: 1.35, z: tz(W / 2 + 1.2, 1.6), w: 1.4, h: 2.7, d: 1.4, yaw, mat: 'plywood', surface: SURFACE.WOOD });
+  // 中身
+  P.ammoCrate(b, { x: tx(-1.5, 0), y: 0.05, z: tz(-1.5, 0), yaw });
+  P.barrel(b, { x: tx(2.2, -1.4), y: 0.05, z: tz(2.2, -1.4), mat: 'rustedMetal' });
+  b.light({ x: ox, y: H - 0.5, z: oz, color: 0xffd8a8, intensity: 5, distance: 8 });
+  P.rooftopClutter(b, { x: tx(1.8, 1.2), y: H + 0.3, z: tz(1.8, 1.2), yaw });
 }
 
 /** 西レーン: コンテナ置き場 */

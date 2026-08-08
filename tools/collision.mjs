@@ -114,10 +114,25 @@ const out = await page.evaluate(`(() => {
         // 弾は抜けても体が止まるなら、遮蔽としては成立している
         if (Math.abs(vd - md) < 0.30) continue;
         if (Math.abs(vd - pd) > 0.30 && Math.min(vd, pd) < 12) {
-          const row = { x: +x.toFixed(1), z: +z.toFixed(1), 向き: [dx, dz],
+          /*
+           * 食い違いを 3 種類に分ける。まとめて数えると、
+           * 「わざと素通りさせている飾り」と「本当に位置がズレた壁」が
+           * 同じ列に並んでしまい、直すべきものが埋もれる。
+           *
+           * 分ける軸は「どちらが手前か」。
+           *   判定が手前   … 何も無い所で止まる。見えない壁。実害が最も大きい
+           *   数十cm のズレ … 同じ壁を指しているのに面が合っていない。要修正
+           *   大きく奥     … 見えている物をすり抜けて、その奥の壁で止まる。
+           *                   細い柱や庇など、意図して判定を持たせていない飾りが大半
+           *
+           * 「両方当たったか」で分けてはいけない。飾りをすり抜けた先に
+           * 別の壁があれば両方当たるので、素通りがズレに化けてしまう。
+           */
+          const kind = (pd + 0.30 < vd) ? '見えない壁'
+            : (pd - vd <= 1.0) ? 'ズレ' : '素通り';
+          const row = { 種別: kind, x: +x.toFixed(1), z: +z.toFixed(1), 向き: [dx, dz],
             見た目m: +vd.toFixed(2), 判定m: +pd.toFixed(2), 差: +(pd - vd).toFixed(2) };
-          // 「見えているのに当たらない」ときは、見えた相手の素性を添える
-          if (v.length && !p2) {
+          if (v.length) {
             const h = v[0];
             row.見えた物 = {
               名前: h.object.name || '(無名)',
@@ -125,8 +140,7 @@ const out = await page.evaluate(`(() => {
               点: [+h.point.x.toFixed(2), +h.point.y.toFixed(2), +h.point.z.toFixed(2)],
             };
           }
-          // 「見えないのに当たる」ときは、当たった相手の素性を添える
-          if (!v.length && p2?.collider) {
+          if (p2?.collider) {
             const c = p2.collider;
             row.当たった物 = {
               中心: [+c.center.x.toFixed(2), +c.center.y.toFixed(2), +c.center.z.toFixed(2)],
@@ -142,16 +156,19 @@ const out = await page.evaluate(`(() => {
 
   const sortAbs = (a, b) => Math.abs(b.差 ?? 9) - Math.abs(a.差 ?? 9);
   floorBad.sort(sortAbs); wallBad.sort(sortAbs);
+  const of = (k) => wallBad.filter((r) => r.種別 === k);
+  const pct = (n, d) => (d ? +(n / d * 100).toFixed(1) + '%' : '-');
+  const zure = of('ズレ'), inv = of('見えない壁'), thru = of('素通り');
   return JSON.stringify({
     格子間隔m: STEP,
     床の検査点: floorN,
     床のズレ件数: floorBad.length,
-    床のズレ率: floorN ? +(floorBad.length / floorN * 100).toFixed(1) + '%' : '-',
-    床のズレ上位: floorBad.slice(0, 12),
+    床のズレ率: pct(floorBad.length, floorN),
+    床のズレ上位: floorBad.slice(0, 10),
     壁の検査本数: wallN,
-    壁のズレ件数: wallBad.length,
-    壁のズレ率: wallN ? +(wallBad.length / wallN * 100).toFixed(1) + '%' : '-',
-    壁のズレ上位: wallBad.slice(0, 12),
+    要修正_位置ズレ: { 件数: zure.length, 率: pct(zure.length, wallN), 上位: zure.slice(0, 10) },
+    要修正_見えない壁: { 件数: inv.length, 率: pct(inv.length, wallN), 上位: inv.slice(0, 10) },
+    参考_素通りの飾り: { 件数: thru.length, 率: pct(thru.length, wallN), 上位: thru.slice(0, 6) },
   }, null, 1);
 })()`);
 

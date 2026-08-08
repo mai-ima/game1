@@ -75,7 +75,7 @@ export function barrel(b, o) {
   // 天面のリング・注入口
   b.cylinder({ x, y: y + height - 0.02, z, radius: radius * 1.03, height: 0.03, segments: 16, mat, surface: SURFACE.METAL, collide: false });
   b.cylinder({ x: x + radius * 0.5, y: y + height, z, radius: 0.045, height: 0.02, segments: 10, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
-  b.physics.addBox(x, y + height / 2, z, radius * 0.9, height / 2, radius * 0.9, 0, { surface: SURFACE.METAL, penetration: 0.4 });
+  b.physics.addCylinder(x, y + height / 2, z, radius, height / 2, { surface: SURFACE.METAL, penetration: 0.4 });
   return b;
 }
 
@@ -129,7 +129,7 @@ export function tireStack(b, o) {
     geo.rotateX(Math.PI / 2);
     b.mesh('tireTread', geo, { x, y: yy, z, ry: R(0, 3.14) });
   }
-  b.physics.addBox(x, y + count * 0.095, z, 0.40, count * 0.095, 0.40, 0, { surface: SURFACE.RUBBER, penetration: 0.35 });
+  b.physics.addCylinder(x, y + count * 0.095, z, 0.44, count * 0.095, { surface: SURFACE.RUBBER, penetration: 0.35 });
   return b;
 }
 
@@ -516,7 +516,7 @@ export function waterTank(b, o) {
       radius: 0.05, height: 0.52, segments: 6, mat: 'rustedMetal', surface: SURFACE.METAL, collide: false,
     });
   }
-  b.physics.addBox(x, y + height / 2, z, radius * 0.9, height / 2, radius * 0.9, 0, { surface: SURFACE.METAL, penetration: 0.4 });
+  b.physics.addCylinder(x, y + height / 2, z, radius, height / 2, { surface: SURFACE.METAL, penetration: 0.4 });
   return b;
 }
 
@@ -748,13 +748,21 @@ export function aggregatePile(b, o) {
   }
   geo.computeVertexNormals();
   b.mesh(mat, geo, { x, y: y + height / 2, z });
-  // 山なので登れる。段状の判定で近似する
-  const steps = 3;
+  /*
+   * 山なので登れる。段状の判定で近似する。
+   *
+   * 箱は円に外接するので、角が √2 倍だけ外へ出る。
+   * 以前は段の「下端」の半径をそのまま使っていたため、
+   * 最上段の角が頂点のはるか外側に張り出し、
+   * 何も無い空中で弾が止まる見えない壁になっていた。
+   * 段の中央の半径を採り、角が下端の円周に収まるよう 0.8 を掛ける。
+   */
+  const steps = 4;
+  const hy = height / (steps * 2);
   for (let i = 0; i < steps; i++) {
-    const t = i / steps;
-    const r = radius * (1 - t) * 0.82;
-    b.physics.addBox(x, y + height * t + height / (steps * 2), z, r, height / (steps * 2), r, 0,
-      { surface: SURFACE.GRAVEL });
+    const r = radius * (1 - (i + 0.5) / steps) * 0.8;
+    if (r < 0.12) continue;
+    b.physics.addCylinder(x, y + height * (i + 0.5) / steps, z, r, hy, { surface: SURFACE.GRAVEL });
   }
   return b;
 }
