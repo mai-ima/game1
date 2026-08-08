@@ -438,6 +438,15 @@ export function vehicle(b, o) {
       x: x + Math.sin(yaw) * (L * 0.48), y: y + wheelR + H + 0.20, z: z + Math.cos(yaw) * (L * 0.48),
       w: W * 0.94, h: 0.40, d: 0.09, yaw, mat, surface: SURFACE.METAL, collide: false,
     });
+    // 荷台のあおりは見えている以上、身を隠せるようにしておく（薄いので貫通はする）
+    for (const s of [-1, 1]) {
+      b.physics.addBox(
+        x + Math.sin(yaw) * bedZ + Math.cos(yaw) * (W / 2 - 0.06) * s,
+        y + wheelR + H + 0.20,
+        z + Math.cos(yaw) * bedZ - Math.sin(yaw) * (W / 2 - 0.06) * s,
+        0.05, 0.20, L * 0.22, yaw, { surface: SURFACE.METAL, penetration: 0.8 }
+      );
+    }
   }
 
   // タイヤ 4 本
@@ -471,7 +480,14 @@ export function vehicle(b, o) {
     b.addExtra(hl);
   }
 
-  b.physics.addBox(x, y + wheelR + H / 2, z, W / 2, (wheelR + H) / 2 + 0.1, L / 2, yaw, { surface: SURFACE.METAL, penetration: 0.25 });
+  /*
+   * 車体の判定は「地面からシャシー上面まで」。
+   * 以前は中心を wheelR + H/2 に置きながら半径に (wheelR+H)/2 + 0.1 を
+   * 使っていたため、上端が実際の車体より 28cm 高く、下端は地面から
+   * 浮いていた。荷台の上が開いているのに弾が止まる原因になっていた。
+   */
+  b.physics.addBox(x, y + (wheelR + H) / 2, z, W / 2, (wheelR + H) / 2, L / 2, yaw,
+    { surface: SURFACE.METAL, penetration: 0.25 });
   // キャビン上部も乗れるように
   b.physics.addBox(x + Math.sin(yaw) * cabZ, y + wheelR + H + 0.34, z + Math.cos(yaw) * cabZ,
     W * 0.46, 0.34, (isTruck ? L * 0.17 : L * 0.23), yaw, { surface: SURFACE.METAL, penetration: 0.3 });

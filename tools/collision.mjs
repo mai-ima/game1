@@ -1,0 +1,139 @@
+/**
+ * 当たり判定のズレを洗い出す。
+ *
+ * 見えている面（描画メッシュ）と、弾や足が当たる面（物理コライダ）を
+ * 同じレイで突き合わせ、食い違う場所を座標付きで並べる。
+ *   ・上から真下へ  … 床の高さがズレていないか（浮く / めり込む）
+ *   ・水平に        … 壁が見た目より手前 / 奥で止まらないか
+ *
+ *   node tools/collision.mjs [url] [格子の間隔m]
+ */
+import { chromium } from 'playwright';
+import { existsSync } from 'node:fs';
+
+const url = process.argv[2] || 'http://127.0.0.1:4173/?rawgpu&quality=high';
+const step = parseFloat(process.argv[3] || '2.0');
+const execPath = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome'].find((p) => existsSync(p));
+
+const browser = await chromium.launch({
+  executablePath: execPath,
+  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+});
+const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
+page.on('pageerror', (e) => { if (!/Pointer Lock/.test(e.message)) console.log('ERR', e.message); });
+
+await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.waitForFunction('!!window.__DEV', null, { timeout: 300000 });
+await page.evaluate('window.__DEV.startMatch()');
+await page.waitForFunction('window.__DEV.game.running===true', null, { timeout: 300000 }).catch(() => {});
+
+const out = await page.evaluate(`(() => {
+  const d = window.__DEV, THREE = d.THREE, g = d.game;
+  const scene = d.engine.scene;
+
+  // 人物と空は対象外（動くもの・無限遠は比較しても意味がない）
+  const targets = [];
+  scene.traverse((o) => {
+    if (!o.isMesh || !o.visible) return;
+    let p = o, skip = false;
+    while (p) {
+      if (p.name === 'soldier' || p.name === 'Sky' || p.name === 'SkyBox') { skip = true; break; }
+      p = p.parent;
+    }
+    if (!skip) targets.push(o);
+  });
+
+  const rc = new THREE.Raycaster();
+  rc.far = 200;
+  const down = new THREE.Vector3(0, -1, 0);
+
+  const floorBad = [];
+  const wallBad = [];
+  let floorN = 0, wallN = 0;
+  const B = g.bounds || { min: { x: -36, z: -36 }, max: { x: 36, z: 36 } };
+  const STEP = ${step};
+
+  for (let x = B.min.x + 1; x <= B.max.x - 1; x += STEP) {
+    for (let z = B.min.z + 1; z <= B.max.z - 1; z += STEP) {
+      /* --- 上から真下へ --- */
+      const from = new THREE.Vector3(x, 40, z);
+      rc.far = 60;                       // 水平検査で 12 に縮めたあとなので戻す
+      rc.set(from, down);
+      const vis = rc.intersectObjects(targets, false);
+      const phy = g.physics.raycast(from, down, 60, { forBullets: false });
+      if (vis.length && phy) {
+        floorN++;
+        const dy = vis[0].point.y - phy.point.y;
+        // 描画のほうが高い＝足が浮く / 低い＝床にめり込む
+        if (Math.abs(dy) > 0.14) {
+          floorBad.push({ x: +x.toFixed(1), z: +z.toFixed(1), 差: +dy.toFixed(2),
+            見た目y: +vis[0].point.y.toFixed(2), 判定y: +phy.point.y.toFixed(2) });
+        }
+      } else if (vis.length && !phy) {
+        floorN++;
+        floorBad.push({ x: +x.toFixed(1), z: +z.toFixed(1), 差: null, 内容: '見えるが判定なし',
+          見た目y: +vis[0].point.y.toFixed(2) });
+      }
+
+      /* --- 水平（目線の高さで 4 方向） --- */
+      const eye = new THREE.Vector3(x, (phy ? phy.point.y : 0) + 1.5, z);
+      /*
+       * 検査点が壁や箱の内部だと、物理は当たるのに描画は背面を
+       * 拾わないため、必ず食い違って見える。人が立てない場所を
+       * 数えても仕方がないので、めり込んでいる点は飛ばす。
+       */
+      if (g.physics._overlaps(eye, 0.16, 0.2)) continue;
+      for (const [dx, dz] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+        const dir = new THREE.Vector3(dx, 0, dz);
+        rc.set(eye, dir);
+        rc.far = 12;
+        const v = rc.intersectObjects(targets, false);
+        const p2 = g.physics.raycast(eye, dir, 12, { forBullets: true });
+        if (!v.length && !p2) continue;
+        wallN++;
+        const vd = v.length ? v[0].distance : 99;
+        const pd = p2 ? p2.dist : 99;
+        if (Math.abs(vd - pd) > 0.30 && Math.min(vd, pd) < 12) {
+          const row = { x: +x.toFixed(1), z: +z.toFixed(1), 向き: [dx, dz],
+            見た目m: +vd.toFixed(2), 判定m: +pd.toFixed(2), 差: +(pd - vd).toFixed(2) };
+          // 「見えているのに当たらない」ときは、見えた相手の素性を添える
+          if (v.length && !p2) {
+            const h = v[0];
+            row.見えた物 = {
+              名前: h.object.name || '(無名)',
+              材質: h.object.material?.name || '?',
+              点: [+h.point.x.toFixed(2), +h.point.y.toFixed(2), +h.point.z.toFixed(2)],
+            };
+          }
+          // 「見えないのに当たる」ときは、当たった相手の素性を添える
+          if (!v.length && p2?.collider) {
+            const c = p2.collider;
+            row.当たった物 = {
+              中心: [+c.center.x.toFixed(2), +c.center.y.toFixed(2), +c.center.z.toFixed(2)],
+              半径: [+c.half.x.toFixed(2), +c.half.y.toFixed(2), +c.half.z.toFixed(2)],
+              yaw: +c.yaw.toFixed(2), 面: c.surface, 札: c.tag || null,
+            };
+          }
+          wallBad.push(row);
+        }
+      }
+    }
+  }
+
+  const sortAbs = (a, b) => Math.abs(b.差 ?? 9) - Math.abs(a.差 ?? 9);
+  floorBad.sort(sortAbs); wallBad.sort(sortAbs);
+  return JSON.stringify({
+    格子間隔m: STEP,
+    床の検査点: floorN,
+    床のズレ件数: floorBad.length,
+    床のズレ率: floorN ? +(floorBad.length / floorN * 100).toFixed(1) + '%' : '-',
+    床のズレ上位: floorBad.slice(0, 12),
+    壁の検査本数: wallN,
+    壁のズレ件数: wallBad.length,
+    壁のズレ率: wallN ? +(wallBad.length / wallN * 100).toFixed(1) + '%' : '-',
+    壁のズレ上位: wallBad.slice(0, 12),
+  }, null, 1);
+})()`);
+
+console.log(out);
+await browser.close();

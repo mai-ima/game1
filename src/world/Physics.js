@@ -70,12 +70,38 @@ export class Collider {
     }
   }
 
+  /*
+   * 回転の向きは three に合わせる。
+   *
+   * BufferGeometry.rotateY(yaw) が行う local → world は
+   *     x' =  x·cos + z·sin
+   *     z' = -x·sin + z·cos
+   * なので、world → local はその逆行列（転置）でなければならない。
+   *
+   * ここは以前 2 つの式が入れ替わっており、回転したコライダだけが
+   * yaw の 2 倍ぶん回った位置に判定を持っていた。
+   * 斜めの壁や向きを変えて置いたコンテナで
+   * 「見えているのに弾が抜ける」「何も無い所で止まる」が起きていた原因。
+   * yaw = 0 では両者が一致するため、正面向きの箱では表面化しなかった。
+   */
+
   /** ワールド座標 → ボックスローカル座標 */
   toLocal(p, out) {
     out.copy(p).sub(this.center);
     if (this.rotated) {
-      const x = out.x * this.cos + out.z * this.sin;
-      const z = -out.x * this.sin + out.z * this.cos;
+      const x = out.x * this.cos - out.z * this.sin;
+      const z = out.x * this.sin + out.z * this.cos;
+      out.x = x; out.z = z;
+    }
+    return out;
+  }
+
+  /** ワールド方向 → ボックスローカル方向（平行移動を伴わない） */
+  dirToLocal(d, out) {
+    out.copy(d);
+    if (this.rotated) {
+      const x = out.x * this.cos - out.z * this.sin;
+      const z = out.x * this.sin + out.z * this.cos;
       out.x = x; out.z = z;
     }
     return out;
@@ -85,8 +111,8 @@ export class Collider {
   dirToWorld(d, out) {
     out.copy(d);
     if (this.rotated) {
-      const x = out.x * this.cos - out.z * this.sin;
-      const z = out.x * this.sin + out.z * this.cos;
+      const x = out.x * this.cos + out.z * this.sin;
+      const z = -out.x * this.sin + out.z * this.cos;
       out.x = x; out.z = z;
     }
     return out;
@@ -425,8 +451,9 @@ export class Physics {
     c.toLocal(o, o);
     let dx = dir.x, dy = dir.y, dz = dir.z;
     if (c.rotated) {
-      const x = dx * c.cos + dz * c.sin;
-      const z = -dx * c.sin + dz * c.cos;
+      // 原点と同じ向きにそろえる（toLocal と同じ回転）
+      const x = dx * c.cos - dz * c.sin;
+      const z = dx * c.sin + dz * c.cos;
       dx = x; dz = z;
     }
 
