@@ -244,21 +244,19 @@ export class MapBuilder {
     return this;
   }
 
-  /** 点光源を追加 */
+  /**
+   * 点光源を追加する。
+   *
+   * ここでは実体を作らず、定義だけを貯める。
+   * 実際に光らせるのは LightPool で、カメラの近くにある数灯だけを
+   * 実体の PointLight に割り当てる。
+   * マップの光源をすべて実体で置くと、three は画素ごとに
+   * その数だけ減衰と BRDF を計算し、描画時間の半分を持っていく。
+   */
   light(o) {
-    const { x, y, z, color = 0xffd9a0, intensity = 3, distance = 9, decay = 2, castShadow = false } = o;
-    const l = new THREE.PointLight(color, intensity, distance, decay);
-    l.position.set(x, y, z);
-    if (castShadow) {
-      l.castShadow = true;
-      l.shadow.mapSize.set(512, 512);
-      l.shadow.bias = -0.004;
-      l.shadow.camera.near = 0.12;
-      l.shadow.camera.far = distance;
-    }
-    this.root.add(l);
-    this.lights.push(l);
-    return l;
+    const { x, y, z, color = 0xffd9a0, intensity = 3, distance = 9, decay = 2 } = o;
+    this.lights.push({ x, y, z, color, intensity, distance, decay });
+    return this;
   }
 
   /** スポーン地点 */

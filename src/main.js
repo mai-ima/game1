@@ -50,6 +50,13 @@ async function main() {
     showSoftwareWarning(container, engine.gpu.name);
   }
   const mats = new MaterialLibrary(engine.renderer);
+  /*
+   * マテリアルを 1 つも作る前に決めておく。
+   * 後から切り替えるとシェーダを全部組み直すことになり、
+   * 起動直後に数百 ms 固まる。
+   */
+  mats.dropRoughIBL = !!QUALITY[engine.quality]?.dropRoughIBL;
+  mats.setCheapShadows(!!QUALITY[engine.quality]?.cheapShadows);
   const input = new Input(engine.renderer.domElement);
   const audio = new AudioManager(settings);
 
@@ -328,6 +335,10 @@ function applySettings(engine, input, settings, game, key, val) {
   engine.setPerformanceMode(!!s.perfMode);
 
   if (key === 'quality' && QUALITY[val]) engine.setQuality(val);
+
+  // ざらついた面の鏡面 IBL を省くか（画質段によって変わる）
+  game?.mats?.setDropRoughIBL(!!QUALITY[engine.quality]?.dropRoughIBL);
+  game?.mats?.setCheapShadows(!!QUALITY[engine.quality]?.cheapShadows);
 }
 
 function pauseGame(game, hud, menu, mobile, input) {

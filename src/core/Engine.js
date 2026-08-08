@@ -10,6 +10,7 @@ import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { CompositeShader, RadialBlurShader, FusedFinalShader, BloomThresholdShader, BlurDirShader } from '../render/PostFX.js';
+import { LightPool } from '../render/LightPool.js';
 
 /**
  * 画質プリセット。
@@ -23,17 +24,25 @@ import { CompositeShader, RadialBlurShader, FusedFinalShader, BloomThresholdShad
  * 各段階は 1 つ上へ引き上げてある。
  * 「低」でも影とブルームが入り、「高」で環境遮蔽（GTAO）まで有効になる。
  */
+/*
+ * maxLights は「同時に実体を持つ点光源の数」。
+ *
+ * 標準マテリアルは画素ごとにライトの数だけ減衰と BRDF を計算するので、
+ * マップの光源をすべて置くと、それだけで描画時間の半分を使う。
+ * 実体は近い数灯だけに絞り、LightPool が近い順に割り当て直す。
+ * 遠くの光は元々減衰しきっているので、見える絵は変わらない。
+ */
 export const QUALITY = {
-  low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.85 },
-  medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.85 },
-  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.85 },
+  low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 4, dropRoughIBL: true, cheapShadows: true },
+  medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 6 },
+  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.85, maxLights: 8 },
   /*
    * 最高はクオリティ最優先。
    * 動的解像度で解像度を落とさず（minScale 1.0）、環境遮蔽も
    * 半解像度ではなく等倍で掛ける。フレームレートより絵を優先する段。
    */
   ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 4096, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 100, texSize: 2048, bloomScale: 1.0, minScale: 1.0,
-            gtaoScale: 1.0, gtaoSamples: 16 },
+            gtaoScale: 1.0, gtaoSamples: 16, maxLights: 12 },
 
   /*
    * 内蔵 GPU 専用（Intel UHD / 第 10 世代 Core i5 相当）。
@@ -50,7 +59,8 @@ export const QUALITY = {
    * とし、描画側もボットの更新間引きと影の距離短縮で軽くする。
    */
   igpu:   { pixelRatio: 1.0,  shadows: true,  shadowMap: 1024, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 42, texSize: 512,  bloomScale: 0.25, minScale: 0.78,
-            fusedPost: true, cheapBloom: true, lightweight: true, noFillLight: true, viewDistance: 220 },
+            fusedPost: true, cheapBloom: true, lightweight: true, noFillLight: true, viewDistance: 220,
+            maxLights: 3, dropRoughIBL: true, cheapShadows: true },
 };
 
 /** 画質プリセットの説明（設定画面に出す） */
@@ -452,6 +462,19 @@ export class Engine {
     });
   }
 
+  /**
+   * 点光源の枠数を、画質設定の上限とマップの実情の小さい方に合わせる。
+   * bounds を省くと前回の値を使う（画質だけ変えたとき用）。
+   */
+  fitLightCount(bounds) {
+    if (bounds) this._lightBounds = bounds;
+    const max = QUALITY[this.quality]?.maxLights ?? 6;
+    const b = this._lightBounds;
+    if (b) this.lightPool.fitCount(max, b);
+    else this.lightPool.setCount(max);
+    return this.lightPool.slots.length;
+  }
+
   /** 焼いた空を捨てて、毎フレーム計算する Sky に戻す */
   unbakeSky() {
     if (!this._skyRT) return;
@@ -635,6 +658,13 @@ export class Engine {
       fill.visible = false;
       hemi.intensity = 0.68;
     }
+
+    /*
+     * 点光源のプール。
+     * マップの街灯や室内灯は、ここに定義だけ渡して
+     * 近い数灯だけを実体に割り当てる。
+     */
+    this.lightPool = new LightPool(this.scene, QUALITY[this.quality]?.maxLights ?? 6);
 
     // ビューモデル用の専用ライティング（常に手元が見えるように）
     const vKey = new THREE.DirectionalLight(0xfff2dd, 2.1);
@@ -953,6 +983,8 @@ export class Engine {
       this.fill.visible = !q.noFillLight;
       if (this.hemi) this.hemi.intensity = q.noFillLight ? 0.68 : 0.55;
     }
+    // 実体の点光源の数が変わるとシェーダを組み直す。設定変更の一度だけ
+    this.fitLightCount();
     this.camera.far = q.viewDistance ?? 800;
     this.camera.updateProjectionMatrix();
 

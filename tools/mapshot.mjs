@@ -42,6 +42,8 @@ const shoot = async (name, from, look, fov = 70) => {
     cam.position.set(${from.join(',')});
     cam.lookAt(new THREE.Vector3(${look.join(',')}));
     cam.updateMatrixWorld();
+    // 点光源は近い順に割り当て直される。止めていると前の場所のままなので促す
+    d.engine.lightPool.snap(cam.position);
     // ビューモデル（手元の銃）は邪魔なので隠す
     for (const c of d.engine.viewScene.children) c.visible = false;
   })()`);

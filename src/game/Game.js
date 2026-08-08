@@ -104,6 +104,10 @@ export class Game {
     await nextFrame();
     this.builder.finalize();
 
+    // 街灯や室内灯はプールへ渡す。実体になるのは近い数灯だけ
+    this.engine.lightPool.setDefs(this.builder.lights);
+    this.engine.fitLightCount(this.mapInfo.bounds);
+
     // 巡回点を生成（スポーン地点 + 目標地点 + グリッド）
     this._buildPatrolPoints();
     onProgress(0.9, '完了');
@@ -292,6 +296,8 @@ export class Game {
     this._respawnT = 0;
     this._damageFlash = 0;
     this._regenT = 0;
+    // 別の場所へ湧くので、点光源の割り当ても即座に付け替える
+    this.engine.lightPool.snap(pos);
     // 湧いた直後に撃たれ続けると何もできないので、短い保護を与える
     this._spawnProtect = 1.6;
     this.onPlayerSpawn?.();
@@ -699,6 +705,9 @@ export class Game {
         this.respawnBot(b);
       }
     }
+
+    // --- 点光源の割り当て（近い数灯だけを実体にする） ---
+    this.engine.lightPool.update(dt, camPos);
 
     // --- エフェクト・ポスト ---
     this.effects.update(dt, this.engine.camera);

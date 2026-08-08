@@ -153,6 +153,8 @@ export class Effects {
     this.engine = engine;
     this.physics = physics;
     this.scene = engine.scene;
+    // 爆発の閃光はプールの枠を借りる（実体を足すとシェーダを組み直すため）
+    this.lightPool = engine.lightPool;
 
     this.tex = {
       flash: flashTexture(256),
@@ -542,12 +544,18 @@ export class Effects {
         life: 0.3 + Math.random() * 0.4, size0: 0.12, size1: 0.03, drag: 1.1, gravity: -8,
       });
     }
-    const l = new THREE.PointLight(0xffa040, 400, radius * 5, 2);
-    l.position.copy(point);
-    this.scene.add(l);
-    const t0 = this.time;
-    this._tempLights ??= [];
-    this._tempLights.push({ light: l, t0, dur: 0.32 });
+    /*
+     * 爆発の閃光。
+     *
+     * ここで PointLight をシーンへ足すと、three はライトの数が
+     * 変わったマテリアルをすべて組み直す。爆発のたびに数百 ms 固まる。
+     * プールから枠を借りれば、実体の数は変わらない。
+     */
+    if (this.lightPool) {
+      const d = this.lightPool.addTemp(point.x, point.y, point.z, 0xffa040, 400, radius * 5);
+      this._tempLights ??= [];
+      this._tempLights.push({ def: d, t0: this.time, dur: 0.32 });
+    }
   }
 
   /* ================= 更新 ================= */
@@ -567,13 +575,13 @@ export class Effects {
       }
     }
 
-    // 一時的な光源
+    // 一時的な光源（プールから借りた枠）
     if (this._tempLights?.length) {
       for (let i = this._tempLights.length - 1; i >= 0; i--) {
         const e = this._tempLights[i];
         const k = (this.time - e.t0) / e.dur;
-        if (k >= 1) { this.scene.remove(e.light); e.light.dispose(); this._tempLights.splice(i, 1); }
-        else e.light.intensity = 400 * Math.pow(1 - k, 2.2);
+        if (k >= 1) { this.lightPool.releaseTemp(e.def); this._tempLights.splice(i, 1); }
+        else this.lightPool.setTempIntensity(e.def, 400 * Math.pow(1 - k, 2.2));
       }
     }
 

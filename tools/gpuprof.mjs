@@ -19,9 +19,9 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on('pageerror', (e) => console.log('[エラー]', e.message));
 
 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-await page.waitForFunction('!!window.__DEV', { timeout: 300000 });
+await page.waitForFunction('!!window.__DEV', null, { timeout: 300000 });
 await page.evaluate('window.__DEV.startMatch()');
-await page.waitForFunction('window.__DEV.game.running===true', { timeout: 300000 }).catch(() => {});
+await page.waitForFunction('window.__DEV.game.running===true', null, { timeout: 300000 }).catch(() => {});
 await page.waitForTimeout(4000);
 
 const report = await page.evaluate(`(async () => {

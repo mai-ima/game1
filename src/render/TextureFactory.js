@@ -1232,12 +1232,26 @@ export class TextureFactory {
 
     const normal = heightToNormal(height, size, opt.normalStrength ?? 2.0);
 
+    /*
+     * 実際の粗さと金属度は ORM テクスチャの中にある。
+     * プリセットの roughness / metalness は、そこに掛ける係数として
+     * ほぼ 1 が入っているだけで、材質の判別には使えない。
+     * 描画側が「この材質は環境の映り込みが要るか」を判断できるよう、
+     * ここで平均を出しておく。
+     */
+    let sumR = 0, sumM = 0;
+    for (let i = 0; i < n; i++) { sumR += orm[i * 4 + 1]; sumM += orm[i * 4 + 2]; }
+    const avgRough = sumR / n / 255;
+    const avgMetal = sumM / n / 255;
+
     const result = {
       map: this._tex(albedo, size, THREE.SRGBColorSpace),
       normalMap: this._tex(normal, size, THREE.NoColorSpace),
       roughnessMap: this._tex(orm, size, THREE.NoColorSpace),
       metalnessMap: null,
       aoMap: null,
+      avgRough,
+      avgMetal,
       _orm: orm,
       _size: size,
     };
