@@ -22,22 +22,31 @@ const DEFS = {
     const N = 6;
     const base = fbm(u * N, v * N, { octaves: 6, period: N, seed: S });
     const grain = valueNoise(u * 160, v * 160, 160, S + 3);
-    const pit = worley(u * 14, v * 14, 14, S + 7, 0.95).f1;
-    const pits = smoothstep(0.0, 0.26, pit);
+    /*
+     * 気泡（あばた）。
+     * 以前は 1 タイル 1.2m に 14 セルで、1 つが 8cm 相当の黒点になっていた。
+     * 実物の気泡は 1〜5mm で、しかも全面に均等ではなく、
+     * 型枠の隅や打ち継ぎのあたりに寄って出る。
+     * 数を増やして小さくし、出る場所を fbm で絞る。
+     */
+    const pit = worley(u * 44, v * 44, 44, S + 7, 0.95).f1;
+    const pits = smoothstep(0.0, 0.16, pit);
+    const pitMask = smoothstep(0.34, 0.74, fbm(u * 3, v * 3, { octaves: 3, period: 3, seed: S + 43 }));
     const stain = fbm(u * 2, v * 2, { octaves: 4, period: 2, seed: S + 11 });
     const crack = (1 - smoothstep(0.0, 0.014, voronoiEdge(u * 8, v * 8, 8, S + 21, 1)))
       * smoothstep(0.5, 0.78, fbm(u * 2, v * 2, { octaves: 3, period: 2, seed: S + 71 }));
 
-    let l = 0.26 + base * 0.110 + grain * 0.048 - (1 - pits) * 0.105;
+    const pitAmt = (1 - pits) * pitMask;
+    let l = 0.26 + base * 0.110 + grain * 0.048 - pitAmt * 0.085;
     l *= 1 - stain * 0.17;
     l -= crack * 0.2;
     // 実物のコンクリートはごくわずかに青灰色。ここを青くしすぎると
     // 環境光の青みと重なって画面全体が水色に転ぶ。
     o.r = l * 0.99; o.g = l * 0.995; o.b = l * 1.0;
-    o.h = base * 0.55 + pits * 0.3 + grain * 0.08 - crack * 0.5;
+    o.h = base * 0.55 - pitAmt * 0.22 + grain * 0.08 - crack * 0.5;
     o.rough = clamp01(0.82 + grain * 0.12 - stain * 0.08);
     o.metal = 0;
-    o.ao = clamp01(0.72 + pits * 0.28 - crack * 0.35);
+    o.ao = clamp01(0.9 - pitAmt * 0.3 - crack * 0.35);
   },
 
   /* --- 塗装コンクリート壁（屋内） --- */

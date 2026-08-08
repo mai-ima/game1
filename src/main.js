@@ -10,7 +10,7 @@ import { BOT_GATE } from './ai/Bot.js';
 import { HUD } from './ui/HUD.js';
 import { Menu } from './ui/Menu.js';
 import { MobileControls } from './ui/MobileControls.js';
-import { buildCompound, MAP_INFO } from './world/maps/Map_Compound.js';
+import { MAPS, getMap, DEFAULT_MAP } from './world/maps/index.js';
 
 /**
  * OPERATION CRIMSON — エントリポイント。
@@ -93,13 +93,13 @@ async function main() {
   await nextFrame();
 
   // マップは起動時に一度だけ構築する（メニュー背景としても使う）
-  await game.loadMap(
-    { build: buildCompound, MAP_INFO },
-    (p, label) => boot?.set(28 + p * 64, label)
-  );
+  // ?map=testbed のように指定すると、そのレベルで起動する
+  const firstMap = qs.get('map') || settings.get('map') || DEFAULT_MAP;
+  menu.sel.map = MAPS[firstMap] ? firstMap : DEFAULT_MAP;
+  await game.loadMap(getMap(menu.sel.map), (p, label) => boot?.set(28 + p * 64, label));
 
-  hud.setMapName(MAP_INFO.nameJa);
-  hud.minimap.bake(game.physics, MAP_INFO.bounds);
+  hud.setMapName(game.mapInfo.nameJa);
+  hud.minimap.bake(game.physics, game.mapInfo.bounds);
 
   boot?.set(98, '準備完了');
   await nextFrame();
@@ -186,9 +186,20 @@ async function main() {
       if (starting) return;
       starting = true;
       orbit.active = false;
-      menu.showLoading(MAP_INFO);
+      menu.showLoading(getMap(sel.map).MAP_INFO);
       menu.setProgress(0.02, '準備中');
       await nextFrame();
+
+      /*
+       * 選ばれたレベルが今読み込んでいるものと違えば、組み直す。
+       * レベルの構築は数百 ms かかるので、同じなら作り直さない。
+       */
+      if (sel.map && sel.map !== game.mapId) {
+        await game.loadMap(getMap(sel.map), (p, label) => menu.setProgress(p * 0.6, label));
+        hud.setMapName(game.mapInfo.nameJa);
+        hud.minimap.bake(game.physics, game.mapInfo.bounds);
+        settings.set('map', sel.map);
+      }
 
       // 進捗は game.start() の実作業から受け取る（見せかけの進捗にしない）
       // モードが人数を指定していればそれに従う（マップ見学は 0 人）
@@ -215,7 +226,7 @@ async function main() {
       // 「使用」操作があるモードでだけボタンを出す（見学モードでは浮遊の切り替え）
       mobile?.setUseVisible(sel.mode === 'snd' || sel.mode === 'mapview');
       mobile?.setUseLabel(sel.mode === 'mapview' ? '浮遊' : '使用');
-      hud.announce(GAME_MODES[sel.mode].nameJa, MAP_INFO.nameJa);
+      hud.announce(GAME_MODES[sel.mode].nameJa, game.mapInfo.nameJa);
       if (!isTouch) input.requestPointerLock();
       audio.init(); audio.resume();
     };

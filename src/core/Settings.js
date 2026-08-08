@@ -16,6 +16,8 @@ const DEFAULTS = {
   dynamicRes: true,
   /** 解像度を下げても足りないとき、画質設定そのものを自動で落とす */
   perfMode: false,
+  /** 最後に遊んだレベル */
+  map: 'compound',
   brightness: 1.0,
   motionBlur: true,
   filmGrain: true,

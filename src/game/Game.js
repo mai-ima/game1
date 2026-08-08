@@ -88,7 +88,19 @@ export class Game {
    */
   async loadMap(mapModule, onProgress = () => {}) {
     this.mapInfo = mapModule.MAP_INFO;
+    this.mapId = this.mapInfo.id;
     onProgress(0.05, 'レベルを構築中');
+
+    /*
+     * 前のレベルを片付ける。
+     * 2 枚目以降を読むときに残しておくと、ジオメトリもコライダも
+     * 二重に積み上がる（マップを切り替えるたびに重くなる）。
+     */
+    if (this.builder) {
+      this.builder.dispose();
+      this.builder = null;
+      this.engine.lightPool.setDefs([]);
+    }
 
     this.engine.setSunAngle(this.mapInfo.sun.elevation, this.mapInfo.sun.azimuth);
     this.engine.refreshEnvironment();

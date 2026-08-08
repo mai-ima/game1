@@ -539,6 +539,59 @@ export class MaterialLibrary {
   }
 
   /** 発光マテリアル（照明器具・モニタ等） */
+  /**
+   * 文字を焼き込んだ板のマテリアル。検証用マップの名札に使う。
+   *
+   * 何が置いてあるか読めない展示場は検査の役に立たない。
+   * 3D 文字を組むと面数が跳ね上がるので、キャンバスに描いて 1 枚貼る。
+   *
+   * @param {string} text 主見出し
+   * @param {object} opt {sub, bg, fg, accent, w, h, size}
+   */
+  label(text, opt = {}) {
+    const key = `label:${text}|${JSON.stringify(opt)}`;
+    if (this.cache.has(key)) return this.cache.get(key);
+
+    const {
+      w = 512, h = 128, size = 56,
+      bg = '#14161b', fg = '#f2efe9', accent = '#c8783c', sub = '',
+    } = opt;
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const g = cv.getContext('2d');
+
+    g.fillStyle = bg;
+    g.fillRect(0, 0, w, h);
+    // 左端に色帯を入れて、遠目でも区画の別が付くようにする
+    g.fillStyle = accent;
+    g.fillRect(0, 0, 10, h);
+    g.strokeStyle = 'rgba(242,239,233,0.20)';
+    g.lineWidth = 3;
+    g.strokeRect(1.5, 1.5, w - 3, h - 3);
+
+    const face = 'ui-monospace, "SF Mono", Menlo, "Hiragino Sans", sans-serif';
+    g.fillStyle = fg;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = `600 ${size}px ${face}`;
+    g.fillText(text, w / 2 + 5, sub ? h * 0.37 : h / 2, w - 40);
+    if (sub) {
+      g.font = `400 ${Math.round(size * 0.48)}px ${face}`;
+      g.fillStyle = 'rgba(242,239,233,0.60)';
+      g.fillText(sub, w / 2 + 5, h * 0.72, w - 40);
+    }
+
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = Math.min(8, this.tf.maxAniso ?? 1);
+    // 陰影を付けると読みづらくなるだけなので、光の影響を受けない板にする
+    const mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+    mat.name = `label:${text}`;
+    this.cache.set(key, mat);
+    this._all.push(mat);
+    return mat;
+  }
+
   emissive(color = 0xffe6b0, intensity = 4, opt = {}) {
     const key = `emis|${color}|${intensity}|${JSON.stringify(opt)}`;
     if (this.cache.has(key)) return this.cache.get(key);

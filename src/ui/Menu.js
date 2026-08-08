@@ -1,4 +1,5 @@
 import { MODE_LIST, GAME_MODES } from '../game/GameModes.js';
+import { MAP_LIST } from '../world/maps/index.js';
 import { WEAPONS, ATTACHMENTS, WEAPON_CLASS } from '../player/weapons/WeaponDefs.js';
 import { DIFFICULTY } from '../ai/Bot.js';
 import { QUALITY, QUALITY_INFO } from '../core/Engine.js';
@@ -134,6 +135,11 @@ const CSS = MARK_CSS + `
 .card.on { border-color: var(--coral); background: rgba(217,119,87,.10); }
 .card .ico { color: var(--coral); }
 .card .nm { font: 400 14px/1.2 var(--sans); letter-spacing: .06em; margin-top: 8px; }
+.card .nm .tag {
+  margin-left: 9px; padding: 3px 7px; border: 1px solid rgba(242,239,233,.20);
+  border-radius: 2px; font: 500 8.5px/1 var(--mono); letter-spacing: .16em;
+  color: var(--dim); vertical-align: 2px;
+}
 .card .en { font: 500 8.5px/1 var(--mono); letter-spacing: .16em; color: var(--dim); margin-top: 5px; text-transform: uppercase; }
 .card .ds { font: 400 11.5px/1.65 var(--sans); color: var(--steel); margin-top: 9px; }
 .card.on::after {
@@ -631,7 +637,7 @@ export class Menu {
 
   _deployButtonHTML() {
     return `<button class="deploy" data-deploy>出撃
-      <span class="sub">${esc(GAME_MODES[this.sel.mode].nameJa)} — コンパウンド</span></button>`;
+      <span class="sub">${esc(GAME_MODES[this.sel.mode].nameJa)} — ${esc(MAP_LIST.find((m) => m.id === this.sel.map)?.nameJa || '')}</span></button>`;
   }
 
   _deployHTML() {
@@ -641,6 +647,18 @@ export class Menu {
         <div class="nm">${m.nameJa}</div>
         <div class="en">${m.name}</div>
         <div class="ds">${m.desc}</div>
+      </button>`).join('');
+
+    /*
+     * レベルの一覧。
+     * 検証用のテストベッドには印を付けて、対戦向けと取り違えないようにする。
+     */
+    const maps = MAP_LIST.map((m) => `
+      <button class="card ${this.sel.map === m.id ? 'on' : ''}" data-map="${m.id}">
+        ${m.utility ? ICONS.settings({ size: 20 }) : ICONS.map({ size: 20 })}
+        <div class="nm">${esc(m.nameJa)}${m.utility ? '<span class="tag">検証用</span>' : ''}</div>
+        <div class="en">${esc(m.name)}</div>
+        <div class="ds">${esc(m.desc)}</div>
       </button>`).join('');
 
     /** 拡散半径（ラジアン）を人が読める表現へ */
@@ -662,13 +680,7 @@ export class Menu {
 
     return `
       <div class="sec"><h2>ゲームモード</h2><div class="cards">${modes}</div></div>
-      <div class="sec"><h2>マップ</h2><div class="cards">
-        <button class="card on" data-map="compound">
-          ${ICONS.map({ size: 20 })}
-          <div class="nm">コンパウンド</div><div class="en">COMPOUND</div>
-          <div class="ds">砂漠地帯の廃棄されたコンパウンド。西のコンテナ置き場・中央の主屋・東の市場通りによる 3 レーン構造。</div>
-        </button>
-      </div></div>
+      <div class="sec"><h2>マップ</h2><div class="cards">${maps}</div></div>
       <div class="sec"><h2>敵の練度</h2><div class="cards">${diffs}</div></div>
       <div class="sec">${this._deployButtonHTML()}</div>`;
   }
@@ -857,6 +869,10 @@ export class Menu {
     if (page === 'deploy') {
       p.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
         this.sel.mode = b.dataset.mode;
+        this._renderPage('deploy');
+      }));
+      p.querySelectorAll('[data-map]').forEach((b) => b.addEventListener('click', () => {
+        this.sel.map = b.dataset.map;
         this._renderPage('deploy');
       }));
       p.querySelectorAll('[data-diff]').forEach((b) => b.addEventListener('click', () => {
