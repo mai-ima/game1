@@ -175,6 +175,13 @@ export class Game {
     // ボット生成（フレームを跨ぎながら 1 体ずつ）
     await this._spawnBots(cfg.botCount ?? 7, cfg.botWeapons, onProgress);
 
+    /*
+     * 影の方針はボットを作ってから適用する。
+     * マップ構築の直後だと人物がまだ居らず、部位メッシュに
+     * 方針が行き渡らない（影パスの大半は人物なので効果が出ない）。
+     */
+    this.engine.applyShadowCasterPolicy(this.engine.lightweight);
+
     // 試合中のカクつきを避けるため、シェーダはここで作り切っておく
     onProgress(0.95, 'シェーダを準備中');
     await nextFrame();
@@ -408,8 +415,9 @@ export class Game {
       }
       // 曳光弾（数発に1発）
       const pellets = def.pellets || 1;
+      const tracerP = this.engine.lightweight ? 0.6 : 1.0;
       for (const h of hits) {
-        if (Math.random() < (pellets > 1 ? 0.35 : 0.42)) {
+        if (Math.random() < (pellets > 1 ? 0.35 : 0.42) * tracerP) {
           this.effects.tracer(muzzle, h.point, def.muzzleVelocity);
         }
       }
@@ -482,7 +490,9 @@ export class Game {
     const first = cands[0];
 
     const endPoint = first ? (first.data.point) : _v.copy(origin).addScaledVector(dir, 120).clone();
-    if (Math.random() < 0.5) this.effects.tracer(muzzle, endPoint, weapon.muzzleVelocity);
+    if (Math.random() < (this.engine.lightweight ? 0.3 : 0.5)) {
+      this.effects.tracer(muzzle, endPoint, weapon.muzzleVelocity);
+    }
     this.audio?.playShot(weapon, muzzle, false, true);
 
     // 周囲のボットに銃声を届ける（音は「気にする方向」として扱われる）
@@ -640,10 +650,22 @@ export class Game {
     }
 
     // --- ボット ---
+    /*
+     * 思考の間引きと影の距離は描画設定に合わせる。
+     * 内蔵 GPU 向けの設定では、近くのボットだけ毎フレーム考えさせ、
+     * 遠いボットは 20Hz / 10Hz に落とす。索敵は敵の人数ぶん
+     * レイキャストを撃つので、ここが CPU 側では一番効く。
+     */
     const camPos = this.engine.camera.position;
+    const lw = this.engine.lightweight;
+    const near2 = lw ? 18 * 18 : 40 * 40;
+    const mid2 = lw ? 40 * 40 : 90 * 90;
+    const shadowDist = lw ? 16 : 26;
     for (const b of this.bots) {
-      b.update(dt, this);
-      b.updateShadowLod(camPos);
+      const d2 = b.char.position.distanceToSquared(camPos);
+      const lod = d2 < near2 ? 0 : (d2 < mid2 ? 1 : 2);
+      b.update(dt, this, lod);
+      b.updateShadowLod(camPos, shadowDist);
       // respawnTimer は Bot.update 内で加算される
       if (!b.alive && b.respawnTimer > 5.5 && !this.matchOver
           && (this.mode?.allowRespawn ? this.mode.allowRespawn(b.team) : true)) {

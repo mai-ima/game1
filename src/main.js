@@ -135,6 +135,7 @@ async function main() {
        */
       try {
         game.update(dt);
+        hud.lightweight = engine.lightweight;
         updateHud(game, hud, mobile, dt);
         audio.setListener(engine.camera.position);
       } catch (err) {

@@ -757,10 +757,11 @@ export class Menu {
         ${range('fov', '視野角', '一度に見渡せる角度。広げるほど周囲の敵に気づきやすくなる反面、遠くの敵が小さく写る。', 65, 110, 1, s.fov, (v) => `${v}°`)}
         ${seg('quality', '画質', '影・ブルーム・環境遮蔽・アンチエイリアスと描画解像度をまとめて切り替える。下の表が各段階の内訳。', [
           { v: 'low', l: '低' }, { v: 'medium', l: '中' }, { v: 'high', l: '高' }, { v: 'ultra', l: '最高' },
+          { v: 'igpu', l: '内蔵GPU' },
         ], s.quality)}
         <table class="qtable">
           <thead><tr><th>段階</th><th>影</th><th>光の滲み</th><th>環境遮蔽</th><th>輪郭処理</th><th>解像度</th></tr></thead>
-          <tbody>${['low', 'medium', 'high', 'ultra'].map(qRow).join('')}</tbody>
+          <tbody>${['low', 'medium', 'high', 'ultra', 'igpu'].map(qRow).join('')}</tbody>
         </table>
         <div class="note">${QUALITY_INFO[s.quality]?.desc || ''}</div>
 

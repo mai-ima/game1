@@ -282,12 +282,29 @@ export class Bot {
    */
   updateShadowLod(cameraPos, maxDist = 26) {
     const on = this.alive && this.char.position.distanceToSquared(cameraPos) < maxDist * maxDist;
-    if (on === this._shadowOn) return;
+    // 影の代役が有効なら、部位ではなくそちらに影を担わせる
+    const proxy = this.char.model.userData.shadowProxy;
+    const viaProxy = !!(proxy && proxy.visible);
+    if (on === this._shadowOn && viaProxy === this._shadowViaProxy) return;
     this._shadowOn = on;
-    this.char.model.traverse((o) => { if (o.isMesh) o.castShadow = on; });
+    this._shadowViaProxy = viaProxy;
+    this.char.model.traverse((o) => {
+      if (!o.isMesh) return;
+      if (o.userData.shadowProxy) { o.castShadow = on; return; }
+      o.castShadow = viaProxy ? false : on;
+    });
   }
 
-  update(dt, world) {
+  /**
+   * @param {number} lod 思考の間引き段階。0=毎フレーム 1=20Hz 2=10Hz
+   *
+   * 索敵（_perceive）は敵の人数ぶんレイキャストを撃つため、
+   * ボットの処理の中で群を抜いて重い。遠くのボットまで毎フレーム
+   * 回す必要はないので、距離に応じて間隔を空ける。
+   * 移動・照準・射撃は毎フレーム回すので、見た目の滑らかさや
+   * 撃ち合いの手触りは変わらない。
+   */
+  update(dt, world, lod = 0) {
     if (!this.alive) {
       this.char.update(dt, false);
       this.respawnTimer += dt;
@@ -296,8 +313,18 @@ export class Bot {
       return;
     }
 
-    this._perceive(dt, world);
-    this._think(dt, world);
+    if (lod > 0) {
+      this._thinkAcc = (this._thinkAcc || 0) + dt;
+      const interval = lod === 1 ? 0.05 : 0.1;
+      if (this._thinkAcc >= interval) {
+        this._perceive(this._thinkAcc, world);
+        this._think(this._thinkAcc, world);
+        this._thinkAcc = 0;
+      }
+    } else {
+      this._perceive(dt, world);
+      this._think(dt, world);
+    }
     this._move(dt);
     this._aim(dt);
     this._shoot(dt, world);

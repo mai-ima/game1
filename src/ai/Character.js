@@ -316,7 +316,39 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
   }
 
   root.userData.bones = { hips, spine, chest, neck, head, armL, armR, foreL, foreR, legL, legR, shinL, shinR };
-  root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    o.userData.keepShadow = true;      // 影の間引きは下のプロキシで行う
+  });
+
+  /*
+   * 影だけを落とす代役。
+   *
+   * 兵士 1 体は部位ごとに約 30 メッシュあり、7 体いると影パスだけで
+   * 200 を超えるドローコールになる（実測では影を落とすメッシュ 126 個の
+   * うち 99 個が人物の部位だった）。
+   * 影の形は人型のシルエットが分かれば十分なので、
+   * 軽量モードではこのカプセル 1 個に肩代わりさせる。
+   *
+   * colorWrite を切ってあるので通常の描画では何も書かない。
+   * visible を false にすると three は影パスでも飛ばしてしまうため、
+   * 「見えているが色を書かないメッシュ」として置く必要がある。
+   */
+  const proxy = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.30, 1.02, 3, 10),
+    new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })
+  );
+  proxy.name = 'shadowProxy';
+  proxy.position.y = 0.92;
+  proxy.castShadow = true;
+  proxy.receiveShadow = false;
+  proxy.visible = false;               // 既定（高画質側）では使わない
+  proxy.userData.shadowProxy = true;
+  root.add(proxy);
+  root.userData.shadowProxy = proxy;
+
   return root;
 }
 
@@ -395,6 +427,15 @@ export class Character {
 
   get eyeHeight() { return this.stance ? 1.06 : 1.62; }
 
+  /** 影の代役の高さを姿勢に合わせる */
+  _updateShadowProxy() {
+    const p = this.model.userData.shadowProxy;
+    if (!p || !p.visible) return;
+    const crouch = this.stance ? 0.66 : 1.0;
+    p.scale.set(1, crouch, 1);
+    p.position.y = 0.92 * crouch;
+  }
+
   /** 目の位置（射撃・視線の基点） */
   getEyePosition(out = new THREE.Vector3()) {
     return out.set(this.position.x, this.position.y + this.eyeHeight, this.position.z);
@@ -461,6 +502,7 @@ export class Character {
     const B = this.bones;
     this.model.position.copy(this.position);
     this.model.rotation.y = this.yaw;
+    this._updateShadowProxy();
 
     if (!this.alive) {
       this._deathT += dt;

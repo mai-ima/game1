@@ -802,7 +802,8 @@ export class HUD {
    */
   updateMinimap(state) {
     const now = performance.now();
-    if (now - (this._miniAt || 0) < 33) return;
+    // 軽量モードではさらに広げる（20Hz）
+    if (now - (this._miniAt || 0) < (this.lightweight ? 50 : 33)) return;
     this._miniAt = now;
     this.minimap.draw(state);
   }

@@ -56,5 +56,5 @@ const shoot = async (quality, label) => {
   await page.close();
 };
 
-for (const q of ['low', 'medium', 'high', 'ultra']) await shoot(q, q);
+for (const q of ['low', 'medium', 'high', 'ultra', 'igpu']) await shoot(q, q);
 await browser.close();

@@ -8,7 +8,8 @@ import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
-import { CompositeShader, RadialBlurShader } from '../render/PostFX.js';
+import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
+import { CompositeShader, RadialBlurShader, FusedFinalShader, BloomThresholdShader, BlurDirShader } from '../render/PostFX.js';
 
 /**
  * 画質プリセット。
@@ -27,6 +28,23 @@ export const QUALITY = {
   medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.85 },
   high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.85 },
   ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 3072, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 85, texSize: 1024, bloomScale: 1.0,  minScale: 0.85 },
+
+  /*
+   * 内蔵 GPU 専用（Intel UHD / 第 10 世代 Core i5 相当）。
+   *
+   * この種の GPU で効くのは「解像度を落とすこと」より
+   * 「全画面パスの本数を減らすこと」。1920×1080 なら 1 パスにつき
+   * 200 万画素の読み書きが起き、帯域を CPU と共有するため
+   * パス数がそのままフレーム時間に乗る。
+   *
+   * そこで見た目を保つ要素（影・ブルーム・AA・色補正）は全部残したまま、
+   *   OutputPass + Composite + FXAA  → 1 パスに統合
+   *   UnrealBloom（11 パス）        → 1/4 解像度の 3 パスに置換
+   *   GTAO                          → 無効（半解像度でも 3 パス相当）
+   * とし、描画側もボットの更新間引きと影の距離短縮で軽くする。
+   */
+  igpu:   { pixelRatio: 1.0,  shadows: true,  shadowMap: 1024, gtao: false, bloom: true, aa: 'fxaa', aniso: 4,  shadowDist: 40, texSize: 512,  bloomScale: 0.25, minScale: 0.62,
+            fusedPost: true, cheapBloom: true, lightweight: true },
 };
 
 /** 画質プリセットの説明（設定画面に出す） */
@@ -35,7 +53,81 @@ export const QUALITY_INFO = {
   medium: { label: '中',   desc: '影 2048・SMAA・等倍以上の解像度。多くのノートPCで 60fps を狙える。' },
   high:   { label: '高',   desc: 'さらに環境遮蔽（GTAO）と高解像度テクスチャ。既定の推奨設定。' },
   ultra:  { label: '最高', desc: '影 3072・環境遮蔽・全解像度ブルーム。要 dGPU。' },
+  igpu:   { label: '内蔵GPU最適化', desc: 'Intel UHD など内蔵 GPU 向け。ポスト処理を 1 パスに統合し、影とブルームも残したまま負荷だけを落とす。' },
 };
+
+/**
+ * 軽量ブルーム。
+ *
+ * UnrealBloomPass は 5 段のミップを往復するため 11 パスになり、
+ * 統合 GPU ではそれだけでフレーム予算を使い切る。
+ * ここでは 1/4 解像度で「しきい値抽出 → 横ぼかし → 縦ぼかし」の
+ * 3 パスに畳む。ブルームは低周波なので、この解像度でも差は出ない。
+ *
+ * 結果は読み取り用テクスチャとして持ち、合成は統合最終パスに任せる
+ * （needsSwap = false なので、後段のパスは元の画像をそのまま受け取る）。
+ */
+class CheapBloomPass extends Pass {
+  constructor(w, h) {
+    super();
+    this.needsSwap = false;
+    const opt = {
+      type: THREE.HalfFloatType, format: THREE.RGBAFormat,
+      colorSpace: THREE.NoColorSpace, depthBuffer: false, stencilBuffer: false,
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+    };
+    this.rtA = new THREE.WebGLRenderTarget(w, h, opt);
+    this.rtB = new THREE.WebGLRenderTarget(w, h, opt);
+    this.thresholdMat = new THREE.ShaderMaterial({
+      uniforms: THREE.UniformsUtils.clone(BloomThresholdShader.uniforms),
+      vertexShader: BloomThresholdShader.vertexShader,
+      fragmentShader: BloomThresholdShader.fragmentShader,
+      depthTest: false, depthWrite: false,
+    });
+    this.blurMat = new THREE.ShaderMaterial({
+      uniforms: THREE.UniformsUtils.clone(BlurDirShader.uniforms),
+      vertexShader: BlurDirShader.vertexShader,
+      fragmentShader: BlurDirShader.fragmentShader,
+      depthTest: false, depthWrite: false,
+    });
+    this.quad = new FullScreenQuad(this.thresholdMat);
+  }
+
+  setSize(w, h) {
+    const ww = Math.max(4, Math.floor(w)), hh = Math.max(4, Math.floor(h));
+    this.rtA.setSize(ww, hh);
+    this.rtB.setSize(ww, hh);
+  }
+
+  get texture() { return this.rtA.texture; }
+
+  render(renderer, writeBuffer, readBuffer) {
+    const prevTarget = renderer.getRenderTarget();
+    this.thresholdMat.uniforms.tDiffuse.value = readBuffer.texture;
+    this.quad.material = this.thresholdMat;
+    renderer.setRenderTarget(this.rtA);
+    this.quad.render(renderer);
+
+    this.quad.material = this.blurMat;
+    this.blurMat.uniforms.tDiffuse.value = this.rtA.texture;
+    this.blurMat.uniforms.uTexel.value.set(1 / this.rtA.width, 0);
+    renderer.setRenderTarget(this.rtB);
+    this.quad.render(renderer);
+
+    this.blurMat.uniforms.tDiffuse.value = this.rtB.texture;
+    this.blurMat.uniforms.uTexel.value.set(0, 1 / this.rtA.height);
+    renderer.setRenderTarget(this.rtA);
+    this.quad.render(renderer);
+
+    renderer.setRenderTarget(prevTarget);
+  }
+
+  dispose() {
+    this.rtA.dispose(); this.rtB.dispose();
+    this.thresholdMat.dispose(); this.blurMat.dispose();
+    this.quad.dispose();
+  }
+}
 
 /**
  * 動的解像度が取りうる段階（プリセットの pixelRatio に対する倍率）。
@@ -57,6 +149,8 @@ const SAFE_MIN_INDEX = 2;
  */
 const TARGET_MS = 16.7;
 const DOWNSCALE_MS = 24.0;
+/** 軽量モードでは早めに解像度を落として GPU に余裕を残す */
+const DOWNSCALE_MS_LIGHT = 19.5;
 const UPSCALE_MS = 15.0;
 
 /**
@@ -92,6 +186,8 @@ export class Engine {
     this.ignoreSoftwareDowngrade = !!opts.ignoreSoftwareDowngrade;
     this.quality = QUALITY[quality] ? quality : 'high';
     const q = QUALITY[this.quality];
+    /** 軽量モード（内蔵 GPU 向け）。ゲーム側もこれを見て負荷を落とす */
+    this.lightweight = !!q.lightweight;
 
     /* ---------------- レンダラ ---------------- */
     this.renderer = new THREE.WebGLRenderer({
@@ -209,6 +305,90 @@ export class Engine {
 
   /* ================= 空・環境光 ================= */
 
+  /**
+   * 空をキューブマップへ焼いて背景に差し替える（軽量モード専用）。
+   *
+   * Sky.js の雲は 5 オクターブの FBM を 2 回まわす高価なフラグメント
+   * シェーダで、空が見えている画素ぶんだけ毎フレーム実行される。
+   * 実測では、この 1 メッシュだけでシーン描画の 2 割前後を占めていた。
+   *
+   * 雲は cloudSpeed 0.000045 とほぼ止まって見える速さなので、
+   * 一度焼いてしまっても違いは分からない。太陽の向きを変えたときだけ
+   * 焼き直せばよい。
+   */
+  bakeSky() {
+    if (!this.sky) return;
+    const rt = new THREE.WebGLCubeRenderTarget(512, {
+      type: THREE.HalfFloatType,
+      format: THREE.RGBAFormat,
+      colorSpace: THREE.NoColorSpace,
+      generateMipmaps: false,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+    });
+    const cam = new THREE.CubeCamera(0.1, 20000, rt);
+
+    // 空だけを写す
+    const hidden = [];
+    for (const c of this.scene.children) {
+      if (c !== this.sky && c.visible && !c.isLight) { c.visible = false; hidden.push(c); }
+    }
+    const prevBg = this.scene.background;
+    const prevTarget = this.renderer.getRenderTarget();
+    this.scene.background = null;
+    this.sky.visible = true;
+    cam.update(this.renderer, this.scene);
+    this.renderer.setRenderTarget(prevTarget);
+    for (const c of hidden) c.visible = true;
+
+    this._skyRT?.dispose();
+    this._skyRT = rt;
+    this.sky.visible = false;
+    this.scene.background = rt.texture;
+    void prevBg;
+  }
+
+  /**
+   * 影を落とすメッシュを絞る（軽量モード専用）。
+   *
+   * 影パスはシーンをもう一度描くのと同じで、実測では
+   * 156 ドローコール中 126 が影のためだった。
+   * ただし小物の影は画面に占める面積が小さく、無くても
+   * 「影が消えた」とは気づきにくい。建物・車両・人物といった
+   * 大きなものだけに絞れば、見た目をほぼ保ったまま影パスが軽くなる。
+   *
+   * @param {boolean} on true で絞る / false で元に戻す
+   * @param {number} minSize これ以上の大きさ（m）なら影を落とす
+   */
+  applyShadowCasterPolicy(on, minSize = 1.7) {
+    const box = new THREE.Box3();
+    const size = new THREE.Vector3();
+    this.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      /*
+       * 人物は部位ごとに 30 メッシュあるので、
+       * 軽量モードでは影を代役のカプセル 1 個へ集約する。
+       */
+      if (o.userData.shadowProxy) { o.visible = on; return; }
+      if (o.userData.keepShadow) { o.castShadow = !on; return; }
+      if (o.userData._castShadow0 === undefined) o.userData._castShadow0 = o.castShadow;
+      if (!on) { o.castShadow = o.userData._castShadow0; return; }
+      if (!o.userData._castShadow0) { o.castShadow = false; return; }
+      box.setFromObject(o);
+      box.getSize(size);
+      o.castShadow = Math.max(size.x, size.y, size.z) >= minSize;
+    });
+  }
+
+  /** 焼いた空を捨てて、毎フレーム計算する Sky に戻す */
+  unbakeSky() {
+    if (!this._skyRT) return;
+    this.scene.background = null;
+    this._skyRT.dispose();
+    this._skyRT = null;
+    if (this.sky) this.sky.visible = true;
+  }
+
   _setupSky() {
     const sky = new Sky();
     sky.scale.setScalar(6000);
@@ -319,6 +499,8 @@ export class Engine {
     this._skyMaxRadiance.value = prevMax;
 
     this.scene.environment = this.envRT.texture;
+    // 軽量モードでは空を焼き直す（太陽の向きが変わったため）
+    if (this.lightweight) this.bakeSky();
     this.scene.environmentIntensity = 1.0;
     this.viewScene.environment = this.envRT.texture;
     this._sunDirty = false;
@@ -403,6 +585,7 @@ export class Engine {
     const q = QUALITY[this.quality];
     // 作り直すので、前回のパス参照は必ず捨てる
     this.gtaoPass = null; this.bloomPass = null; this.smaaPass = null; this.fxaaPass = null;
+    this.cheapBloomPass = null; this.fusedPass = null;
 
     const size = this.renderer.getSize(new THREE.Vector2());
     const pr = this.renderer.getPixelRatio();
@@ -461,15 +644,24 @@ export class Engine {
      */
     if (q.bloom) {
       const bs = q.bloomScale ?? 0.5;
-      const bloom = new UnrealBloomPass(
-        new THREE.Vector2(Math.max(4, Math.floor(w * bs)), Math.max(4, Math.floor(h * bs))),
-        0.22,   // 強さ
-        0.40,   // 半径（広いほど画面全体へ延びる）
-        2.20    // しきい値（リニア輝度）
-      );
-      this.composer.addPass(bloom);
-      this.bloomPass = bloom;
       this._bloomScale = bs;
+      if (q.cheapBloom) {
+        // 統合 GPU 向け: 1/4 解像度で 3 パス（結果は統合最終パスが合成する）
+        const cb = new CheapBloomPass(Math.max(4, Math.floor(w * bs)), Math.max(4, Math.floor(h * bs)));
+        cb.thresholdMat.uniforms.uThreshold.value = 2.20;
+        cb.thresholdMat.uniforms.uKnee.value = 0.60;
+        this.composer.addPass(cb);
+        this.cheapBloomPass = cb;
+      } else {
+        const bloom = new UnrealBloomPass(
+          new THREE.Vector2(Math.max(4, Math.floor(w * bs)), Math.max(4, Math.floor(h * bs))),
+          0.22,   // 強さ
+          0.40,   // 半径（広いほど画面全体へ延びる）
+          2.20    // しきい値（リニア輝度）
+        );
+        this.composer.addPass(bloom);
+        this.bloomPass = bloom;
+      }
     }
 
     // --- 径方向モーションブラー ---
@@ -479,6 +671,28 @@ export class Engine {
     this.blurPass.enabled = false;
     this.motionBlurAllowed = this._motionBlurAllowed ?? true;
     this.composer.addPass(this.blurPass);
+
+    if (q.fusedPost) {
+      /*
+       * トーンマップ・sRGB 変換・色補正・FXAA・ブルーム合成を 1 パスに畳む。
+       * 内訳は通常経路の OutputPass + Composite + FXAA (+ブルーム合成) に
+       * 相当し、全画面パスが 3〜4 本から 1 本になる。
+       * 統合 GPU ではこれがそのままフレーム時間の差になる。
+       */
+      const fused = new ShaderPass(FusedFinalShader);
+      fused.uniforms.uResolution.value.set(w, h);
+      fused.uniforms.uExposure.value = this.renderer.toneMappingExposure;
+      fused.uniforms.uFxaa.value = q.aa === 'none' ? 0 : 1;
+      if (this.cheapBloomPass) {
+        fused.uniforms.tBloom.value = this.cheapBloomPass.texture;
+        fused.uniforms.uBloomStrength.value = 0.22;
+      }
+      this.composer.addPass(fused);
+      // 既存コードは compositePass 越しに色補正の uniform を触るので同じ名前で持たせる
+      this.compositePass = fused;
+      this.fusedPass = fused;
+      return;
+    }
 
     // --- トーンマップ + sRGB 変換 ---
     this.composer.addPass(new OutputPass());
@@ -578,7 +792,8 @@ export class Engine {
     this._scaleCooldown -= raw / 1000;
     if (this._scaleCooldown > 0) return;
 
-    if (this._frameMs > DOWNSCALE_MS) {
+    const downMs = this.lightweight ? DOWNSCALE_MS_LIGHT : DOWNSCALE_MS;
+    if (this._frameMs > downMs) {
       /*
        * 描画時間はおおむね画素数に比例するので、必要な縮小率は
        * sqrt(目標時間 / 実測時間)。1 段ずつ下げると重い端末では
@@ -638,6 +853,11 @@ export class Engine {
     if (!QUALITY[name] || name === this.quality) return;
     this.quality = name;
     const q = QUALITY[name];
+    const wasLight = this.lightweight;
+    this.lightweight = !!q.lightweight;
+    if (this.lightweight && !wasLight) this.bakeSky();
+    else if (!this.lightweight && wasLight) this.unbakeSky();
+    if (this.lightweight !== wasLight) this.applyShadowCasterPolicy(this.lightweight);
 
     this._scaleIdx = 1;
     this._frameMs = TARGET_MS;
@@ -681,6 +901,11 @@ export class Engine {
     this.compositePass?.uniforms.uResolution.value.set(pw, ph);
     // GTAO とブルームは縮小解像度で動かしているので、その比率を保つ
     this.gtaoPass?.setSize(Math.max(2, Math.floor(pw * 0.5)), Math.max(2, Math.floor(ph * 0.5)));
+    if (this.cheapBloomPass) {
+      const bs = this._bloomScale ?? 0.25;
+      this.cheapBloomPass.setSize(Math.floor(pw * bs), Math.floor(ph * bs));
+      if (this.fusedPass) this.fusedPass.uniforms.tBloom.value = this.cheapBloomPass.texture;
+    }
     if (this.bloomPass) {
       const bs = this._bloomScale ?? 0.5;
       this.bloomPass.setSize(Math.max(4, Math.floor(pw * bs)), Math.max(4, Math.floor(ph * bs)));
@@ -697,7 +922,11 @@ export class Engine {
    */
   tune(o = {}) {
     if (o.skyScale !== undefined) this._skyScale.value = o.skyScale;
-    if (o.exposure !== undefined) this.renderer.toneMappingExposure = o.exposure;
+    if (o.exposure !== undefined) {
+      this.renderer.toneMappingExposure = o.exposure;
+      // 統合パスは自前でトーンマップするので露出も渡し直す
+      if (this.fusedPass) this.fusedPass.uniforms.uExposure.value = o.exposure;
+    }
     if (o.sunIntensity !== undefined) this.sun.intensity = o.sunIntensity;
     if (o.hemiIntensity !== undefined) this.hemi.intensity = o.hemiIntensity;
     if (o.fillIntensity !== undefined) this.fill.intensity = o.fillIntensity;
@@ -742,6 +971,20 @@ export class Engine {
     }
 
     this._updateAutoResolution(dt);
+
+    /*
+     * 影の更新を 1 フレームおきにする（軽量モードのみ）。
+     * シャドウマップへの描画はシーン全体をもう一度描くのと同じで、
+     * 統合 GPU ではフレーム時間の 2〜3 割を占める。
+     * 動くのはボットと自機だけなので、30Hz で更新しても
+     * 影が遅れているとは分からない。
+     */
+    if (this.lightweight) {
+      this._shadowTick = ((this._shadowTick || 0) + 1) % 2;
+      this.renderer.shadowMap.autoUpdate = this._shadowTick === 0;
+    } else if (this.renderer.shadowMap.autoUpdate === false) {
+      this.renderer.shadowMap.autoUpdate = true;
+    }
 
     this.renderer.info.reset();
     this.composer.render(dt);

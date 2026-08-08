@@ -63,13 +63,50 @@ export class Settings {
   }
 
   /** 端末に応じた初期画質を推定する */
-  static suggestQuality() {
+  /**
+   * GPU 名を取得する。
+   *
+   * 使い捨ての WebGL コンテキストから UNMASKED_RENDERER_WEBGL を読む。
+   * 例: "ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 ...)"
+   * 取れないブラウザもあるので、空文字を返しても動くようにしておく。
+   */
+  static detectGpu() {
+    try {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl2') || c.getContext('webgl');
+      if (!gl) return '';
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      const name = String(
+        (ext && gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || ''
+      );
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      return name;
+    } catch {
+      return '';
+    }
+  }
+
+  /** Intel の内蔵 GPU か（UHD / HD Graphics / Iris 系） */
+  static isIntelIgpu(gpu) {
+    if (!gpu) return false;
+    // Arc は独立 GPU なので除外する
+    if (/Intel.*Arc/i.test(gpu)) return false;
+    return /Intel/i.test(gpu) && /(UHD|HD Graphics|Iris)/i.test(gpu);
+  }
+
+  static suggestQuality(gpu = Settings.detectGpu()) {
     const dm = navigator.deviceMemory || 4;
     const hc = navigator.hardwareConcurrency || 4;
     const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     // 端末性能は事前に当てられない。実際のフレーム時間を見て
     // エンジン側の動的解像度が上下させるので、推奨値は強気に取る。
     if (mobile) return (dm >= 6 && hc >= 6) ? 'high' : 'medium';
+    /*
+     * Intel の内蔵 GPU は専用プリセットへ。
+     * 「高」や「中」でも動きはするが、全画面パスの本数が効くので
+     * 同じ見た目のまま統合パスに切り替えたほうが速い。
+     */
+    if (Settings.isIntelIgpu(gpu)) return 'igpu';
     if (dm >= 8 && hc >= 8) return 'ultra';
     if (dm >= 4) return 'high';
     return 'medium';
