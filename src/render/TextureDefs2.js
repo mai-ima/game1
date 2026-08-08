@@ -963,6 +963,318 @@ export const DEFS2 = {
     o.ao = clamp01(0.62 + tuft * 0.3);
   },
 
+  /* ================================================================
+   *  自然物・屋外
+   * ================================================================ */
+
+  /* --- 草地 --- */
+  grass(u, v, o, S) {
+    // 葉の向きを揃えすぎると芝生に見えないので、房ごとに向きを変える
+    const clump = fbm(u * 7, v * 7, { octaves: 5, period: 7, seed: S });
+    const dir = fbm(u * 3, v * 3, { octaves: 3, period: 3, seed: S + 5 });
+    const blade = valueNoise(u * 300 + dir * 40, v * 90, 300, S + 11);
+    const blade2 = valueNoise(u * 120, v * 340 - dir * 30, 340, S + 23);
+    const dry = smoothstep(0.55, 0.9, fbm(u * 4, v * 4, { octaves: 4, period: 4, seed: S + 37 }));
+    const bare = smoothstep(0.72, 0.94, fbm(u * 5, v * 5, { octaves: 5, period: 5, seed: S + 53 }));
+
+    let l = 0.070 + clump * 0.030 + blade * 0.022 + blade2 * 0.016;
+    let r = l * 0.60, g = l * 1.0, b = l * 0.38;
+    // 枯れ
+    r = mix(r, l * 1.05, dry); g = mix(g, l * 0.90, dry); b = mix(b, l * 0.42, dry);
+    // 土が見える部分
+    r = mix(r, 0.085, bare); g = mix(g, 0.066, bare); b = mix(b, 0.046, bare);
+    o.r = r; o.g = g; o.b = b;
+    o.h = blade * 0.5 + blade2 * 0.35 + clump * 0.15;
+    o.rough = clamp01(0.90 + blade * 0.08);
+    o.metal = 0;
+    o.ao = clamp01(0.60 + clump * 0.32);
+  },
+
+  /* --- 葉むら（植栽・生垣） --- */
+  foliage(u, v, o, S) {
+    // 葉 1 枚ずつをセルで作り、重なりで陰影を出す
+    const c = worley(u * 26, v * 26, 26, S, 1);
+    const leaf = smoothstep(0.34, 0.10, c.f1);
+    const id = hash01(u, v, 26, S);
+    const vein = 1 - smoothstep(0.0, 0.035, voronoiEdge(u * 26, v * 26, 26, S, 1));
+    const depth = fbm(u * 5, v * 5, { octaves: 5, period: 5, seed: S + 19 });
+    const sun = smoothstep(0.45, 0.95, depth);
+
+    let l = 0.055 + leaf * 0.030 + id * 0.020 + sun * 0.028;
+    let r = l * 0.52, g = l * 1.0, b = l * 0.34;
+    // 内側の葉は暗く青みがかる
+    r = mix(r * 0.55, r, sun); g = mix(g * 0.62, g, sun); b = mix(b * 0.75, b, sun);
+    o.r = r; o.g = g; o.b = b;
+    o.h = leaf * 0.7 - vein * 0.2 + depth * 0.2;
+    o.rough = clamp01(0.72 + leaf * 0.14);
+    o.metal = 0;
+    o.ao = clamp01(0.45 + leaf * 0.3 + sun * 0.25);
+  },
+
+  /* --- 樹皮 --- */
+  bark(u, v, o, S) {
+    // 縦に裂けた溝。ドメインワープで直線的になりすぎるのを防ぐ
+    const [wx, wy] = warp(u * 6, v * 2.2, 0.5, { octaves: 3, period: 6, seed: S });
+    const crack = 1 - smoothstep(0.0, 0.06, Math.abs(fbmP(wx, wy, { octaves: 5, period: 6, seed: S + 3 }) - 0.5));
+    const ridge = ridged(u * 9, v * 2.5, { octaves: 4, period: 9, seed: S + 11 });
+    const grain = valueNoise(u * 200, v * 60, 200, S + 23);
+    const moss = smoothstep(0.70, 0.94, fbm(u * 6, v * 6, { octaves: 4, period: 6, seed: S + 41 }));
+
+    let l = 0.062 + ridge * 0.040 + grain * 0.016 - crack * 0.035;
+    let r = l * 1.0, g = l * 0.82, b = l * 0.62;
+    r = mix(r, l * 0.60, moss); g = mix(g, l * 0.92, moss); b = mix(b, l * 0.48, moss);
+    o.r = r; o.g = g; o.b = b;
+    o.h = ridge * 0.6 + grain * 0.15 - crack * 0.8;
+    o.rough = clamp01(0.92 + grain * 0.06);
+    o.metal = 0;
+    o.ao = clamp01(0.82 - crack * 0.42);
+  },
+
+  /* --- 水面（浅い水たまり・水路） --- */
+  water(u, v, o, S) {
+    // さざ波を 2 方向重ねる
+    const a = fbm(u * 9 + 0.0, v * 9, { octaves: 4, period: 9, seed: S });
+    const b2 = fbm(u * 14 - 3.0, v * 11, { octaves: 4, period: 14, seed: S + 7 });
+    const ripple = (a * 0.6 + b2 * 0.4);
+    const debris = smoothstep(0.86, 0.99, fbm(u * 30, v * 30, { octaves: 3, period: 30, seed: S + 29 }));
+    const l = 0.052 + ripple * 0.020;
+    o.r = l * 0.62; o.g = l * 0.86; o.b = l * 1.0;
+    o.h = ripple * 0.55 + debris * 0.15;
+    o.rough = clamp01(0.04 + ripple * 0.05 + debris * 0.5);
+    o.metal = 0;
+    o.ao = 1;
+  },
+
+  /* ================================================================
+   *  街路・汚れ・掲示物
+   * ================================================================ */
+
+  /* --- 落書き（壁のスプレー） --- */
+  graffiti(u, v, o, S) {
+    // 太いストロークを数本引く。文字にはせず、色と勢いだけを出す
+    const [wx, wy] = warp(u * 3, v * 3, 1.1, { octaves: 3, period: 3, seed: S });
+    // 線は細く。被覆率を上げると壁面ではなく「塗り絵」に見える
+    const s1 = 1 - smoothstep(0.0, 0.042, Math.abs(fbmP(wx, wy, { octaves: 3, period: 3, seed: S + 5 }) - 0.52));
+    const s2 = 1 - smoothstep(0.0, 0.026, Math.abs(fbmP(wx * 1.7, wy * 1.7, { octaves: 3, period: 5, seed: S + 19 }) - 0.44));
+    const s3 = 1 - smoothstep(0.0, 0.018, Math.abs(fbmP(wx * 2.6, wy * 2.6, { octaves: 3, period: 8, seed: S + 37 }) - 0.58));
+    const mist = fbm(u * 40, v * 40, { octaves: 3, period: 40, seed: S + 53 });
+    // 下地はくすんだコンクリート
+    const base = 0.255 + fbm(u * 6, v * 6, { octaves: 5, period: 6, seed: S + 61 }) * 0.045;
+    let r = base, g = base * 0.995, b = base * 0.98;
+    // 3 色のスプレー
+    r = mix(r, 0.055 + mist * 0.02, s1); g = mix(g, 0.135 + mist * 0.02, s1); b = mix(b, 0.230 + mist * 0.02, s1);
+    r = mix(r, 0.240, s2 * 0.9); g = mix(g, 0.055, s2 * 0.9); b = mix(b, 0.075, s2 * 0.9);
+    r = mix(r, 0.235, s3 * 0.85); g = mix(g, 0.215, s3 * 0.85); b = mix(b, 0.045, s3 * 0.85);
+    o.r = r; o.g = g; o.b = b;
+    // 塗膜はごく薄いので凹凸はほぼ無い
+    o.h = mist * 0.15;
+    o.rough = clamp01(0.86 - (s1 + s2 + s3) * 0.16 + mist * 0.06);
+    o.metal = 0;
+    o.ao = 0.95;
+  },
+
+  /* --- 油染み（駐車場・工場の床） --- */
+  oilStain(u, v, o, S) {
+    const grit = worley(u * 60, v * 60, 60, S, 1).f1;
+    const stone = smoothstep(0.24, 0.06, grit);
+    const base = 0.090 + fbm(u * 8, v * 8, { octaves: 5, period: 8, seed: S + 3 }) * 0.030 + stone * 0.020;
+    // 染みは滲んだ縁を持つ
+    const blot = smoothstep(0.44, 0.72, fbm(u * 4, v * 4, { octaves: 5, period: 4, seed: S + 23 }));
+    const core = smoothstep(0.58, 0.80, fbm(u * 4, v * 4, { octaves: 5, period: 4, seed: S + 23 }));
+    const l = base * (1 - blot * 0.55);
+    o.r = l * (1 + core * 0.25); o.g = l * (1 - core * 0.05); o.b = l * (1 - core * 0.18);
+    o.h = stone * 0.5;
+    // 油の乗った部分は照りが出る
+    o.rough = clamp01(0.90 - blot * 0.55 - core * 0.20);
+    o.metal = 0;
+    o.ao = clamp01(0.88 - blot * 0.08);
+  },
+
+  /* --- 貼り紙だらけの壁 --- */
+  posterWall(u, v, o, S) {
+    const NX = 3, NY = 2;
+    const gx = u * NX, gy = v * NY;
+    const cx = Math.floor(gx), cy = Math.floor(gy);
+    const id = ((cx * 37 + cy * 71) % 53) / 53;
+    // 紙ごとに少しずれて貼られている
+    const ox = (id - 0.5) * 0.10, oy = ((id * 7) % 1 - 0.5) * 0.10;
+    const lx = gx - cx + ox, ly = gy - cy + oy;
+    const inside = smoothstep(0.06, 0.10, lx) * smoothstep(0.06, 0.10, 1 - lx)
+                 * smoothstep(0.06, 0.10, ly) * smoothstep(0.06, 0.10, 1 - ly);
+    // 破れ
+    const torn = smoothstep(0.55, 0.72, fbm((u + id) * 9, (v + id) * 9, { octaves: 4, period: 9, seed: S + cx + cy * 5 }));
+    const paper = inside * (1 - torn * 0.9);
+    const fiber = valueNoise(u * 260, v * 260, 260, S + 11);
+    const ink = smoothstep(0.55, 0.70, valueNoise(u * 60, v * 150, 60, S + cx * 13)) * paper;
+    const bandY = smoothstep(0.14, 0.18, ly) * (1 - smoothstep(0.34, 0.38, ly));
+
+    const wall = 0.230 + fbm(u * 7, v * 7, { octaves: 5, period: 7, seed: S + 71 }) * 0.035;
+    let r = wall, g = wall * 0.99, b = wall * 0.965;
+    const pl = 0.395 + fiber * 0.018;
+    r = mix(r, pl, paper); g = mix(g, pl * 0.99, paper); b = mix(b, pl * 0.95, paper);
+    // 見出しの帯と本文
+    r = mix(r, 0.185, paper * bandY * 0.9); g = mix(g, 0.055, paper * bandY * 0.9); b = mix(b, 0.050, paper * bandY * 0.9);
+    r = mix(r, 0.075, ink * 0.8); g = mix(g, 0.075, ink * 0.8); b = mix(b, 0.078, ink * 0.8);
+    o.r = r; o.g = g; o.b = b;
+    o.h = paper * 0.45 + fiber * 0.1;
+    o.rough = clamp01(0.88 - paper * 0.10);
+    o.metal = 0;
+    o.ao = clamp01(0.92 - (1 - inside) * 0.06);
+  },
+
+  /* --- 重度の錆（放置された鉄） --- */
+  rustHeavy(u, v, o, S) {
+    const layer = fbm(u * 5, v * 5, { octaves: 6, period: 5, seed: S });
+    const flake = worley(u * 24, v * 24, 24, S + 11, 1);
+    const scab = smoothstep(0.30, 0.12, flake.f1);
+    const edge = smoothstep(0.0, 0.05, voronoiEdge(u * 24, v * 24, 24, S + 11, 1));
+    const pit = smoothstep(0.14, 0.04, worley(u * 70, v * 70, 70, S + 29, 1).f1);
+    const grit = valueNoise(u * 300, v * 300, 300, S + 43);
+    // 錆は上から下へ流れる
+    const run = smoothstep(0.52, 0.90, fbm(u * 10, v * 2, { octaves: 4, period: 10, seed: S + 61 }));
+
+    let l = 0.095 + layer * 0.055 + scab * 0.030 + grit * 0.014 - pit * 0.030;
+    l = mix(l, l * 0.82, 1 - edge);
+    let r = l * 1.0, g = l * (0.52 + layer * 0.10), b = l * (0.28 + layer * 0.06);
+    r = mix(r, l * 1.1, run * 0.5); g = mix(g, l * 0.46, run * 0.5); b = mix(b, l * 0.24, run * 0.5);
+    o.r = r; o.g = g; o.b = b;
+    o.h = scab * 0.55 + grit * 0.2 - pit * 0.6 - (1 - edge) * 0.2;
+    o.rough = clamp01(0.93 + grit * 0.06);
+    o.metal = clamp01(0.20 - scab * 0.18);
+    o.ao = clamp01(0.72 + edge * 0.24 - pit * 0.2);
+  },
+
+  /* --- 網戸・防虫網 --- */
+  meshScreen(u, v, o, S) {
+    const N = 190;
+    const wx = Math.abs(((u * N) % 1) - 0.5);
+    const wy = Math.abs(((v * N) % 1) - 0.5);
+    const wire = Math.max(smoothstep(0.42, 0.28, wx), smoothstep(0.42, 0.28, wy));
+    const dust = fbm(u * 8, v * 8, { octaves: 4, period: 8, seed: S + 13 });
+    const l = (0.075 + dust * 0.020) * wire;
+    o.r = l; o.g = l * 1.01; o.b = l * 1.0;
+    o.h = wire * 0.6;
+    o.rough = clamp01(0.62 + dust * 0.24);
+    o.metal = clamp01(wire * 0.6);
+    o.ao = clamp01(0.28 + wire * 0.72);
+  },
+
+  /* --- 足場板（使い込まれた木の板） --- */
+  scaffoldPlank(u, v, o, S) {
+    const N = 3;                                    // 板の枚数
+    const row = Math.floor(v * N);
+    const ly = v * N - row;
+    const gap = (1 - smoothstep(0.0, 0.045, ly)) + (1 - smoothstep(0.0, 0.045, 1 - ly));
+    const id = ((row * 53) % 61) / 61;
+    const grain = fbm((u + id * 3) * 7, (v + id) * 220, { octaves: 4, period: 220, seed: S + row * 7 });
+    const ring = Math.abs(Math.sin((ly * 4.5 + grain * 3 + id * 9) * Math.PI));
+    const paint = smoothstep(0.55, 0.85, fbm(u * 5, v * 5, { octaves: 4, period: 5, seed: S + 31 }));
+    const cement = smoothstep(0.62, 0.92, fbm(u * 12, v * 12, { octaves: 4, period: 12, seed: S + 47 }));
+    const split = smoothstep(0.90, 0.99, ridged(u * 40, v * 6, { octaves: 3, period: 40, seed: S + 59 }));
+
+    let l = 0.185 + grain * 0.040 + ring * 0.030 - gap * 0.10 - split * 0.04;
+    let r = l * 1.0, g = l * 0.84, b = l * 0.62;
+    // 使い込まれてセメントや塗料が付いている
+    r = mix(r, l * 1.18, cement); g = mix(g, l * 1.20, cement); b = mix(b, l * 1.24, cement);
+    r = mix(r, l * 0.72, paint * 0.4); g = mix(g, l * 0.90, paint * 0.4); b = mix(b, l * 1.05, paint * 0.4);
+    o.r = r; o.g = g; o.b = b;
+    o.h = ring * 0.2 + grain * 0.25 - gap * 0.9 - split * 0.5;
+    o.rough = clamp01(0.86 + grain * 0.08 + cement * 0.08);
+    o.metal = 0;
+    o.ao = clamp01(0.88 - gap * 0.55);
+  },
+
+  /* --- 波板ポリカ（半透明の屋根材） --- */
+  corrugatedPlastic(u, v, o, S) {
+    const p = (u * 26) % 1;
+    const wave = Math.sin(p * Math.PI);
+    const scratch = smoothstep(0.86, 0.99, ridged(u * 12, v * 50, { octaves: 3, period: 50, seed: S }));
+    const dirt = fbm(u * 6, v * 3, { octaves: 5, period: 6, seed: S + 17 });
+    const leaf = smoothstep(0.82, 0.97, fbm(u * 14, v * 14, { octaves: 3, period: 14, seed: S + 37 }));
+
+    let l = 0.320 + wave * 0.026 - dirt * 0.075 - leaf * 0.06;
+    o.r = l * 1.0; o.g = l * 0.99; o.b = l * 0.93;
+    o.h = wave * 0.9;
+    o.rough = clamp01(0.12 + dirt * 0.42 + scratch * 0.28 + leaf * 0.3);
+    o.metal = 0;
+    o.ao = clamp01(0.78 + wave * 0.2);
+  },
+
+  /* --- テント地（日除け・露店） --- */
+  awningFabric(u, v, o, S) {
+    const N = 6;                                    // ストライプ
+    const stripe = Math.floor(u * N) % 2;
+    const weave = Math.abs(Math.sin(u * TAU * 190)) * 0.5 + Math.abs(Math.sin(v * TAU * 190)) * 0.5;
+    const fade = fbm(u * 3, v * 3, { octaves: 4, period: 3, seed: S + 11 });
+    const stain = smoothstep(0.68, 0.94, fbm(u * 7, v * 4, { octaves: 4, period: 7, seed: S + 29 }));
+
+    const base = 0.300 + weave * 0.022 - fade * 0.030 - stain * 0.045;
+    let r, g, b;
+    if (stripe) { r = base * 1.0; g = base * 0.98; b = base * 0.92; }      // 生成り
+    else { r = base * 0.92; g = base * 0.42; b = base * 0.30; }            // 赤
+    o.r = r; o.g = g; o.b = b;
+    o.h = weave * 0.55;
+    o.rough = clamp01(0.88 + weave * 0.08);
+    o.metal = 0;
+    o.ao = clamp01(0.80 + weave * 0.18);
+  },
+
+  /* --- 太陽光パネル --- */
+  solarPanel(u, v, o, S) {
+    const NX = 6, NY = 10;
+    const gx = u * NX, gy = v * NY;
+    const lx = gx - Math.floor(gx), ly = gy - Math.floor(gy);
+    const G = 0.035;
+    const cell = smoothstep(0, G, lx) * smoothstep(0, G, 1 - lx)
+               * smoothstep(0, G * NX / NY, ly) * smoothstep(0, G * NX / NY, 1 - ly);
+    // セル内の集電フィンガー
+    const finger = 1 - smoothstep(0.02, 0.05, Math.abs(((lx * 8) % 1) - 0.5));
+    const busbar = 1 - smoothstep(0.03, 0.06, Math.abs(ly - 0.5));
+    const dust = fbm(u * 9, v * 9, { octaves: 4, period: 9, seed: S + 19 });
+
+    let l = 0.030 + (1 - cell) * 0.10 + dust * 0.012;
+    let r = l * 0.72, g = l * 0.80, b = l * 1.0;   // 反射防止膜の青
+    const metalLine = clamp01((finger * 0.5 + busbar) * cell);
+    r = mix(r, 0.34, metalLine); g = mix(g, 0.345, metalLine); b = mix(b, 0.35, metalLine);
+    o.r = r; o.g = g; o.b = b;
+    o.h = (1 - cell) * 0.4 + metalLine * 0.2;
+    o.rough = clamp01(0.08 + dust * 0.42 + (1 - cell) * 0.3);
+    o.metal = clamp01(0.3 + metalLine * 0.65);
+    o.ao = clamp01(0.82 + cell * 0.18);
+  },
+
+  /* --- 古レンガ（角が丸く欠けた） --- */
+  brickOld(u, v, o, S) {
+    const NX = 4.5, NY = 13;
+    const row = Math.floor(v * NY);
+    const off = (row % 2) * 0.5;
+    const gx = (u + off / NX) * NX, gy = v * NY;
+    const cx = Math.floor(gx), cy = Math.floor(gy);
+    const lx = gx - cx, ly = gy - cy;
+    const id = hash01(u + off / NX, v, NX, S + row * 17);
+    // 角の欠けを輪郭に乗せる
+    const nibble = fbm((u + id) * 60, (v + id) * 60, { octaves: 3, period: 60, seed: S + cx + cy * 3 }) * 0.035;
+    const G = 0.045 + nibble;
+    const inside = smoothstep(0, G, lx) * smoothstep(0, G, 1 - lx)
+                 * smoothstep(0, G * NX / NY, ly) * smoothstep(0, G * NX / NY, 1 - ly);
+    const grit = fbm((u + id) * 150, (v + id) * 150, { octaves: 4, period: 150, seed: S + cx });
+    const spall = smoothstep(0.74, 0.92, fbm((u + id * 2) * 22, (v + id) * 22, { octaves: 3, period: 22, seed: S + 41 }));
+    const efflor = smoothstep(0.72, 0.95, fbm(u * 5, v * 5, { octaves: 4, period: 5, seed: S + 67 }));
+    const soot2 = smoothstep(0.60, 0.92, fbm(u * 3, v * 1.4, { octaves: 5, period: 3, seed: S + 83 }));
+
+    const brickL = 0.150 + id * 0.060 + grit * 0.035 - spall * 0.030;
+    const jointL = 0.225 + grit * 0.030;
+    let l = mix(jointL, brickL, inside);
+    l *= 1 - soot2 * 0.22;
+    let r = l * mix(1.0, 1.30, inside), g = l * mix(1.0, 0.72, inside), b = l * mix(0.96, 0.58, inside);
+    r = mix(r, l * 1.20, efflor); g = mix(g, l * 1.20, efflor); b = mix(b, l * 1.18, efflor);
+    o.r = r; o.g = g; o.b = b;
+    o.h = inside * 0.75 + grit * 0.15 - spall * 0.35;
+    o.rough = clamp01(0.90 + grit * 0.08);
+    o.metal = 0;
+    o.ao = clamp01(mix(0.40, 0.94, inside) - spall * 0.1);
+  },
+
   /* --- 泥（濡れて艶が出る） --- */
   mud(u, v, o, S) {
     const [wx, wy] = warp(u * 6, v * 6, 0.6, { octaves: 3, period: 6, seed: S });

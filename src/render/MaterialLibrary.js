@@ -155,6 +155,29 @@ const PRESETS = {
   soot:            { tex: 'soot',         repeat: 0.7,  params: { roughness: 1, metalness: 1 } },
   moss:            { tex: 'moss',         repeat: 1.4,  params: { roughness: 1, metalness: 1 } },
   mud:             { tex: 'mud',          repeat: 0.8,  params: { roughness: 1, metalness: 1 } },
+
+  /* ---- 自然物・屋外 ---- */
+  grass:           { tex: 'grass',        repeat: 1.1,  params: { roughness: 1, metalness: 1 } },
+  grassDry:        { tex: 'grass',        repeat: 1.1,  params: { roughness: 1, metalness: 1, color: 0xbdb178 }, seed: 240 },
+  foliage:         { tex: 'foliage',      repeat: 1.4,  params: { roughness: 1, metalness: 1 } },
+  bark:            { tex: 'bark',         repeat: 1.5,  params: { roughness: 1, metalness: 1 } },
+  water:           { tex: 'water',        repeat: 0.5,  params: { roughness: 1, metalness: 1 } },
+
+  /* ---- 街路の汚れ・掲示物 ---- */
+  graffiti:        { tex: 'graffiti',     repeat: 0.4,  params: { roughness: 1, metalness: 1 } },
+  oilStain:        { tex: 'oilStain',     repeat: 0.55, params: { roughness: 1, metalness: 1 } },
+  posterWall:      { tex: 'posterWall',   repeat: 0.45, params: { roughness: 1, metalness: 1 } },
+  rustHeavy:       { tex: 'rustHeavy',    repeat: 0.9,  params: { roughness: 1, metalness: 1 } },
+  brickOld:        { tex: 'brickOld',     repeat: 1.1,  params: { roughness: 1, metalness: 1 } },
+  brickOldGrey:    { tex: 'brickOld',     repeat: 1.1,  params: { roughness: 1, metalness: 1, color: 0x9c9a94 }, seed: 505 },
+
+  /* ---- 建材・什器（続き） ---- */
+  meshScreen:      { tex: 'meshScreen',   repeat: 2.2,  params: { roughness: 1, metalness: 1 } },
+  scaffoldPlank:   { tex: 'scaffoldPlank', repeat: 0.7, params: { roughness: 1, metalness: 1 } },
+  corrugatedPlastic: { tex: 'corrugatedPlastic', repeat: 0.6, params: { roughness: 1, metalness: 1 } },
+  awningFabric:    { tex: 'awningFabric', repeat: 0.55, params: { roughness: 1, metalness: 1 } },
+  awningGreen:     { tex: 'awningFabric', repeat: 0.55, params: { roughness: 1, metalness: 1, color: 0x7fa06a }, seed: 616 },
+  solarPanel:      { tex: 'solarPanel',   repeat: 0.55, params: { roughness: 1, metalness: 1 } },
 };
 
 /** テクスチャ無しの単色マテリアル定義 */

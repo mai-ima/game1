@@ -661,11 +661,18 @@ export class Game {
     const near2 = lw ? 18 * 18 : 40 * 40;
     const mid2 = lw ? 40 * 40 : 90 * 90;
     const shadowDist = lw ? 16 : 26;
+    /*
+     * 簡易モデルへ落とす距離（0 なら常に詳細）。
+     * 覗き込み中は画角が狭まって相手が大きく写るため、
+     * 同じ距離でも粗さが目に付く。切り替え距離を倍に伸ばす。
+     */
+    const ads = (this.weapons?.adsT ?? 0) > 0.35;
+    const lodDist = lw ? (ads ? 48 : 22) : 0;
     for (const b of this.bots) {
       const d2 = b.char.position.distanceToSquared(camPos);
       const lod = d2 < near2 ? 0 : (d2 < mid2 ? 1 : 2);
       b.update(dt, this, lod);
-      b.updateShadowLod(camPos, shadowDist);
+      b.updateShadowLod(camPos, shadowDist, lodDist);
       // respawnTimer は Bot.update 内で加算される
       if (!b.alive && b.respawnTimer > 5.5 && !this.matchOver
           && (this.mode?.allowRespawn ? this.mode.allowRespawn(b.team) : true)) {

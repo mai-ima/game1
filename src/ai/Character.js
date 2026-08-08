@@ -326,6 +326,54 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
     ]), M.accent);
   }
 
+  /*
+   * 遠距離用の簡易モデル。
+   *
+   * 兵士 1 体は部位ごとに 34 メッシュあり、実測では視界内の
+   * ドローコール 171 のうち 136 が人物だった（残りはマップ全体で 35）。
+   * 統合 GPU では 200 を超えたあたりから明確に落ち込むので、
+   * ここを削らないと他を何度直しても届かない。
+   *
+   * 20m も離れれば手足の関節や装備の細部は判別できないため、
+   * マテリアル 2 枚・静止姿勢の 2 メッシュに差し替える。
+   * 34 → 2 draws。
+   */
+  const lod = new THREE.Group();
+  lod.name = 'soldierLod';
+  lod.visible = false;
+  /*
+   * 寸法は詳細モデルに合わせてある。
+   * 遠目でも人だと分かるかどうかは肩幅と頭の大きさで決まるので、
+   * そこだけは痩せさせない（細い円柱を並べると棒人間に見える）。
+   */
+  addMesh(lod, mergeParts([
+    // 胴（肩から腰へ）
+    translated(taper(0.175, 0.145, 0.68, 10), 0, 1.22, 0),
+    // 肩まわり
+    translated(scaled(ball(0.185, 10, 8), 1.0, 0.62, 0.78), 0, 1.44, 0),
+    // 腕（胴に埋まらないよう外側へ）
+    translated(taper(0.055, 0.044, 0.52, 7), 0.212, 1.17, 0.02),
+    translated(taper(0.055, 0.044, 0.52, 7), -0.212, 1.17, 0.02),
+    // 脚
+    translated(taper(0.096, 0.062, 0.86, 7), 0.105, 0.46, 0),
+    translated(taper(0.096, 0.062, 0.86, 7), -0.105, 0.46, 0),
+    // 首
+    translated(taper(0.055, 0.060, 0.09, 6), 0, 1.545, 0),
+  ]), M.uniform);
+  addMesh(lod, mergeParts([
+    // 頭とヘルメット
+    translated(scaled(ball(0.118, 10, 8), 1.02, 1.08, 1.10), 0, 1.625, -0.004),
+    // プレートキャリア（胴より一回り大きく）
+    translated(roundedBox(0.375, 0.335, 0.275, 0.055, 0.022), 0, 1.28, 0.004),
+    // ブーツ
+    translated(roundedBox(0.105, 0.095, 0.275, 0.03, 0.012), 0.105, 0.048, 0.035),
+    translated(roundedBox(0.105, 0.095, 0.275, 0.03, 0.012), -0.105, 0.048, 0.035),
+  ]), M.gear);
+  lod.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.userData.keepShadow = true; } });
+  root.add(lod);
+  root.userData.lod = lod;
+  root.userData.detail = hips;
+
   root.userData.bones = { hips, spine, chest, neck, head, armL, armR, foreL, foreR, legL, legR, shinL, shinR };
   root.traverse((o) => {
     if (!o.isMesh) return;
@@ -437,6 +485,18 @@ export class Character {
   }
 
   get eyeHeight() { return this.stance ? 1.06 : 1.62; }
+
+  /**
+   * 遠距離用の簡易モデルに切り替える。
+   * @param {boolean} far true で簡易、false で詳細
+   */
+  setFarLod(far) {
+    const u = this.model.userData;
+    if (!u.lod || this._farLod === far) return;
+    this._farLod = far;
+    u.lod.visible = far;
+    u.detail.visible = !far;
+  }
 
   /** 影の代役の高さを姿勢に合わせる */
   _updateShadowProxy() {

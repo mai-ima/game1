@@ -378,18 +378,45 @@ const DEFS = {
 
   /* --- タイヤトレッド --- */
   tireTread(u, v, o, S) {
-    const blockV = Math.abs(((v * 14) % 1) - 0.5);
-    const shift = Math.floor(v * 14) % 2 ? 0.5 : 0;
-    const blockU = Math.abs((((u + shift) * 5) % 1) - 0.5);
-    const groove = smoothstep(0.3, 0.42, blockV) + smoothstep(0.3, 0.44, blockU);
-    const tread = clamp01(1 - groove);
-    const grain = fbm(u * 110, v * 110, { octaves: 3, period: 110, seed: S });
-    const l = 0.03 + tread * 0.028 + grain * 0.022;
-    o.r = l; o.g = l * 1.02; o.b = l * 1.04;
-    o.h = tread * 0.95 + grain * 0.05;
-    o.rough = clamp01(0.92 - tread * 0.08 + grain * 0.06);
+    /*
+     * v をタイヤの幅方向、u を周方向とする。
+     *
+     * 以前は格子状のブロックを並べていただけで、
+     * 黒いレンガ壁にしか見えなかった。実物のトレッドは
+     *   ・幅方向に走る太い主溝（2 本）
+     *   ・斜めに傾いたラグ（進行方向に対して角度が付く）
+     *   ・ラグを横切る細かいサイプ（切れ込み）
+     *   ・両肩の丸いショルダー
+     * で出来ている。斜めの向きと溝の深さの差が「タイヤらしさ」を作る。
+     */
+    const w = Math.abs(v - 0.5) * 2;              // 0=中央 1=肩
+    // 主溝（中央寄りに 2 本）
+    const rib = Math.abs(Math.abs(v - 0.5) - 0.23);
+    const mainGroove = 1 - smoothstep(0.020, 0.055, rib);
+    // ラグ（斜めに傾いたブロック）。肩側ほど角度が寝る
+    const skew = (v - 0.5) * 1.6;
+    const lug = Math.abs((((u + skew) * 22) % 1) - 0.5);
+    const lugGroove = 1 - smoothstep(0.30, 0.42, lug);
+    // サイプ（ラグを横切る細い切れ込み）
+    const sipe = 1 - smoothstep(0.06, 0.13, Math.abs((((u + skew) * 22 + 0.5) % 1) - 0.5));
+    // ショルダーは丸く落ちる
+    const shoulder = smoothstep(0.74, 1.0, w);
+
+    const groove = clamp01(mainGroove + lugGroove * 0.85 + sipe * 0.45);
+    const tread = 1 - groove;
+    const grain = fbm(u * 130, v * 130, { octaves: 3, period: 130, seed: S });
+    const wear = smoothstep(0.55, 0.95, fbm(u * 6, v * 6, { octaves: 4, period: 6, seed: S + 17 }));
+    // 泥や埃が溝に溜まる
+    const dirt = groove * smoothstep(0.4, 0.9, fbm(u * 9, v * 9, { octaves: 4, period: 9, seed: S + 41 }));
+
+    let l = 0.026 + tread * 0.026 + grain * 0.016 - shoulder * 0.004;
+    l = mix(l, l * 1.9, dirt * 0.5);
+    o.r = l * (1 + dirt * 0.35); o.g = l * (1.02 + dirt * 0.12); o.b = l * 1.04;
+    o.h = tread * 0.9 - mainGroove * 0.35 + grain * 0.06 - shoulder * 0.25;
+    // 走行面は摩耗して少し光る、溝の中は艶がない
+    o.rough = clamp01(0.94 - tread * wear * 0.22 + groove * 0.04);
     o.metal = 0;
-    o.ao = clamp01(0.45 + tread * 0.55);
+    o.ao = clamp01(0.40 + tread * 0.60 - dirt * 0.1);
   },
 
   /* --- セラミックタイル --- */

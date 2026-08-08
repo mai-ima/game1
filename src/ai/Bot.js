@@ -280,8 +280,11 @@ export class Bot {
    * 影パスは本描画と同じ数のドローコールを消費するため、
    * 遠方のボットまで影を出すと描画コストが倍増する。
    */
-  updateShadowLod(cameraPos, maxDist = 26) {
-    const on = this.alive && this.char.position.distanceToSquared(cameraPos) < maxDist * maxDist;
+  updateShadowLod(cameraPos, maxDist = 26, lodDist = 0) {
+    const d2 = this.char.position.distanceToSquared(cameraPos);
+    // 遠い相手は簡易モデルへ（ドローコールが 34 → 2 になる）
+    if (lodDist > 0) this.char.setFarLod(this.alive && d2 > lodDist * lodDist);
+    const on = this.alive && d2 < maxDist * maxDist;
     // 影の代役が有効なら、部位ではなくそちらに影を担わせる
     const proxy = this.char.model.userData.shadowProxy;
     const viaProxy = !!(proxy && proxy.visible);

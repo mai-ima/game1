@@ -9,6 +9,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 
 const url = process.argv[2] || 'http://127.0.0.1:4173/';
 const outDir = process.argv[3] || 'shots/soldier';
+const useLod = process.argv[4] === 'lod';   // 遠距離用の簡易モデルを撮る
 if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
 const execPath = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome'].find((p) => existsSync(p));
@@ -50,9 +51,13 @@ await page.evaluate(`(() => {
   b.char.model.position.set(0, 0, 0);
   b.char.model.rotation.set(0, 0, 0);
   b.char.model.traverse((o) => { o.visible = true; o.frustumCulled = false; });
+  if (${'${useLod}'}) {
+    b.char._farLod = null;
+    b.char.setFarLod(true);
+  }
   stage.add(b.char.model);
   window.__SOLDIER = b.char.model;
-})()`);
+})()`.replace('${useLod}', String(useLod)));
 
 const views = [
   { n: 'a_正面',   dir: [0, 0.06, 1],     center: [0, 0.95, 0], fov: 32 },
