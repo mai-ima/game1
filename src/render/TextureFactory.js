@@ -63,19 +63,37 @@ const DEFS = {
 
   /* --- アスファルト --- */
   asphalt(u, v, o, S) {
-    const agg = worley(u * 46, v * 46, 46, S + 3, 1);
-    const fine = fbm(u * 90, v * 90, { octaves: 4, period: 90, seed: S + 9 });
+    /*
+     * 舗装は、黒い瀝青の中に骨材が沈んだもの。
+     * 骨材が敷き詰めてあるのではなく、大半は瀝青に覆われていて、
+     * 摩耗して頭が出たものだけがまばらに顔を見せる。
+     *
+     * 以前は骨材の明るさを地の 3 倍近く、高さも 0.6 まで持ち上げていた。
+     * 近くで見ると砂利を撒いた地面にしか見えず、道路が道路に見えなかった。
+     * 粒も 3cm 相当と大きすぎた（実物の粗骨材は 1cm 前後）。
+     */
+    const agg = worley(u * 74, v * 74, 74, S + 3, 1);
+    const fine = fbm(u * 130, v * 130, { octaves: 4, period: 130, seed: S + 9 });
     const broad = fbm(u * 3, v * 3, { octaves: 4, period: 3, seed: S + 17 });
-    const crack = 1 - smoothstep(0, 0.028, voronoiEdge(u * 4, v * 4, 4, S + 27, 1));
-    const stone = smoothstep(0.16, 0.05, agg.f1);
+    /*
+     * ひび割れ。
+     * 以前はセル境界をそのまま溝にしていたため、33cm 間隔の網目が
+     * 路面全体に入り、舗装ではなく割れた石畳のように見えていた。
+     * 実際のひびは傷んだ所にだけ出る。fbm で場所を絞り、間隔も広げる。
+     */
+    const crack = (1 - smoothstep(0, 0.02, voronoiEdge(u * 2.2, v * 2.2, 2.2, S + 27, 1)))
+      * smoothstep(0.60, 0.88, fbm(u * 2, v * 2, { octaves: 3, period: 2, seed: S + 67 }));
+    // 顔を出しているのは一部の粒だけ。id で間引く
+    const stone = smoothstep(0.13, 0.045, agg.f1) * smoothstep(0.38, 0.66, agg.id);
 
-    let l = 0.085 + broad * 0.05 + fine * 0.05 + stone * 0.16 * (0.4 + agg.id * 0.6);
-    l -= crack * 0.05;
-    o.r = l * 0.95; o.g = l * 0.98; o.b = l * 1.08;
-    o.h = stone * 0.6 + fine * 0.2 + broad * 0.2 - crack * 0.7;
-    o.rough = clamp01(0.9 - stone * 0.2 + fine * 0.08);
+    let l = 0.082 + broad * 0.034 + fine * 0.032 + stone * 0.055 * (0.5 + agg.id * 0.5);
+    l -= crack * 0.034;
+    o.r = l * 0.97; o.g = l * 0.99; o.b = l * 1.05;
+    // 表面はローラーで締め固められているので、凹凸はごく浅い
+    o.h = stone * 0.20 + fine * 0.15 + broad * 0.13 - crack * 0.6;
+    o.rough = clamp01(0.92 - stone * 0.10 + fine * 0.05);
     o.metal = 0;
-    o.ao = clamp01(0.7 + stone * 0.3 - crack * 0.45);
+    o.ao = clamp01(0.82 + stone * 0.18 - crack * 0.4);
   },
 
   /* --- レンガ --- */
@@ -594,7 +612,14 @@ const DEFS = {
 
   /* --- 石畳 / 舗装スラブ --- */
   paving(u, v, o, S) {
-    const N = 5;
+    /*
+     * 歩道の平板。
+     * 1 タイル 2.4m を 8 枚に割って 30cm 角。歩道用の平板の実寸。
+     * 以前は 5 枚割りの 48cm 角で、目地の深さを 0.8 も取っていた。
+     * 実際の目地は 1cm 足らずしかなく、あの深さでは平板ではなく
+     * 割れた岩を敷いたように見えていた。
+     */
+    const N = 8;
     // 目地をずらした矩形スラブ
     const row = Math.floor(v * N);
     const off = (row % 2) * 0.42;
@@ -620,10 +645,10 @@ const DEFS = {
     r = mix(r, l * 0.55, moss); g = mix(g, l * 0.78, moss); b = mix(b, l * 0.5, moss);
 
     o.r = r; o.g = g; o.b = b;
-    o.h = inside * 0.8 + grit * 0.12 - chip * 0.35;
+    o.h = inside * 0.34 + grit * 0.10 - chip * 0.24;
     o.rough = clamp01(mix(0.94, 0.8 + grit * 0.12 + wear * 0.06, inside));
     o.metal = 0;
-    o.ao = clamp01(mix(0.42, 0.96, inside) - moss * 0.15);
+    o.ao = clamp01(mix(0.62, 0.97, inside) - moss * 0.15);
   },
 
   /* --- 革（ホルスター・グリップ・装備） --- */
@@ -950,37 +975,29 @@ const DEFS = {
   },
 
   /* --- 白線入りアスファルト（車道） --- */
-  roadMarking(u, v, o, S) {
+  /* --- 路面標示の塗膜（溶融式・ガラスビーズ入り） --- */
+  roadPaint(u, v, o, S) {
     /*
-     * 骨材は細かく。
-     * 1 タイルが 7.7m もあるので、粒を大きく取ると
-     * 一粒が 10cm を超えて砂利道に見えてしまう。
+     * 白線は塗ったペンキではなく、熱で溶かした樹脂に
+     * ガラスビーズを撒いたもの。艶は無く、ざらついている。
+     * 車輪の当たる所から擦り減って、下の黒い舗装が透ける。
      */
-    const grit = worley(u * 130, v * 130, 130, S, 1).f1;
-    const stone = smoothstep(0.20, 0.05, grit);
-    const grit2 = smoothstep(0.16, 0.04, worley(u * 260, v * 260, 260, S + 5, 1).f1);
-    const bind = fbm(u * 9, v * 9, { octaves: 5, period: 9, seed: S + 7 });
-    const crack = (1 - smoothstep(0, 0.012, voronoiEdge(u * 6, v * 6, 6, S + 19, 1)))
-      * smoothstep(0.55, 0.85, fbm(u * 3, v * 3, { octaves: 3, period: 3, seed: S + 67 }));
+    const bead = worley(u * 90, v * 90, 90, S + 3, 1);
+    const beads = smoothstep(0.10, 0.03, bead.f1);
+    const grain = fbm(u * 60, v * 60, { octaves: 4, period: 60, seed: S + 9 });
+    const wear = smoothstep(0.44, 0.88, fbm(u * 7, v * 7, { octaves: 5, period: 7, seed: S + 21 }));
+    // 剥がれの縁。塗膜が欠けて島状に残る
+    const chip = smoothstep(0.055, 0.0, voronoiEdge(u * 14, v * 14, 14, S + 33, 1)) * wear;
 
-    let l = 0.068 + bind * 0.026 + stone * 0.011 + grit2 * 0.007 - crack * 0.025;
-    let r = l, g = l * 1.005, b = l * 1.02;
-
-    // 中央に破線（進行方向 = v）。実寸で 5m 塗って 5m 空けるくらい
-    const lineX = Math.abs(u - 0.5);
-    const dash = smoothstep(0.06, 0.12, ((v * 1.5) % 1)) * (1 - smoothstep(0.52, 0.58, ((v * 1.5) % 1)));
-    const paint = (1 - smoothstep(0.014, 0.022, lineX)) * dash;
-    // 塗料は擦り減って下地が透ける
-    const worn = smoothstep(0.35, 0.85, fbm(u * 30, v * 12, { octaves: 4, period: 30, seed: S + 91 }));
-    const pm = paint * (1 - worn * 0.55);
-    r = mix(r, 0.46, pm); g = mix(g, 0.455, pm); b = mix(b, 0.43, pm);
-
-    o.r = r; o.g = g; o.b = b;
-    o.h = stone * 0.35 + grit2 * 0.25 + bind * 0.2 - crack * 0.5 + pm * 0.15;
-    o.rough = clamp01(0.88 + stone * 0.1 - pm * 0.2);
+    let l = 0.60 + grain * 0.09 + beads * 0.13;
+    l = mix(l, 0.115, clamp01(wear * 0.42 + chip * 0.45));
+    o.r = l * 1.0; o.g = l * 0.995; o.b = l * 0.95;
+    o.h = beads * 0.30 + grain * 0.10 - chip * 0.45;
+    o.rough = clamp01(0.74 - beads * 0.16 + wear * 0.14);
     o.metal = 0;
-    o.ao = clamp01(0.85 - crack * 0.4);
+    o.ao = clamp01(0.92 - chip * 0.34);
   },
+
 
   /* --- 道床バラスト（線路の砕石） --- */
   ballast(u, v, o, S) {

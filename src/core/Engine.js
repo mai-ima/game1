@@ -60,7 +60,7 @@ export const QUALITY = {
    */
   igpu:   { pixelRatio: 1.0,  shadows: true,  shadowMap: 1024, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 42, texSize: 512,  bloomScale: 0.25, minScale: 0.78,
             fusedPost: true, cheapBloom: true, lightweight: true, noFillLight: true, viewDistance: 220,
-            maxLights: 3, dropRoughIBL: true, cheapShadows: true },
+            maxLights: 3, dropRoughIBL: true, cheapShadows: true, cheapEnvMip: true },
 };
 
 /** 画質プリセットの説明（設定画面に出す） */

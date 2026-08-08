@@ -61,11 +61,46 @@ export function buildCompound(b) {
    * 「道」というより色の違う地面にしか見えなかった。
    */
   const ROAD_NS = 9.5, ROAD_EW = 8.0;
-  // 車道（白線入り）
-  b.box({ x: 0, y: 0.012, z: 0, w: ROAD_NS, h: 0.03, d: HALF * 2, mat: 'roadMarking', surface: SURFACE.CONCRETE, collide: false });
+  /*
+   * 車道の下地。
+   *
+   * 以前は南北だけ「白線を描き込んだテクスチャ」を貼っていた。
+   * 1 枚に区画線まで入れると、線の間隔を実寸に合わせるために
+   * タイルを 7.7m まで伸ばす必要があり、そのぶん骨材が 6cm 相当に
+   * 膨らんで、路面が砂利敷きに見えていた。
+   * 下地は素のアスファルト、区画線は別の板として置く。
+   */
+  b.box({ x: 0, y: 0.012, z: 0, w: ROAD_NS, h: 0.03, d: HALF * 2, mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
   b.box({ x: gcx, y: 0.014, z: 0, w: gw, h: 0.03, d: ROAD_EW, mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
-  // 交差点は白線を消す（南北の破線が交差点を突っ切ると不自然）
-  b.box({ x: 0, y: 0.016, z: 0, w: ROAD_NS, h: 0.03, d: ROAD_EW, mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
+
+  /* ---- 区画線 ---- */
+  const XH = ROAD_EW / 2 + 1.0;      // 交差点の内側には線を引かない
+  const ZH = ROAD_NS / 2 + 1.0;
+  // 中央線（5m 塗って 5m 空ける）
+  for (let z = -HALF + 1; z < HALF - 5; z += 10) {
+    if (z + 5 > -XH && z < XH) continue;
+    b.box({ x: 0, y: 0.021, z: z + 2.5, w: 0.15, h: 0.03, d: 5, mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
+  }
+  for (let x = WEST + 3; x < EAST - 5; x += 10) {
+    if (x + 5 > -ZH && x < ZH) continue;
+    b.box({ x: x + 2.5, y: 0.021, z: 0, w: 5, h: 0.03, d: 0.15, mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
+  }
+  // 車道外側線（実線）。交差点で切る
+  for (const sx of [-1, 1]) {
+    for (const [z0, z1] of [[-HALF, -XH], [XH, HALF]]) {
+      b.box({ x: sx * (ROAD_NS / 2 - 0.45), y: 0.021, z: (z0 + z1) / 2, w: 0.15, h: 0.03, d: z1 - z0,
+        mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
+    }
+  }
+  for (const sz of [-1, 1]) {
+    for (const [x0, x1] of [[WEST + 2, -ZH], [ZH, EAST - 2]]) {
+      b.box({ x: (x0 + x1) / 2, y: 0.021, z: sz * (ROAD_EW / 2 - 0.45), w: x1 - x0, h: 0.03, d: 0.15,
+        mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
+    }
+  }
+  // 停止線（交差点の手前 4 方向）
+  b.box({ x: -ROAD_NS / 4, y: 0.022, z: XH + 2.9, w: ROAD_NS / 2 - 0.5, h: 0.03, d: 0.4, mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
+  b.box({ x: ROAD_NS / 4, y: 0.022, z: -XH - 2.9, w: ROAD_NS / 2 - 0.5, h: 0.03, d: 0.4, mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
 
   // 縁石と歩道（南北の道に沿って）
   for (const sx of [-1, 1]) {
@@ -93,7 +128,7 @@ export function buildCompound(b) {
     for (let i = 0; i < 7; i++) {
       b.box({
         x: ax - aw / 2 + 0.45 + i * (aw / 7), y: 0.018, z: az,
-        w: 0.42, h: 0.03, d: ad, mat: 'plasticGloss', surface: SURFACE.CONCRETE, collide: false,
+        w: 0.42, h: 0.03, d: ad, mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false,
       });
     }
   }
@@ -105,8 +140,16 @@ export function buildCompound(b) {
     b.box({ x: sx * (ROAD_NS / 2 - 0.25), y: 0.017, z: 0, w: 0.3, h: 0.03, d: HALF * 2, mat: 'expandedMetal', surface: SURFACE.METAL, collide: false });
   }
 
-  // 石畳の広場
-  b.box({ x: 0, y: 0.02, z: 0, w: 22, h: 0.03, d: 18, mat: 'paving', surface: SURFACE.CONCRETE, collide: false });
+  /*
+   * 石畳の広場。
+   * 車道を避けて左右に分ける。
+   * 以前は交差点ごと 22m 角で覆っていたため、
+   * 道路の上に石畳が乗り、区画線も骨材も見えなくなっていた。
+   */
+  for (const sx of [-1, 1]) {
+    b.box({ x: sx * (ROAD_NS / 2 + 5.6), y: 0.02, z: 0, w: 11.2, h: 0.03, d: 18,
+      mat: 'paving', surface: SURFACE.CONCRETE, collide: false });
+  }
   // 砂利の路肩
   b.box({ x: -19, y: 0.01, z: 8, w: 13, h: 0.02, d: 22, mat: 'gravel', surface: SURFACE.GRAVEL, collide: false });
   b.box({ x: 20, y: 0.01, z: -10, w: 12, h: 0.02, d: 20, mat: 'gravel', surface: SURFACE.GRAVEL, collide: false });
@@ -802,7 +845,7 @@ function containerYard(b, rand) {
   P.jerryCan(b, { x: -13.1, y: 0, z: -11.6, yaw: -0.4 });
   P.rubble(b, { x: -27, z: 12, radius: 2.6, count: 18 });
   P.vehicle(b, { x: -25.5, y: 0, z: 18, yaw: 0.6, type: 'truck', mat: 'paintedMetal' });
-  P.streetLight(b, { x: -10.5, y: 0, z: -2, yaw: -Math.PI / 2 });
+  P.streetLight(b, { x: -10.5, y: 0, z: -5.3, yaw: 0 });
   P.utilityPole(b, { x: -22, y: 0, z: 22, yaw: 0.2 });
   P.litter(b, { x: -15, z: 0, radius: 6, count: 26 });
   P.litter(b, { x: -22, z: -10, radius: 5, count: 18 });
@@ -921,7 +964,7 @@ function marketStreet(b, rand) {
   P.woodCrate(b, { x: 13.6, y: 0.72, z: 13.0, yaw: -0.2, size: 0.7 });
   P.woodCrate(b, { x: 14.5, y: 0, z: 13.6, yaw: 0.9 });
   P.sandbagStack(b, { x: 8.5, y: 0, z: -14, yaw: 0, rows: 3, perRow: 5, length: 3.0 });
-  P.streetLight(b, { x: 10.0, y: 0, z: 0, yaw: Math.PI / 2 });
+  P.streetLight(b, { x: 10.0, y: 0, z: 5.3, yaw: Math.PI });
   P.streetLight(b, { x: 10.0, y: 0, z: 14, yaw: Math.PI / 2 });
   P.utilityPole(b, { x: 21, y: 0, z: 6, yaw: -0.3 });
   P.sign(b, { x: 18.9, y: 2.6, z: -2, yaw: -Math.PI / 2, w: 1.8, h: 0.7, mat: 'hazardStripe' });
@@ -1038,8 +1081,8 @@ function scatter(b, rand) {
   // 外周沿いの電柱と街灯
   P.utilityPole(b, { x: -33, y: 0, z: -4, yaw: 1.5 });
   P.utilityPole(b, { x: 33, y: 0, z: -22, yaw: -1.5 });
-  P.streetLight(b, { x: 0, y: 0, z: 17, yaw: 0 });
-  P.streetLight(b, { x: 0, y: 0, z: -17, yaw: Math.PI });
+  P.streetLight(b, { x: 6.9, y: 0, z: 17, yaw: -Math.PI / 2 });
+  P.streetLight(b, { x: -6.9, y: 0, z: -17, yaw: Math.PI / 2 });
 
   // 破損した車両
   P.vehicle(b, { x: -3.5, y: 0, z: -22, yaw: 0.9, type: 'car', mat: 'rustedMetal' });

@@ -75,6 +75,7 @@ const out = await page.evaluate(`(async () => {
   const setup = (opt) => {
     mats.setDropRoughIBL(opt.ibl);
     mats.setCheapShadows(opt.shadow);
+    mats.setCheapEnvMip(!!opt.envmip);
     lp.setCount(opt.lights);
     lp.snap(cam.position);
     engine.render(0.016);                     // シェーダを組み直させる
@@ -84,7 +85,8 @@ const out = await page.evaluate(`(async () => {
     ['最適化前（全光源・PCF5点・IBLそのまま）', { ibl: false, shadow: false, lights: nDefs }],
     ['光源プールだけ',                          { ibl: false, shadow: false, lights: fitted }],
     ['＋ざらつき面のIBL省略',                   { ibl: true,  shadow: false, lights: fitted }],
-    ['＋影のぼかしを1点に（現行）',             { ibl: true,  shadow: true,  lights: fitted }],
+    ['＋影のぼかしを1点に',                     { ibl: true,  shadow: true,  lights: fitted }],
+    ['＋環境マップを1段に（現行）',             { ibl: true,  shadow: true,  lights: fitted, envmip: true }],
   ];
 
   const avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;

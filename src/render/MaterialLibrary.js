@@ -69,7 +69,9 @@ const PRESETS = {
   brassPolished:   { tex: 'brassPolished', repeat: 2.5, params: { roughness: 1, metalness: 1 } },
 
   /* ---- 街路・鉄道 ---- */
-  roadMarking:     { tex: 'roadMarking',  repeat: 0.13, params: { roughness: 1, metalness: 1 } },
+  // 区画線は下地とは別の板として置く。線幅 15cm に対し 1 タイル 33cm
+  lineWhite:       { tex: 'roadPaint',    repeat: 3.0,  params: { roughness: 1, metalness: 1 } },
+  lineYellow:      { tex: 'roadPaint',    repeat: 3.0,  params: { roughness: 1, metalness: 1, color: 0xd9b752 }, seed: 621 },
   tactilePaving:   { tex: 'tactilePaving', repeat: 1.0, params: { roughness: 1, metalness: 1 } },
   ballast:         { tex: 'ballast',      repeat: 1.33, params: { roughness: 1, metalness: 1 } },
   railSteel:       { tex: 'railSteel',    repeat: 6.0,  params: { roughness: 1, metalness: 1 } },
@@ -300,6 +302,27 @@ const SHADOW_CHUNK_CHEAP = SHADOW_CHUNK_FULL.replace(
   'shadow = texture( shadowMap, vec3( shadowCoord.xy, shadowCoord.z ) );'
 );
 
+/*
+ * 環境マップの読み取りを 2 段から 1 段に減らす差し替え。
+ *
+ * three は粗さから mip 段を選び、その上下 2 段を読んで混ぜる。
+ * PMREM は 6 面を 1 枚に詰めた特殊な並びなので、1 段読むだけでも
+ * 面の判定と UV の組み立てで分岐が並ぶ。それを 2 回やっている。
+ *
+ * このゲームは環境光の強さを 0.26 に抑えてある（強いと画面全体が
+ * 青く転ぶため）。寄与が 1/4 なので、段の切り替わりで出る段差も
+ * 同じだけ薄まり、実際の絵ではまず判らない。
+ */
+const CUBEUV_CHUNK_FULL = THREE.ShaderChunk.cube_uv_reflection_fragment;
+const CUBEUV_CHUNK_CHEAP = CUBEUV_CHUNK_FULL.replace(
+  /vec4 textureCubeUV\( sampler2D envMap, vec3 sampleDir, float roughness \) \{[\s\S]*?\n\t\}/,
+  `vec4 textureCubeUV( sampler2D envMap, vec3 sampleDir, float roughness ) {
+		float mip = clamp( roughnessToMip( roughness ), cubeUV_m0, CUBEUV_MAX_MIP );
+		// いちばん近い段だけを読む（2 段の混ぜ合わせを省く）
+		return vec4( bilinearCubeUV( envMap, sampleDir, min( floor( mip + 0.5 ), CUBEUV_MAX_MIP ) ), 1.0 );
+	}`
+);
+
 /**
  * この材質は環境の映り込みが形を持つか（＝省いてはいけないか）。
  *
@@ -335,6 +358,8 @@ export class MaterialLibrary {
     this.dropRoughIBL = false;
     /** 影のぼかしを 1 回の取得で済ませるか（同上） */
     this.cheapShadows = false;
+    /** 環境マップを 1 段だけ読むか（同上） */
+    this.cheapEnvMip = false;
   }
 
   /**
@@ -380,6 +405,18 @@ export class MaterialLibrary {
     if (on === this.cheapShadows) return;
     this.cheapShadows = on;
     THREE.ShaderChunk.shadowmap_pars_fragment = on ? SHADOW_CHUNK_CHEAP : SHADOW_CHUNK_FULL;
+    for (const m of this._all) m.needsUpdate = true;
+  }
+
+  /**
+   * 環境マップの読み取りを 1 段だけにするかを切り替える。
+   * シェーダを組み直すので、画質設定を変えたときだけ呼ぶこと。
+   */
+  setCheapEnvMip(on) {
+    on = !!on;
+    if (on === this.cheapEnvMip) return;
+    this.cheapEnvMip = on;
+    THREE.ShaderChunk.cube_uv_reflection_fragment = on ? CUBEUV_CHUNK_CHEAP : CUBEUV_CHUNK_FULL;
     for (const m of this._all) m.needsUpdate = true;
   }
 

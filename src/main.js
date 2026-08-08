@@ -57,6 +57,7 @@ async function main() {
    */
   mats.dropRoughIBL = !!QUALITY[engine.quality]?.dropRoughIBL;
   mats.setCheapShadows(!!QUALITY[engine.quality]?.cheapShadows);
+  mats.setCheapEnvMip(!!QUALITY[engine.quality]?.cheapEnvMip);
   const input = new Input(engine.renderer.domElement);
   const audio = new AudioManager(settings);
 
@@ -339,6 +340,7 @@ function applySettings(engine, input, settings, game, key, val) {
   // ざらついた面の鏡面 IBL を省くか（画質段によって変わる）
   game?.mats?.setDropRoughIBL(!!QUALITY[engine.quality]?.dropRoughIBL);
   game?.mats?.setCheapShadows(!!QUALITY[engine.quality]?.cheapShadows);
+  game?.mats?.setCheapEnvMip(!!QUALITY[engine.quality]?.cheapEnvMip);
 }
 
 function pauseGame(game, hud, menu, mobile, input) {

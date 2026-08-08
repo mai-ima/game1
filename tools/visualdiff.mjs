@@ -18,12 +18,13 @@ if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 const SWITCH = {
   ibl:    { name: 'ざらつき面の鏡面IBL省略', on: 'm.setDropRoughIBL(true)', off: 'm.setDropRoughIBL(false)' },
   shadow: { name: '影のぼかしを1回に',       on: 'm.setCheapShadows(true)', off: 'm.setCheapShadows(false)' },
-  both:   { name: '両方',
-            on: 'm.setDropRoughIBL(true); m.setCheapShadows(true)',
-            off: 'm.setDropRoughIBL(false); m.setCheapShadows(false)' },
+  envmip: { name: '環境マップを1段だけ読む', on: 'm.setCheapEnvMip(true)', off: 'm.setCheapEnvMip(false)' },
+  both:   { name: 'すべて',
+            on: 'm.setDropRoughIBL(true); m.setCheapShadows(true); m.setCheapEnvMip(true)',
+            off: 'm.setDropRoughIBL(false); m.setCheapShadows(false); m.setCheapEnvMip(false)' },
 };
 const sw = SWITCH[what];
-if (!sw) { console.error('第 1 引数は ibl / shadow / both のいずれか'); process.exit(1); }
+if (!sw) { console.error('第 1 引数は ibl / shadow / envmip / both のいずれか'); process.exit(1); }
 
 const execPath = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome'].find((p) => existsSync(p));
 const browser = await chromium.launch({

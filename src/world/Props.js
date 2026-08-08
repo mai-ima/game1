@@ -362,12 +362,26 @@ export function rubble(b, o) {
 /** 街灯 */
 export function streetLight(b, o) {
   const { x, y = 0, z, yaw = 0, height = 4.6, withLight = true } = o;
-  b.cylinder({ x, y, z, radius: 0.075, height, segments: 10, mat: 'paintedMetalTan', surface: SURFACE.METAL });
+  /*
+   * 支柱は亜鉛メッキ。
+   * 以前は砂色の塗装（paintedMetalTan）にしていたが、
+   * 日向で黄土色に光り、金属の柱というより真鍮の棒に見えていた。
+   */
+  b.cylinder({ x, y, z, radius: 0.075, height, segments: 10, mat: 'galvanized', surface: SURFACE.METAL });
+  // 根元のベースプレートとアンカーボルト（柱が地面から生えて見えるのを防ぐ）
+  b.cylinder({ x, y, z, radius: 0.17, height: 0.06, segments: 10, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + 0.79;
+    b.cylinder({
+      x: x + Math.cos(a) * 0.125, y: y + 0.06, z: z + Math.sin(a) * 0.125,
+      radius: 0.014, height: 0.05, segments: 5, mat: 'gunMetal', surface: SURFACE.METAL, collide: false,
+    });
+  }
   // アーム
   const armLen = 1.1;
   b.box({
     x: x + Math.sin(yaw) * armLen / 2, y: y + height - 0.06, z: z + Math.cos(yaw) * armLen / 2,
-    w: 0.07, h: 0.07, d: armLen, yaw, mat: 'paintedMetalTan', surface: SURFACE.METAL, collide: false,
+    w: 0.07, h: 0.07, d: armLen, yaw, mat: 'galvanized', surface: SURFACE.METAL, collide: false,
   });
   // 灯体
   const lx = x + Math.sin(yaw) * armLen, lz = z + Math.cos(yaw) * armLen;
