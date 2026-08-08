@@ -56,118 +56,296 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
   };
 
   /* ---------- 骨格（Group 階層） ---------- */
-  const hips = new THREE.Group(); hips.position.y = 0.95; root.add(hips);
-  const spine = new THREE.Group(); spine.position.y = 0.08; hips.add(spine);
-  const chest = new THREE.Group(); chest.position.y = 0.26; spine.add(chest);
-  const neck = new THREE.Group(); neck.position.y = 0.24; chest.add(neck);
-  const head = new THREE.Group(); head.position.y = 0.09; neck.add(head);
+  const hips = new THREE.Group(); hips.position.y = 0.94; root.add(hips);
+  const spine = new THREE.Group(); spine.position.y = 0.13; hips.add(spine);
+  const chest = new THREE.Group(); chest.position.y = 0.20; spine.add(chest);
+  const neck = new THREE.Group(); neck.position.y = 0.25; chest.add(neck);
+  const head = new THREE.Group(); head.position.y = 0.085; neck.add(head);
 
-  const armL = new THREE.Group(); armL.position.set(0.19, 0.18, 0); chest.add(armL);
-  const armR = new THREE.Group(); armR.position.set(-0.19, 0.18, 0); chest.add(armR);
+  const armL = new THREE.Group(); armL.position.set(0.195, 0.155, 0); chest.add(armL);
+  const armR = new THREE.Group(); armR.position.set(-0.195, 0.155, 0); chest.add(armR);
   const foreL = new THREE.Group(); foreL.position.y = -0.27; armL.add(foreL);
   const foreR = new THREE.Group(); foreR.position.y = -0.27; armR.add(foreR);
 
-  const legL = new THREE.Group(); legL.position.set(0.11, -0.02, 0); hips.add(legL);
-  const legR = new THREE.Group(); legR.position.set(-0.11, -0.02, 0); hips.add(legR);
+  const legL = new THREE.Group(); legL.position.set(0.105, -0.06, 0); hips.add(legL);
+  const legR = new THREE.Group(); legR.position.set(-0.105, -0.06, 0); hips.add(legR);
   const shinL = new THREE.Group(); shinL.position.y = -0.42; legL.add(shinL);
   const shinR = new THREE.Group(); shinR.position.y = -0.42; legR.add(shinR);
 
-  /* ---------- メッシュ ---------- */
-  // 骨盤
+  /* ==================================================================
+   *  胴
+   *
+   *  以前は骨盤と胸のあいだに腹部が無く、12cm の隙間が空いて
+   *  上半身と下半身が分離して見えていた。関節はすべて球で埋め、
+   *  部位の境目に必ず「continuity を作る形」を置いてある。
+   * ================================================================== */
+
+  // 骨盤（座面に向かってすぼまる）
   addMesh(hips, mergeParts([
-    translated(roundedBox(0.32, 0.20, 0.21, 0.055, 0.02), 0, -0.02, 0),
+    translated(taper(0.148, 0.112, 0.20, 16), 0, -0.055, 0),
+    translated(scaled(ball(0.143, 16, 12), 1.0, 0.60, 0.74), 0, 0.02, 0),
   ]), M.uniform);
 
-  // 胴
-  addMesh(chest, mergeParts([
-    translated(roundedBox(0.36, 0.40, 0.23, 0.07, 0.025), 0, 0.06, 0),
+  // 腹（骨盤と胸をつなぐ）
+  addMesh(spine, mergeParts([
+    translated(scaled(ball(0.145, 16, 12), 1.0, 0.90, 0.72), 0, -0.01, 0),
   ]), M.uniform);
 
-  // プレートキャリア（ベスト）
+  // 胸郭（肩に向かって広がる）
   addMesh(chest, mergeParts([
-    translated(roundedBox(0.345, 0.31, 0.135, 0.03, 0.012), 0, 0.07, 0.062),
-    translated(roundedBox(0.345, 0.31, 0.115, 0.03, 0.012), 0, 0.07, -0.058),
+    translated(scaled(ball(0.175, 18, 14), 1.0, 1.15, 0.70), 0, 0.055, 0),
+    // 僧帽筋（首の付け根の盛り上がり）
+    translated(scaled(ball(0.125, 14, 10), 1.15, 0.5, 0.75), 0, 0.20, -0.008),
+  ]), M.uniform);
+
+  // 肩（三角筋）— これが無いと腕が胴から浮いて見える
+  for (const s of [1, -1]) {
+    addMesh(chest, mergeParts([
+      translated(scaled(ball(0.076, 14, 11), 1.0, 1.10, 1.0), s * 0.176, 0.148, 0),
+    ]), M.uniform);
+  }
+
+  /* ---------- 装備: プレートキャリア ---------- */
+  addMesh(chest, mergeParts([
+    // 前面プレート（上下 2 段。1 枚板だとのっぺりする）
+    translated(roundedBox(0.29, 0.165, 0.070, 0.026, 0.011), 0, 0.122, 0.098),
+    translated(roundedBox(0.30, 0.175, 0.078, 0.028, 0.012), 0, -0.038, 0.100),
+    // 中央の留め具（バックル）
+    translated(roundedBox(0.075, 0.052, 0.030, 0.010, 0.004), 0, 0.040, 0.140),
+    // 背面プレート
+    translated(roundedBox(0.30, 0.34, 0.065, 0.040, 0.016), 0, 0.045, -0.092),
+    // 側面のカマーバンド（前後をつなぐ帯）
+    translated(roundedBox(0.055, 0.20, 0.19, 0.02, 0.008), 0.152, 0.005, 0),
+    translated(roundedBox(0.055, 0.20, 0.19, 0.02, 0.008), -0.152, 0.005, 0),
     // 肩ストラップ
-    translated(roundedBox(0.075, 0.055, 0.20, 0.02, 0.008), 0.115, 0.225, 0),
-    translated(roundedBox(0.075, 0.055, 0.20, 0.02, 0.008), -0.115, 0.225, 0),
+    translated(roundedBox(0.072, 0.048, 0.215, 0.018, 0.007), 0.112, 0.208, -0.005),
+    translated(roundedBox(0.072, 0.048, 0.215, 0.018, 0.007), -0.112, 0.208, -0.005),
   ]), M.gear);
 
-  // マガジンポーチ（前面の情報量）
+  /* ---------- 装備: ポーチ類 ---------- */
   const pouches = [];
+  // 前面のマガジンポーチ 3 連（フラップ付き）
   for (let i = 0; i < 3; i++) {
-    pouches.push(translated(roundedBox(0.075, 0.115, 0.055, 0.014, 0.006), -0.09 + i * 0.09, -0.02, 0.128));
+    const px = -0.088 + i * 0.088;
+    pouches.push(translated(roundedBox(0.072, 0.108, 0.052, 0.013, 0.006), px, -0.035, 0.152));
+    pouches.push(translated(roundedBox(0.076, 0.030, 0.056, 0.010, 0.004), px, 0.024, 0.153));
   }
-  pouches.push(translated(roundedBox(0.10, 0.09, 0.06, 0.016, 0.007), 0.135, 0.10, 0.115));
+  // ユーティリティポーチ（右胸）
+  pouches.push(translated(roundedBox(0.092, 0.082, 0.055, 0.014, 0.006), 0.128, 0.095, 0.140));
+  // 無線機（左胸）とアンテナ
+  pouches.push(translated(roundedBox(0.062, 0.105, 0.045, 0.012, 0.005), -0.132, 0.100, 0.140));
+  pouches.push(translated(rotated(tube(0.006, 0.005, 0.16, 8), -0.22, 0, 0.1), -0.132, 0.225, 0.128));
+  // 腰のダンプポーチ（背面右）
+  pouches.push(translated(roundedBox(0.115, 0.125, 0.085, 0.022, 0.009), 0.145, -0.145, -0.075));
   addMesh(chest, mergeParts(pouches), M.gear);
 
-  // バックパック
+  // バックパック（体に沿う縦長。角を落として塊感を消す）
   addMesh(chest, mergeParts([
-    translated(roundedBox(0.30, 0.34, 0.16, 0.045, 0.018), 0, 0.05, -0.155),
-    translated(roundedBox(0.14, 0.10, 0.07, 0.02, 0.008), 0, -0.10, -0.24),
+    translated(roundedBox(0.265, 0.335, 0.145, 0.052, 0.02), 0, 0.045, -0.185),
+    translated(roundedBox(0.125, 0.095, 0.062, 0.022, 0.009), 0, -0.085, -0.278),
+    // 上部のロールと圧縮ストラップ
+    translated(rotated(tube(0.038, 0.038, 0.24, 12), 0, 0, Math.PI / 2), 0, 0.205, -0.185),
+    translated(roundedBox(0.022, 0.30, 0.02, 0.006, 0.003), 0.082, 0.045, -0.258),
+    translated(roundedBox(0.022, 0.30, 0.02, 0.006, 0.003), -0.082, 0.045, -0.258),
   ]), M.gear);
 
-  // 首
-  addMesh(neck, mergeParts([
-    translated(new THREE.CylinderGeometry(0.052, 0.058, 0.09, 10), 0, 0.02, 0),
+  // 腰のベルトとホルスター
+  addMesh(hips, mergeParts([
+    translated(scaled(ball(0.146, 16, 8), 1.0, 0.16, 0.78), 0, 0.055, 0),
+    translated(roundedBox(0.078, 0.145, 0.058, 0.018, 0.007), 0.152, -0.062, 0.015),
+  ]), M.gear);
+
+  /* ==================================================================
+   *  頭部
+   *
+   *  以前は「肌色の直方体にヘルメット」で顔が存在しなかった。
+   *  目鼻を作り込むとローポリでは崩れるので、実際の装備どおり
+   *  下半分をフェイスマスク、目元をゴーグルで覆う。
+   *  露出するのは頬と顎のわずかな面積だけになり、
+   *  少ない面数でも「装備を着けた人の顔」に見える。
+   * ================================================================== */
+
+  // 頭蓋・頬・顎
+  addMesh(head, mergeParts([
+    translated(scaled(ball(0.093, 18, 14), 1.0, 1.10, 1.08), 0, 0.028, 0),
+    // 頬から顎へ（下すぼまり）
+    translated(scaled(taper(0.082, 0.058, 0.10, 14), 1.0, 1.0, 1.05), 0, -0.062, 0.006),
+    // 顎先
+    translated(scaled(ball(0.055, 12, 10), 1.05, 0.7, 1.15), 0, -0.098, 0.012),
+    // 耳
+    translated(scaled(ball(0.026, 8, 8), 0.45, 1.0, 0.75), 0.092, -0.012, -0.004),
+    translated(scaled(ball(0.026, 8, 8), 0.45, 1.0, 0.75), -0.092, -0.012, -0.004),
   ]), M.skin);
 
-  // 頭（ヘルメット + 顔）
+  /*
+   * フェイスマスク（鼻から下を覆う）。
+   * 上端は鼻の下（y ≒ -0.015）まで。ここを上げるとゴーグルとの
+   * あいだに顔の面が一切残らず、のっぺりした塊になってしまう。
+   */
   addMesh(head, mergeParts([
-    translated(roundedBox(0.155, 0.185, 0.175, 0.06, 0.02), 0, 0.055, 0.006),
-  ]), M.skin);
-  addMesh(head, mergeParts([
-    // ヘルメット本体
-    translated(scaled(new THREE.SphereGeometry(0.116, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), 1.0, 0.92, 1.06), 0, 0.085, 0.004),
-    // 後頭部の張り出し
-    translated(scaled(new THREE.SphereGeometry(0.104, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), 1.0, 0.8, 1.0), 0, 0.062, -0.022),
-    // レール / マウント
-    translated(roundedBox(0.028, 0.020, 0.14, 0.006, 0.003), 0.106, 0.078, 0),
-    translated(roundedBox(0.028, 0.020, 0.14, 0.006, 0.003), -0.106, 0.078, 0),
-    translated(roundedBox(0.05, 0.035, 0.03, 0.008, 0.004), 0, 0.12, 0.098),
+    /*
+     * 上端を水平に切った殻にする。
+     * 球どうしを交差させると、境界線が波打ってギザギザに見えた。
+     * SphereGeometry の thetaStart で切ると縁がきれいな円になる。
+     */
+    translated(scaled(shell(0.089, 0.44, 0.62), 1.0, 1.0, 1.04), 0, -0.028, 0.008),
+    translated(scaled(taper(0.079, 0.054, 0.070, 14), 1.0, 1.0, 1.04), 0, -0.100, 0.013),
+    // 後頭部へ回るストラップ
+    translated(rotated(tube(0.007, 0.007, 0.180, 8), 0, 0, Math.PI / 2), 0, -0.058, -0.030),
   ]), M.gear);
-  // ゴーグル
+
+  /*
+   * ヘルメット。
+   * 縁が目より下まで来ると顔がまるごと隠れて「黒い卵」になる。
+   * 開口部が眉の高さ（y ≒ +0.022）に来るよう、
+   *   縁の高さ = 中心 - r*sin(thetaLength - 90°) * scaleY
+   * を目安に置いている。
+   */
   addMesh(head, mergeParts([
-    translated(roundedBox(0.175, 0.045, 0.03, 0.012, 0.005), 0, 0.10, 0.082),
+    // 本体
+    translated(scaled(ball(0.104, 20, 14, Math.PI * 0.545), 1.03, 0.98, 1.12), 0, 0.038, -0.006),
+    // 後頭部の張り出し（後ろだけ深く下りる）
+    translated(scaled(ball(0.098, 16, 12, Math.PI * 0.60), 1.0, 0.92, 1.0), 0, 0.020, -0.040),
+    // 前庇
+    translated(scaled(ball(0.100, 16, 6, Math.PI * 0.5), 1.0, 0.34, 0.66), 0, 0.026, 0.056),
+    // サイドレール
+    translated(roundedBox(0.013, 0.016, 0.105, 0.004, 0.002), 0.107, 0.032, -0.010),
+    translated(roundedBox(0.013, 0.016, 0.105, 0.004, 0.002), -0.107, 0.032, -0.010),
+    // 後部カウンターウェイト
+    translated(roundedBox(0.078, 0.048, 0.040, 0.013, 0.005), 0, 0.008, -0.104),
+    /*
+     * あご紐は入れていない。
+     * この縮尺だと必ず「顔から突き出た棒」になってしまい、
+     * かえって不自然に見える。代わりに、実際の装備どおり
+     * ヘルメットに固定するヘッドセットを付ける。
+     */
+    // ヘッドセットのアーム（ヘルメット側面から耳へ下りる）
+    translated(rotated(roundedBox(0.011, 0.070, 0.013, 0.004, 0.002), 0, 0, 0.22), 0.104, -0.010, -0.006),
+    translated(rotated(roundedBox(0.011, 0.070, 0.013, 0.004, 0.002), 0, 0, -0.22), -0.104, -0.010, -0.006),
+  ]), M.gear);
+
+  // ヘッドセット（イヤーカップとマイクブーム）
+  addMesh(head, mergeParts([
+    translated(rotated(tube(0.031, 0.029, 0.022, 14), 0, 0, Math.PI / 2), 0.098, -0.042, -0.004),
+    translated(rotated(tube(0.031, 0.029, 0.022, 14), 0, 0, Math.PI / 2), -0.098, -0.042, -0.004),
+    // マイクブーム（左耳から口元へ）
+    translated(rotated(tube(0.0055, 0.0055, 0.105, 8), 0, 0, -1.15), -0.075, -0.070, 0.050),
+    translated(ball(0.011, 8, 8), -0.028, -0.088, 0.082),
+  ]), M.gear);
+
+  // NVG マウント（前面中央）
+  addMesh(head, mergeParts([
+    translated(roundedBox(0.042, 0.036, 0.026, 0.006, 0.003), 0, 0.070, 0.092),
+    translated(roundedBox(0.024, 0.048, 0.020, 0.005, 0.002), 0, 0.094, 0.098),
   ]), M.metal);
 
-  // 腕
-  addMesh(armL, mergeParts([translated(roundedBox(0.098, 0.28, 0.098, 0.04, 0.015), 0, -0.13, 0)]), M.uniform);
-  addMesh(armR, mergeParts([translated(roundedBox(0.098, 0.28, 0.098, 0.04, 0.015), 0, -0.13, 0)]), M.uniform);
-  addMesh(foreL, mergeParts([
-    translated(roundedBox(0.086, 0.25, 0.086, 0.035, 0.014), 0, -0.11, 0),
-    translated(roundedBox(0.072, 0.09, 0.072, 0.025, 0.01), 0, -0.255, 0.012),  // 手
-  ]), M.uniform);
-  addMesh(foreR, mergeParts([
-    translated(roundedBox(0.086, 0.25, 0.086, 0.035, 0.014), 0, -0.11, 0),
-    translated(roundedBox(0.072, 0.09, 0.072, 0.025, 0.01), 0, -0.255, 0.012),
-  ]), M.uniform);
-  // 肘・手袋のアクセント
-  addMesh(foreL, mergeParts([translated(roundedBox(0.095, 0.07, 0.095, 0.02, 0.008), 0, 0.0, 0)]), M.gear);
-  addMesh(foreR, mergeParts([translated(roundedBox(0.095, 0.07, 0.095, 0.02, 0.008), 0, 0.0, 0)]), M.gear);
+  // ゴーグル（眉のすぐ下。バンドがヘルメット後方まで回る）
+  addMesh(head, mergeParts([
+    translated(scaled(ball(0.086, 16, 10), 1.04, 0.34, 0.98), 0, 0.010, 0.020),
+    translated(rotated(tube(0.010, 0.010, 0.19, 8), 0, 0, Math.PI / 2), 0, 0.014, -0.054),
+  ]), M.metal);
 
-  // 脚
-  addMesh(legL, mergeParts([translated(roundedBox(0.125, 0.44, 0.13, 0.045, 0.018), 0, -0.21, 0)]), M.uniform);
-  addMesh(legR, mergeParts([translated(roundedBox(0.125, 0.44, 0.13, 0.045, 0.018), 0, -0.21, 0)]), M.uniform);
-  addMesh(shinL, mergeParts([translated(roundedBox(0.108, 0.40, 0.115, 0.04, 0.016), 0, -0.19, 0)]), M.uniform);
-  addMesh(shinR, mergeParts([translated(roundedBox(0.108, 0.40, 0.115, 0.04, 0.016), 0, -0.19, 0)]), M.uniform);
-  // ニーパッド
-  addMesh(shinL, mergeParts([translated(roundedBox(0.115, 0.10, 0.055, 0.025, 0.01), 0, 0.005, 0.062)]), M.gear);
-  addMesh(shinR, mergeParts([translated(roundedBox(0.115, 0.10, 0.055, 0.025, 0.01), 0, 0.005, 0.062)]), M.gear);
-  // ブーツ
-  addMesh(shinL, mergeParts([
-    translated(roundedBox(0.115, 0.11, 0.24, 0.03, 0.012), 0, -0.40, 0.038),
-  ]), M.boot);
-  addMesh(shinR, mergeParts([
-    translated(roundedBox(0.115, 0.11, 0.24, 0.03, 0.012), 0, -0.40, 0.038),
-  ]), M.boot);
+  /* ==================================================================
+   *  腕
+   * ================================================================== */
+  for (const [g, s] of [[armL, 1], [armR, -1]]) {
+    addMesh(g, mergeParts([
+      translated(taper(0.052, 0.043, 0.27, 12), 0, -0.135, 0),
+      translated(ball(0.049, 12, 10), 0, -0.268, 0),          // 肘
+    ]), M.uniform);
+  }
+  for (const [g, s] of [[foreL, 1], [foreR, -1]]) {
+    addMesh(g, mergeParts([
+      translated(taper(0.045, 0.036, 0.235, 12), 0, -0.113, 0),
+    ]), M.uniform);
+    // 手袋（手首・手のひら・親指）
+    addMesh(g, mergeParts([
+      translated(scaled(roundedBox(0.062, 0.088, 0.048, 0.020, 0.008), 1, 1, 1), 0, -0.272, 0.008),
+      translated(scaled(ball(0.030, 10, 8), 0.7, 1.0, 1.0), s * 0.030, -0.252, 0.018),
+      translated(roundedBox(0.056, 0.036, 0.050, 0.014, 0.006), 0, -0.226, 0.006),
+    ]), M.gear);
+    // 肘パッド
+    addMesh(g, mergeParts([
+      translated(scaled(ball(0.055, 12, 10), 1.0, 0.9, 0.85), 0, 0.006, 0.012),
+    ]), M.gear);
+  }
 
-  // 陣営色のアームバンド
-  addMesh(armL, mergeParts([translated(roundedBox(0.104, 0.045, 0.104, 0.02, 0.008), 0, -0.06, 0)]), M.accent);
-  addMesh(armR, mergeParts([translated(roundedBox(0.104, 0.045, 0.104, 0.02, 0.008), 0, -0.06, 0)]), M.accent);
+  /* ==================================================================
+   *  脚
+   * ================================================================== */
+  for (const g of [legL, legR]) {
+    addMesh(g, mergeParts([
+      translated(taper(0.086, 0.062, 0.43, 14), 0, -0.205, 0),
+      translated(scaled(ball(0.082, 14, 12), 1.0, 0.9, 1.0), 0, 0.015, 0),   // 股関節
+      translated(ball(0.063, 12, 10), 0, -0.418, 0),                          // 膝
+    ]), M.uniform);
+  }
+  for (const g of [shinL, shinR]) {
+    addMesh(g, mergeParts([
+      translated(taper(0.060, 0.046, 0.395, 12), 0, -0.198, 0),
+      translated(scaled(ball(0.050, 12, 10), 1.0, 0.85, 1.0), 0, -0.392, 0), // 足首
+    ]), M.uniform);
+    // ニーパッド（膝の球を覆う）
+    addMesh(g, mergeParts([
+      translated(scaled(ball(0.072, 14, 12), 1.0, 0.95, 0.85), 0, 0.008, 0.014),
+      translated(roundedBox(0.115, 0.030, 0.055, 0.010, 0.004), 0, -0.052, 0.020),
+    ]), M.gear);
+    /*
+     * ブーツ。
+     * 以前はすねの下端より 5.5cm 下に置いていたため、
+     * 足首から切り離されて宙に浮いて見えていた。
+     * すねの下端（-0.395）に合わせ、爪先を前へ出す。
+     */
+    addMesh(g, mergeParts([
+      // 甲
+      translated(roundedBox(0.098, 0.098, 0.135, 0.030, 0.012), 0, -0.418, 0.028),
+      // 爪先
+      translated(scaled(roundedBox(0.092, 0.062, 0.115, 0.026, 0.010), 1, 1, 1), 0, -0.437, 0.108),
+      // 踵
+      translated(roundedBox(0.088, 0.075, 0.070, 0.022, 0.009), 0, -0.430, -0.052),
+      // ソール
+      translated(roundedBox(0.100, 0.026, 0.232, 0.010, 0.004), 0, -0.460, 0.038),
+    ]), M.boot);
+  }
+
+  // 陣営色のアームバンド（上腕）
+  for (const g of [armL, armR]) {
+    addMesh(g, mergeParts([
+      translated(tube(0.054, 0.053, 0.042, 12), 0, -0.075, 0),
+    ]), M.accent);
+  }
 
   root.userData.bones = { hips, spine, chest, neck, head, armL, armR, foreL, foreR, legL, legR, shinL, shinR };
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   return root;
+}
+
+/** Y 軸方向の円錐台（手足のように先細りする部位に使う） */
+function taper(rTop, rBot, len, seg = 12) {
+  return new THREE.CylinderGeometry(rTop, rBot, len, seg, 1);
+}
+/** Y 軸方向の円筒 */
+function tube(rTop, rBot, len, seg = 10) {
+  return new THREE.CylinderGeometry(rTop, rBot, len, seg, 1);
+}
+/**
+ * 球の一部（緯度で切り出した殻）。
+ * t0/t1 は 0=北極 1=南極 の比率。上端・下端がきれいな円になるので、
+ * 面覆いのように「縁の線をはっきり見せたい」ものに使う。
+ */
+function shell(r, t0, t1, wSeg = 18, hSeg = 12) {
+  return new THREE.SphereGeometry(r, wSeg, hSeg, 0, Math.PI * 2, Math.PI * t0, Math.PI * (t1 - t0));
+}
+
+/** 球。phiLength を渡すと上半分だけの椀になる */
+function ball(r, wSeg = 14, hSeg = 12, thetaLength = Math.PI) {
+  return new THREE.SphereGeometry(r, wSeg, hSeg, 0, Math.PI * 2, 0, thetaLength);
+}
+function rotated(g, x, y, z) {
+  if (x) g.rotateX(x);
+  if (y) g.rotateY(y);
+  if (z) g.rotateZ(z);
+  return g;
 }
 
 function addMesh(parent, geo, mat) {
