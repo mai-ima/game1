@@ -1061,6 +1061,9 @@ export class Engine {
     if (o.hemiIntensity !== undefined) this.hemi.intensity = o.hemiIntensity;
     if (o.fillIntensity !== undefined) this.fill.intensity = o.fillIntensity;
     if (o.sunColor !== undefined) this.sun.color.set(o.sunColor);
+    if (o.hemiSky !== undefined) this.hemi.color.set(o.hemiSky);
+    if (o.hemiGround !== undefined) this.hemi.groundColor.set(o.hemiGround);
+    if (o.fillColor !== undefined) this.fill.color.set(o.fillColor);
     if (o.envIntensity !== undefined) this.scene.environmentIntensity = o.envIntensity;
     if (o.regenEnv) this.refreshEnvironment();
     if (o.envIntensity !== undefined) this.scene.environmentIntensity = o.envIntensity;

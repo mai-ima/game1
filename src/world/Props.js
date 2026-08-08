@@ -850,10 +850,457 @@ export function siteOffice(b, o) {
   return b;
 }
 
+/* ================= 家具・屋内什器 ================= *
+ *
+ * マンション・博物館・駅・事務所の内装を組むための部品。
+ * 屋内は視線が近く、細部がそのまま目に入る。
+ * 脚・引き出し・取っ手・座面のたわみまで作らないと、
+ * 「箱に色を塗っただけ」に見えてしまう。
+ */
+
+/** 事務机（天板・幕板・引き出し・脚） */
+export function desk(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 1.4, d = 0.7, h = 0.72, mat = 'woodFloor' } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+
+  // 天板（縁を少し出す）
+  b.box({ x, y: y + h - 0.018, z, w, h: 0.036, d, yaw, mat, surface: SURFACE.WOOD, collide: false });
+  b.box({ x, y: y + h - 0.048, z, w: w - 0.05, h: 0.026, d: d - 0.05, yaw, mat: 'plasticMatte', surface: SURFACE.WOOD, collide: false });
+  // 幕板
+  const [bx, bz] = at(0, -d / 2 + 0.05);
+  b.box({ x: bx, y: y + h - 0.20, z: bz, w: w - 0.1, h: 0.26, d: 0.03, yaw, mat: 'plasticMatte', surface: SURFACE.WOOD, collide: false });
+  // 脚（角パイプ）
+  for (const lx of [-w / 2 + 0.06, w / 2 - 0.06]) {
+    for (const lz of [-d / 2 + 0.06, d / 2 - 0.06]) {
+      const [px, pz] = at(lx, lz);
+      b.box({ x: px, y: y + (h - 0.05) / 2, z: pz, w: 0.045, h: h - 0.05, d: 0.045, yaw,
+        mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+    }
+  }
+  // 引き出し 3 段（右袖）
+  const dw = 0.36;
+  for (let i = 0; i < 3; i++) {
+    const dy = y + 0.16 + i * 0.18;
+    const [px, pz] = at(w / 2 - dw / 2 - 0.05, 0);
+    b.box({ x: px, y: dy, z: pz, w: dw, h: 0.165, d: d - 0.08, yaw, mat: 'plasticMatte', surface: SURFACE.WOOD, collide: false });
+    // 取っ手
+    const [hx, hz] = at(w / 2 - dw / 2 - 0.05, d / 2 - 0.03);
+    b.box({ x: hx, y: dy + 0.04, z: hz, w: dw * 0.5, h: 0.018, d: 0.03, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+  }
+  b.physics.addBox(x, y + h / 2, z, w / 2, h / 2, d / 2, yaw, { surface: SURFACE.WOOD, penetration: 0.55 });
+  return b;
+}
+
+/** 事務椅子（座面・背もたれ・ガスシリンダ・5 本脚とキャスタ） */
+export function officeChair(b, o) {
+  const { x, y = 0, z, yaw = 0, mat = 'fabric' } = o;
+  const seatY = y + 0.45;
+  // 座面（前縁を落として、板ではなくクッションに見せる）
+  b.box({ x, y: seatY, z, w: 0.46, h: 0.07, d: 0.44, yaw, mat, surface: SURFACE.FABRIC, collide: false });
+  b.box({ x, y: seatY - 0.045, z, w: 0.40, h: 0.03, d: 0.38, yaw, mat: 'plasticBlack', surface: SURFACE.FABRIC, collide: false });
+  // 背もたれ（少し倒す）
+  const bz = z - Math.cos(yaw) * 0.20, bx = x - Math.sin(yaw) * 0.20;
+  b.box({ x: bx, y: seatY + 0.30, z: bz, w: 0.44, h: 0.46, d: 0.07, yaw, rx: 0.14, mat, surface: SURFACE.FABRIC, collide: false });
+  // 支柱
+  b.cylinder({ x, y: y + 0.10, z, radius: 0.032, height: 0.36, segments: 10, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+  b.cylinder({ x, y: y + 0.06, z, radius: 0.055, height: 0.06, segments: 10, mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  // 5 本脚
+  for (let i = 0; i < 5; i++) {
+    const a = yaw + (i / 5) * Math.PI * 2;
+    const lx = x + Math.sin(a) * 0.14, lz = z + Math.cos(a) * 0.14;
+    b.box({ x: lx, y: y + 0.075, z: lz, w: 0.05, h: 0.035, d: 0.30, yaw: a, mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+    const wx = x + Math.sin(a) * 0.27, wz = z + Math.cos(a) * 0.27;
+    b.cylinder({ x: wx, y: y + 0.005, z: wz, radius: 0.028, height: 0.055, segments: 8, mat: 'rubber', surface: SURFACE.RUBBER, collide: false });
+  }
+  b.physics.addCylinder(x, y + 0.42, z, 0.30, 0.42, { surface: SURFACE.FABRIC, penetration: 0.8 });
+  return b;
+}
+
+/** スチール棚（棚板・支柱・筋交い・載っている箱） */
+export function shelfUnit(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 1.8, d = 0.5, h = 2.0, tiers = 4, loaded = true } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+
+  // 支柱（アングル材）
+  for (const lx of [-w / 2 + 0.03, w / 2 - 0.03]) {
+    for (const lz of [-d / 2 + 0.03, d / 2 - 0.03]) {
+      const [px, pz] = at(lx, lz);
+      b.box({ x: px, y: y + h / 2, z: pz, w: 0.05, h, d: 0.05, yaw, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    }
+  }
+  // 棚板
+  for (let i = 0; i < tiers; i++) {
+    const sy = y + 0.08 + (h - 0.2) * (i / (tiers - 1));
+    b.box({ x, y: sy, z, w: w - 0.02, h: 0.028, d, yaw, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    // 棚板の折り返し（薄板が薄板に見えないように）
+    const [fx, fz] = at(0, d / 2 - 0.012);
+    b.box({ x: fx, y: sy - 0.022, z: fz, w: w - 0.02, h: 0.03, d: 0.022, yaw, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    if (!loaded || i === tiers - 1) continue;
+    // 載っている物（段ごとに中身を変える）
+    const n = 2 + Math.floor(R(0, 2.4));
+    for (let k = 0; k < n; k++) {
+      const lx = -w / 2 + 0.25 + k * (w - 0.5) / Math.max(1, n - 1) + R(-0.05, 0.05);
+      const [px, pz] = at(lx, R(-0.06, 0.06));
+      const bw = R(0.22, 0.36), bh = R(0.18, 0.30);
+      b.box({ x: px, y: sy + 0.015 + bh / 2, z: pz, w: bw, h: bh, d: R(0.24, 0.36),
+        yaw: yaw + R(-0.12, 0.12), mat: PICK(['cardboard', 'plywood', 'plasticMatte']),
+        surface: SURFACE.FABRIC, collide: false });
+    }
+  }
+  // 背面の筋交い
+  const [b1x, b1z] = at(0, -d / 2 + 0.02);
+  b.box({ x: b1x, y: y + h / 2, z: b1z, w: Math.hypot(w, h) - 0.2, h: 0.03, d: 0.02,
+    yaw, rz: Math.atan2(h, w), mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  b.physics.addBox(x, y + h / 2, z, w / 2, h / 2, d / 2, yaw, { surface: SURFACE.METAL, penetration: 0.35 });
+  return b;
+}
+
+/** ロッカー（扉・ルーバー・取っ手・南京錠の掛け金） */
+export function lockerBank(b, o) {
+  const { x, y = 0, z, yaw = 0, doors = 4, h = 1.8, d = 0.5, mat = 'paintedMetal' } = o;
+  const dw = 0.32, w = dw * doors;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+
+  b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat, surface: SURFACE.METAL, collide: false });
+  // 台輪
+  b.box({ x, y: y + 0.05, z, w: w + 0.02, h: 0.1, d: d + 0.02, yaw, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  for (let i = 0; i < doors; i++) {
+    const lx = -w / 2 + dw * (i + 0.5);
+    const [fx, fz] = at(lx, d / 2 + 0.012);
+    // 扉
+    b.box({ x: fx, y: y + h / 2 + 0.05, z: fz, w: dw - 0.03, h: h - 0.16, d: 0.02, yaw, mat, surface: SURFACE.METAL, collide: false });
+    // ルーバー（通気口）
+    for (let k = 0; k < 4; k++) {
+      const [vx, vz] = at(lx, d / 2 + 0.02);
+      b.box({ x: vx, y: y + h - 0.22 - k * 0.055, z: vz, w: dw - 0.13, h: 0.016, d: 0.012,
+        yaw, rx: 0.4, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+    }
+    // 取っ手と掛け金
+    const [hx, hz] = at(lx + dw * 0.28, d / 2 + 0.03);
+    b.box({ x: hx, y: y + h * 0.52, z: hz, w: 0.03, h: 0.11, d: 0.025, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+    b.box({ x: hx, y: y + h * 0.52 - 0.09, z: hz, w: 0.05, h: 0.035, d: 0.02, yaw, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  }
+  b.physics.addBox(x, y + h / 2, z, w / 2, h / 2, d / 2, yaw, { surface: SURFACE.METAL, penetration: 0.3 });
+  return b;
+}
+
+/** ソファ（座面・背・肘掛け・脚。クッションの割れ目まで） */
+export function sofa(b, o) {
+  const { x, y = 0, z, yaw = 0, seats = 3, mat = 'fabric' } = o;
+  const sw = 0.62, w = sw * seats + 0.3, d = 0.86;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+
+  // 台座
+  b.box({ x, y: y + 0.20, z, w, h: 0.24, d, yaw, mat, surface: SURFACE.FABRIC, collide: false });
+  // 座クッション（1 人ぶんずつ。間に隙間を空ける）
+  for (let i = 0; i < seats; i++) {
+    const lx = -w / 2 + 0.15 + sw * (i + 0.5);
+    const [px, pz] = at(lx, 0.04);
+    b.box({ x: px, y: y + 0.38, z: pz, w: sw - 0.035, h: 0.14, d: d - 0.22, yaw, mat, surface: SURFACE.FABRIC, collide: false });
+    // 背クッション
+    const [bx2, bz2] = at(lx, -d / 2 + 0.16);
+    b.box({ x: bx2, y: y + 0.60, z: bz2, w: sw - 0.045, h: 0.34, d: 0.20, yaw, rx: 0.10, mat, surface: SURFACE.FABRIC, collide: false });
+  }
+  // 背板
+  const [rx2, rz2] = at(0, -d / 2 + 0.07);
+  b.box({ x: rx2, y: y + 0.50, z: rz2, w, h: 0.60, d: 0.14, yaw, mat, surface: SURFACE.FABRIC, collide: false });
+  // 肘掛け
+  for (const sx of [-1, 1]) {
+    const [ax, az] = at(sx * (w / 2 - 0.075), 0);
+    b.box({ x: ax, y: y + 0.42, z: az, w: 0.15, h: 0.44, d, yaw, mat, surface: SURFACE.FABRIC, collide: false });
+  }
+  // 脚
+  for (const lx of [-w / 2 + 0.1, w / 2 - 0.1]) {
+    for (const lz of [-d / 2 + 0.1, d / 2 - 0.1]) {
+      const [px, pz] = at(lx, lz);
+      b.cylinder({ x: px, y, z: pz, radius: 0.026, height: 0.08, segments: 8, mat: 'wood', surface: SURFACE.WOOD, collide: false });
+    }
+  }
+  b.physics.addBox(x, y + 0.34, z, w / 2, 0.34, d / 2, yaw, { surface: SURFACE.FABRIC, penetration: 0.7 });
+  return b;
+}
+
+/** 食卓（天板・幕板・4 本脚） */
+export function diningTable(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 1.5, d = 0.85, h = 0.72, mat = 'woodFloorDark' } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  b.box({ x, y: y + h - 0.02, z, w, h: 0.04, d, yaw, mat, surface: SURFACE.WOOD, collide: false });
+  b.box({ x, y: y + h - 0.055, z, w: w - 0.08, h: 0.03, d: d - 0.08, yaw, mat, surface: SURFACE.WOOD, collide: false });
+  for (const lx of [-w / 2 + 0.09, w / 2 - 0.09]) {
+    for (const lz of [-d / 2 + 0.09, d / 2 - 0.09]) {
+      const [px, pz] = at(lx, lz);
+      b.box({ x: px, y: y + (h - 0.07) / 2, z: pz, w: 0.06, h: h - 0.07, d: 0.06, yaw, mat, surface: SURFACE.WOOD, collide: false });
+    }
+  }
+  b.physics.addBox(x, y + h / 2, z, w / 2, h / 2, d / 2, yaw, { surface: SURFACE.WOOD, penetration: 0.6 });
+  return b;
+}
+
+/** 木の椅子（座面・背もたれの桟・4 本脚・貫） */
+export function woodChair(b, o) {
+  const { x, y = 0, z, yaw = 0, mat = 'wood' } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  const sh = 0.45;
+  b.box({ x, y: y + sh, z, w: 0.42, h: 0.035, d: 0.40, yaw, mat, surface: SURFACE.WOOD, collide: false });
+  // 背もたれ（縦framework + 横桟 2 本）
+  for (const sx of [-0.17, 0.17]) {
+    const [px, pz] = at(sx, -0.18);
+    b.box({ x: px, y: y + sh + 0.23, z: pz, w: 0.035, h: 0.46, d: 0.035, yaw, mat, surface: SURFACE.WOOD, collide: false });
+  }
+  for (const by of [0.28, 0.42]) {
+    const [px, pz] = at(0, -0.18);
+    b.box({ x: px, y: y + sh + by, z: pz, w: 0.37, h: 0.055, d: 0.025, yaw, mat, surface: SURFACE.WOOD, collide: false });
+  }
+  // 脚と貫
+  for (const lx of [-0.17, 0.17]) {
+    for (const lz of [-0.17, 0.17]) {
+      const [px, pz] = at(lx, lz);
+      b.box({ x: px, y: y + sh / 2, z: pz, w: 0.035, h: sh, d: 0.035, yaw, mat, surface: SURFACE.WOOD, collide: false });
+    }
+  }
+  for (const lz of [-0.17, 0.17]) {
+    const [px, pz] = at(0, lz);
+    b.box({ x: px, y: y + 0.16, z: pz, w: 0.34, h: 0.025, d: 0.02, yaw, mat, surface: SURFACE.WOOD, collide: false });
+  }
+  b.physics.addBox(x, y + 0.35, z, 0.22, 0.35, 0.21, yaw, { surface: SURFACE.WOOD, penetration: 0.7 });
+  return b;
+}
+
+/** ベッド（フレーム・マットレス・掛け布団・枕） */
+export function bed(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 1.0, d = 2.0, mat = 'fabric' } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  // フレーム
+  b.box({ x, y: y + 0.14, z, w: w + 0.06, h: 0.28, d: d + 0.06, yaw, mat: 'woodDark', surface: SURFACE.WOOD, collide: false });
+  // ヘッドボード
+  const [hx, hz] = at(0, -d / 2 - 0.02);
+  b.box({ x: hx, y: y + 0.55, z: hz, w: w + 0.06, h: 0.62, d: 0.06, yaw, mat: 'woodDark', surface: SURFACE.WOOD, collide: false });
+  // マットレス
+  b.box({ x, y: y + 0.39, z, w, h: 0.22, d, yaw, mat: 'fabric', surface: SURFACE.FABRIC, collide: false });
+  // 掛け布団（足元側だけ厚く、めくれた感じに）
+  const [qx, qz] = at(0, 0.28);
+  b.box({ x: qx, y: y + 0.52, z: qz, w: w + 0.04, h: 0.10, d: d * 0.66, yaw, mat, surface: SURFACE.FABRIC, collide: false });
+  const [q2x, q2z] = at(0, d / 2 - 0.16);
+  b.box({ x: q2x, y: y + 0.55, z: q2z, w: w + 0.04, h: 0.14, d: 0.34, yaw, rx: -0.12, mat, surface: SURFACE.FABRIC, collide: false });
+  // 枕
+  const [px, pz] = at(0, -d / 2 + 0.24);
+  b.box({ x: px, y: y + 0.56, z: pz, w: w - 0.22, h: 0.11, d: 0.34, yaw, rx: 0.08, mat: 'fabric', surface: SURFACE.FABRIC, collide: false });
+  b.physics.addBox(x, y + 0.28, z, (w + 0.06) / 2, 0.28, (d + 0.06) / 2, yaw, { surface: SURFACE.FABRIC, penetration: 0.5 });
+  return b;
+}
+
+/** 洋服だんす／収納棚（両開きの扉・取っ手・台輪） */
+export function wardrobe(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 1.1, d = 0.58, h = 1.9, mat = 'woodFloor' } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat, surface: SURFACE.WOOD, collide: false });
+  b.box({ x, y: y + 0.04, z, w: w - 0.06, h: 0.08, d: d - 0.06, yaw, mat: 'woodDark', surface: SURFACE.WOOD, collide: false });
+  // 天板の縁
+  b.box({ x, y: y + h + 0.015, z, w: w + 0.04, h: 0.03, d: d + 0.04, yaw, mat, surface: SURFACE.WOOD, collide: false });
+  // 扉 2 枚
+  for (const sx of [-1, 1]) {
+    const [dx, dz] = at(sx * w / 4, d / 2 + 0.012);
+    b.box({ x: dx, y: y + h / 2 + 0.04, z: dz, w: w / 2 - 0.02, h: h - 0.14, d: 0.02, yaw, mat, surface: SURFACE.WOOD, collide: false });
+    const [gx, gz] = at(sx * 0.05, d / 2 + 0.03);
+    b.box({ x: gx, y: y + h * 0.5, z: gz, w: 0.02, h: 0.16, d: 0.022, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+  }
+  b.physics.addBox(x, y + h / 2, z, w / 2, h / 2, d / 2, yaw, { surface: SURFACE.WOOD, penetration: 0.45 });
+  return b;
+}
+
+/** 冷蔵庫（本体・上下の扉・ハンドル・放熱の隙間） */
+export function fridge(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 0.6, d = 0.65, h = 1.75, mat = 'stainless' } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat, surface: SURFACE.METAL, collide: false });
+  // 上（冷凍）と下（冷蔵）の扉
+  for (const [dy, dh] of [[h * 0.78, h * 0.38], [h * 0.30, h * 0.55]]) {
+    const [fx, fz] = at(0, d / 2 + 0.012);
+    b.box({ x: fx, y: y + dy, z: fz, w: w - 0.02, h: dh - 0.02, d: 0.02, yaw, mat, surface: SURFACE.METAL, collide: false });
+    const [hx, hz] = at(w / 2 - 0.08, d / 2 + 0.035);
+    b.box({ x: hx, y: y + dy, z: hz, w: 0.028, h: dh * 0.55, d: 0.028, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+  }
+  // 台輪の通気
+  b.box({ x, y: y + 0.035, z, w: w - 0.05, h: 0.05, d: d - 0.04, yaw, mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  b.physics.addBox(x, y + h / 2, z, w / 2, h / 2, d / 2, yaw, { surface: SURFACE.METAL, penetration: 0.3 });
+  return b;
+}
+
+/** 流し台（天板・シンク・水栓・扉） */
+export function kitchenUnit(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 1.8, d = 0.62, h = 0.85 } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat: 'plasticMatte', surface: SURFACE.WOOD, collide: false });
+  // ステンレスの天板
+  b.box({ x, y: y + h + 0.02, z, w: w + 0.03, h: 0.04, d: d + 0.03, yaw, mat: 'stainless', surface: SURFACE.METAL, collide: false });
+  // シンク（縁を残して窪ませる）
+  const [sx2, sz2] = at(-w / 4, 0);
+  b.box({ x: sx2, y: y + h - 0.10, z: sz2, w: 0.46, h: 0.2, d: 0.38, yaw, mat: 'stainless', surface: SURFACE.METAL, collide: false });
+  b.box({ x: sx2, y: y + h - 0.02, z: sz2, w: 0.40, h: 0.05, d: 0.32, yaw, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  // 水栓
+  const [tx, tz] = at(-w / 4, -d / 2 + 0.10);
+  b.cylinder({ x: tx, y: y + h + 0.04, z: tz, radius: 0.022, height: 0.26, segments: 10, mat: 'chrome', surface: SURFACE.METAL, collide: false });
+  b.box({ x: tx, y: y + h + 0.29, z: tz + 0.09, w: 0.03, h: 0.03, d: 0.20, yaw, mat: 'chrome', surface: SURFACE.METAL, collide: false });
+  // 扉と引き出し
+  for (let i = 0; i < 3; i++) {
+    const lx = -w / 2 + w / 3 * (i + 0.5);
+    const [dx, dz] = at(lx, d / 2 + 0.012);
+    b.box({ x: dx, y: y + h * 0.48, z: dz, w: w / 3 - 0.03, h: h - 0.18, d: 0.02, yaw, mat: 'plasticMatte', surface: SURFACE.WOOD, collide: false });
+    const [gx, gz] = at(lx, d / 2 + 0.03);
+    b.box({ x: gx, y: y + h - 0.16, z: gz, w: w / 3 * 0.5, h: 0.02, d: 0.025, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+  }
+  b.physics.addBox(x, y + h / 2, z, w / 2, h / 2, d / 2, yaw, { surface: SURFACE.WOOD, penetration: 0.5 });
+  return b;
+}
+
+/** テレビと台 */
+export function tvSet(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 1.2, screen = 1.0 } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  // 台
+  b.box({ x, y: y + 0.22, z, w, h: 0.44, d: 0.40, yaw, mat: 'woodFloorDark', surface: SURFACE.WOOD, collide: false });
+  b.box({ x, y: y + 0.45, z, w: w + 0.04, h: 0.03, d: 0.44, yaw, mat: 'woodFloorDark', surface: SURFACE.WOOD, collide: false });
+  // スタンド
+  b.box({ x, y: y + 0.51, z, w: 0.3, h: 0.09, d: 0.16, yaw, mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  // 画面（枠 + 黒い面）
+  b.box({ x, y: y + 0.85, z, w: screen + 0.03, h: screen * 0.60 + 0.03, d: 0.05, yaw, mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  const [fx, fz] = at(0, 0.028);
+  b.box({ x: fx, y: y + 0.85, z: fz, w: screen, h: screen * 0.60, d: 0.008, yaw, mat: 'acrylic', surface: SURFACE.GLASS, collide: false });
+  b.physics.addBox(x, y + 0.24, z, w / 2, 0.24, 0.22, yaw, { surface: SURFACE.WOOD, penetration: 0.6 });
+  return b;
+}
+
+/** 本棚（側板・棚板・並んだ本） */
+export function bookshelf(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 0.9, d = 0.30, h = 1.85, tiers = 5, mat = 'woodFloor' } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  for (const sx of [-1, 1]) {
+    const [px, pz] = at(sx * (w / 2 - 0.01), 0);
+    b.box({ x: px, y: y + h / 2, z: pz, w: 0.02, h, d, yaw, mat, surface: SURFACE.WOOD, collide: false });
+  }
+  const [bx, bz] = at(0, -d / 2 + 0.006);
+  b.box({ x: bx, y: y + h / 2, z: bz, w, h, d: 0.012, yaw, mat: 'plywood', surface: SURFACE.WOOD, collide: false });
+  for (let i = 0; i <= tiers; i++) {
+    const sy = y + 0.03 + (h - 0.06) * (i / tiers);
+    b.box({ x, y: sy, z, w: w - 0.04, h: 0.02, d, yaw, mat, surface: SURFACE.WOOD, collide: false });
+    if (i === tiers) continue;
+    // 本を並べる（高さと厚みをばらす。傾いた 1 冊を混ぜる）
+    let lx = -w / 2 + 0.05;
+    while (lx < w / 2 - 0.08) {
+      const t = R(0.018, 0.045);
+      const bh = R(0.20, 0.28);
+      const [px, pz] = at(lx + t / 2, 0.01);
+      b.box({ x: px, y: sy + 0.01 + bh / 2, z: pz, w: t, h: bh, d: d - 0.06,
+        yaw, rz: Math.random() < 0.08 ? R(0.10, 0.22) : 0,
+        mat: PICK(['paperPrint', 'leather', 'cardboard', 'plasticMatte']),
+        surface: SURFACE.FABRIC, collide: false });
+      lx += t + 0.004;
+    }
+  }
+  b.physics.addBox(x, y + h / 2, z, w / 2, h / 2, d / 2, yaw, { surface: SURFACE.WOOD, penetration: 0.45 });
+  return b;
+}
+
+/** ベンチ（駅・公園。座面の板と鋳物の脚） */
+export function bench(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 1.8, back = true } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  // 座面の板 4 枚（隙間を空ける）
+  for (let i = 0; i < 4; i++) {
+    const [px, pz] = at(0, -0.18 + i * 0.11);
+    b.box({ x: px, y: y + 0.44, z: pz, w, h: 0.035, d: 0.09, yaw, mat: 'woodDark', surface: SURFACE.WOOD, collide: false });
+  }
+  if (back) {
+    for (let i = 0; i < 3; i++) {
+      const [px, pz] = at(0, -0.22);
+      b.box({ x: px, y: y + 0.60 + i * 0.12, z: pz, w, h: 0.035, d: 0.09, yaw, rx: 0.16,
+        mat: 'woodDark', surface: SURFACE.WOOD, collide: false });
+    }
+  }
+  // 脚（鋳物）
+  for (const sx of [-1, 1]) {
+    const [px, pz] = at(sx * (w / 2 - 0.16), 0);
+    b.box({ x: px, y: y + 0.22, z: pz, w: 0.05, h: 0.44, d: 0.44, yaw, mat: 'castIron', surface: SURFACE.METAL, collide: false });
+    b.box({ x: px, y: y + 0.02, z: pz, w: 0.09, h: 0.04, d: 0.52, yaw, mat: 'castIron', surface: SURFACE.METAL, collide: false });
+    if (back) {
+      const [bx2, bz2] = at(sx * (w / 2 - 0.16), -0.20);
+      b.box({ x: bx2, y: y + 0.62, z: bz2, w: 0.05, h: 0.45, d: 0.05, yaw, rx: 0.16, mat: 'castIron', surface: SURFACE.METAL, collide: false });
+    }
+  }
+  b.physics.addBox(x, y + 0.24, z, w / 2, 0.24, 0.26, yaw, { surface: SURFACE.WOOD, penetration: 0.55 });
+  return b;
+}
+
+/** 受付・売店のカウンター */
+export function counter(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 2.4, d = 0.7, h = 1.05, mat = 'woodFloorDark' } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat, surface: SURFACE.WOOD });
+  // 天板（前へ張り出す）
+  const [tx, tz] = at(0, 0.06);
+  b.box({ x: tx, y: y + h + 0.02, z: tz, w: w + 0.1, h: 0.05, d: d + 0.16, yaw, mat: 'marbleDark', surface: SURFACE.CONCRETE, collide: false });
+  // 幕板の見切り
+  const [ax, az] = at(0, d / 2 + 0.012);
+  b.box({ x: ax, y: y + h - 0.14, z: az, w: w - 0.06, h: 0.03, d: 0.02, yaw, mat: 'brassPolished', surface: SURFACE.METAL, collide: false });
+  b.box({ x: ax, y: y + 0.09, z: az, w: w - 0.06, h: 0.10, d: 0.02, yaw, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  return b;
+}
+
+/** 観葉植物（鉢・土・葉） */
+export function potPlant(b, o) {
+  const { x, y = 0, z, height = 1.1 } = o;
+  b.cylinder({ x, y, z, radius: 0.20, height: 0.30, segments: 12, mat: 'ceramicTile', surface: SURFACE.CONCRETE, collide: false });
+  b.cylinder({ x, y: y + 0.30, z, radius: 0.215, height: 0.04, segments: 12, mat: 'ceramicTile', surface: SURFACE.CONCRETE, collide: false });
+  b.cylinder({ x, y: y + 0.28, z, radius: 0.18, height: 0.04, segments: 12, mat: 'mud', surface: SURFACE.DIRT, collide: false });
+  // 幹
+  b.cylinder({ x, y: y + 0.30, z, radius: 0.028, height: height * 0.45, segments: 6, mat: 'bark', surface: SURFACE.WOOD, collide: false });
+  // 葉（板を放射状に）
+  const n = 9;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + R(-0.2, 0.2);
+    const r = R(0.16, 0.34);
+    const ly = y + 0.30 + height * R(0.35, 0.95);
+    b.box({
+      x: x + Math.cos(a) * r * 0.5, y: ly, z: z + Math.sin(a) * r * 0.5,
+      w: r * 1.5, h: 0.012, d: 0.16, yaw: a, rz: R(-0.5, -0.15),
+      mat: 'foliage', surface: SURFACE.FABRIC, collide: false,
+    });
+  }
+  b.physics.addCylinder(x, y + 0.16, z, 0.21, 0.16, { surface: SURFACE.CONCRETE, penetration: 0.6 });
+  return b;
+}
+
+/** ごみ箱（屋内用） */
+export function trashBin(b, o) {
+  const { x, y = 0, z, mat = 'brushedMetal', height = 0.62 } = o;
+  b.cylinder({ x, y, z, radius: 0.17, height, segments: 14, mat, surface: SURFACE.METAL, collide: false });
+  b.cylinder({ x, y: y + height, z, radius: 0.185, height: 0.03, segments: 14, mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  b.cylinder({ x, y: y + height - 0.02, z, radius: 0.145, height: 0.02, segments: 14, mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  b.physics.addCylinder(x, y + height / 2, z, 0.18, height / 2, { surface: SURFACE.METAL, penetration: 0.7 });
+  return b;
+}
+
 export const PROPS = {
   woodCrate, ammoCrate, barrel, sandbagStack, pallet, tireStack, cardboardStack,
   container, acUnit, railing, pipeRun, marketStall, clothesline, rubble,
   streetLight, utilityPole, vehicle, sign, waterTank, rooftopClutter, jerryCan, litter,
   chainFence, scaffold, rebarBundle, formworkStack, blockPallet, aggregatePile,
   siteBarrier, siteOffice,
+  desk, officeChair, shelfUnit, lockerBank, sofa, diningTable, woodChair,
+  bed, wardrobe, fridge, kitchenUnit, tvSet, bookshelf, bench, counter,
+  potPlant, trashBin,
 };

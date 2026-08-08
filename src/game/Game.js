@@ -105,7 +105,28 @@ export class Game {
     this.engine.setSunAngle(this.mapInfo.sun.elevation, this.mapInfo.sun.azimuth);
     this.engine.refreshEnvironment();
     // 環境マップ（青空）の効きを抑える。強いと全面が青みを帯びる。
-    this.engine.scene.environmentIntensity = 0.26;
+    this.engine.scene.environmentIntensity = this.mapInfo.light?.env ?? 0.26;
+
+    /*
+     * 光の作りはレベルごとに変えられる。
+     * 砂漠の廃墟は夕方寄りの暖色が似合うが、検証用の場では
+     * 色が偏ると材質の色を読み違える。既定は共通の屋外設定のまま、
+     * MAP_INFO.light が指定されていればそれで上書きする。
+     */
+    const L = this.mapInfo.light;
+    this.engine.tune(L ? {
+      sunColor: L.sun ?? 0xffdcae,
+      sunIntensity: L.sunIntensity ?? 3.6,
+      hemiSky: L.hemiSky ?? 0xa9c2d8,
+      hemiGround: L.hemiGround ?? 0x8a6f4a,
+      hemiIntensity: L.hemiIntensity ?? 0.26,
+      fillColor: L.fillColor ?? 0xa6bacd,
+      fillIntensity: L.fillIntensity ?? 0.22,
+    } : {
+      sunColor: 0xffdcae, sunIntensity: 3.6,
+      hemiSky: 0xa9c2d8, hemiGround: 0x8a6f4a, hemiIntensity: 0.26,
+      fillColor: 0xa6bacd, fillIntensity: 0.22,
+    });
     this.mats.applyEnvironment(this.engine.envRT.texture, 1.0);
     this.engine.scene.fog = new THREE.Fog(this.mapInfo.fog.color, this.mapInfo.fog.near, this.mapInfo.fog.far);
 

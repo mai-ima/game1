@@ -592,6 +592,85 @@ export class MaterialLibrary {
     return mat;
   }
 
+  /**
+   * 店舗や施設の看板。
+   *
+   * 街を街らしく見せるのは、建物の形より「文字が載っていること」。
+   * 無地の箱が並ぶだけでは、どんなに寸法を詰めても書き割りに見える。
+   *
+   * @param {string} text 主文字（日本語を想定）
+   * @param {object} opt {sub, bg, fg, vertical, w, h, size, worn}
+   */
+  signboard(text, opt = {}) {
+    const key = `sign:${text}|${JSON.stringify(opt)}`;
+    if (this.cache.has(key)) return this.cache.get(key);
+
+    const {
+      w = 512, h = 160, bg = '#1d2530', fg = '#f2efe9', sub = '',
+      vertical = false, size = 0, worn = 0.18, accent = '',
+    } = opt;
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const g = cv.getContext('2d');
+    const face = '"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif';
+
+    g.fillStyle = bg;
+    g.fillRect(0, 0, w, h);
+    if (accent) {
+      g.fillStyle = accent;
+      g.fillRect(0, h - 9, w, 9);
+    }
+
+    g.fillStyle = fg;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    if (vertical) {
+      // 縦書き。1 文字ずつ積む
+      const chars = [...text];
+      const fs = size || Math.min(w * 0.62, (h * 0.86) / chars.length);
+      g.font = `700 ${fs}px ${face}`;
+      const step = (h * 0.88) / chars.length;
+      const top = h / 2 - (step * (chars.length - 1)) / 2;
+      chars.forEach((ch, i) => g.fillText(ch, w / 2, top + step * i));
+    } else {
+      const fs = size || Math.min(h * (sub ? 0.46 : 0.62), (w * 0.90) / Math.max(1, [...text].length));
+      g.font = `700 ${fs}px ${face}`;
+      g.fillText(text, w / 2, sub ? h * 0.40 : h / 2, w * 0.92);
+      if (sub) {
+        g.font = `500 ${Math.round(fs * 0.36)}px ui-monospace, ${face}`;
+        g.fillStyle = 'rgba(242,239,233,0.62)';
+        g.fillText(sub, w / 2, h * 0.74, w * 0.92);
+      }
+    }
+
+    /*
+     * 経年。塗膜の剥がれと汚れを薄く重ねる。
+     * 真新しい看板ばかりだと、街全体が模型のように見える。
+     */
+    if (worn > 0) {
+      const img = g.getImageData(0, 0, w, h);
+      const px = img.data;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          const n = Math.sin(x * 0.031 + y * 0.017) * Math.sin(x * 0.007 - y * 0.041);
+          const k = 1 - worn * (0.5 + 0.5 * n) * (0.45 + 0.55 * (y / h));
+          px[i] *= k; px[i + 1] *= k; px[i + 2] *= k;
+        }
+      }
+      g.putImageData(img, 0, 0);
+    }
+
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = Math.min(8, this.tf.maxAniso ?? 1);
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex, roughness: 0.62, metalness: 0.05,
+    });
+    mat.name = `sign:${text}`;
+    return this._register(mat, key);
+  }
+
   emissive(color = 0xffe6b0, intensity = 4, opt = {}) {
     const key = `emis|${color}|${intensity}|${JSON.stringify(opt)}`;
     if (this.cache.has(key)) return this.cache.get(key);
