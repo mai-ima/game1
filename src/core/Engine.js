@@ -18,20 +18,23 @@ import { CompositeShader, RadialBlurShader } from '../render/PostFX.js';
  * 苦しい端末では自動的に下がる。
  *
  * aa: 'smaa'（3 パス・最良） / 'fxaa'（1 パス・安価） / 'none'
+ *
+ * 各段階は 1 つ上へ引き上げてある。
+ * 「低」でも影とブルームが入り、「高」で環境遮蔽（GTAO）まで有効になる。
  */
 export const QUALITY = {
-  low:    { pixelRatio: 1.0,  shadows: false, shadowMap: 1024, gtao: false, bloom: false, aa: 'fxaa', aniso: 4,  shadowDist: 30, texSize: 256,  bloomScale: 0.5,  minScale: 0.78 },
-  medium: { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true,  aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.85 },
-  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2048, gtao: false, bloom: true,  aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.85 },
-  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true,  aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.85 },
+  low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.85 },
+  medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.85 },
+  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.85 },
+  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 3072, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 85, texSize: 1024, bloomScale: 1.0,  minScale: 0.85 },
 };
 
 /** 画質プリセットの説明（設定画面に出す） */
 export const QUALITY_INFO = {
-  low:    { label: '低',   desc: '影とブルームを切り、解像度も抑える。GPU が弱い端末向け。' },
-  medium: { label: '中',   desc: '影あり・簡易アンチエイリアス。多くのノートPCで 60fps を狙える。' },
-  high:   { label: '高',   desc: '影 2048・SMAA・等倍以上の解像度。既定の推奨設定。' },
-  ultra:  { label: '最高', desc: 'さらに環境遮蔽（GTAO）と高解像度の影を追加。要 dGPU。' },
+  low:    { label: '低',   desc: '影 1536・ブルーム・FXAA。軽いが平板にはならない構成。' },
+  medium: { label: '中',   desc: '影 2048・SMAA・等倍以上の解像度。多くのノートPCで 60fps を狙える。' },
+  high:   { label: '高',   desc: 'さらに環境遮蔽（GTAO）と高解像度テクスチャ。既定の推奨設定。' },
+  ultra:  { label: '最高', desc: '影 3072・環境遮蔽・全解像度ブルーム。要 dGPU。' },
 };
 
 /**

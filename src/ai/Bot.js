@@ -19,20 +19,35 @@ export const BOT_STATE = {
 /**
  * 難易度プリセット。
  *
- * aimError は 1 発ごとの拡散半径（ラジアン）。
- * 10m 先での散らばり半径はおよそ aimError * 10 メートルになる。
- * 人体の幅が 0.5m 程度なので、0.030 なら 10m で半径 0.30m ＝ そこそこ当たる、
- * 0.075 なら半径 0.75m ＝ かなり外す、という目安。
- *
- * reaction   : 敵を認識してから撃ち始めるまでの秒数
- * burstPause : バースト間の休み（長いほど player に反撃の間が生まれる）
+ * aimError   : 銃口の揺れ（ラジアン）。見た目の「狙いのブレ」だけを決める。
+ *              大きくすると首や銃口がゆらゆらして落ち着かなく見えるため控えめに。
+ * spread     : 1 発ごとの拡散の標準偏差（ラジアン）。命中率はほぼこの値で決まる。
+ *              着弾は狙点まわりの 2 次元正規分布。12m 先での 1σ ≒ spread×12 m
+ *              揺れと分けてあるのは、見た目を崩さずに命中率だけを調整するため。
+ * dmgScale   : 与ダメージ倍率。同じ武器でもボットは人間より軽く撃つ。
+ * reaction   : 敵を「見つけた」あと撃ち始めるまでの秒数
+ * spotTime   : 視界に入ってから「見つけた」と判定するまでの基準秒数
+ *              （距離・相手の動き・視野中心からのズレで増減する）
+ * settleTime : 撃ち始めてから狙いが本来の精度に収束するまでの秒数
+ *              最初の一連射は大きく外れる
+ * burstPause : バースト間の休み（長いほど反撃の間が生まれる）
+ * aimSpeed   : 照準の最大角速度（rad/s）
  */
 export const DIFFICULTY = {
-  recruit:  { name: '新兵',     aimError: 0.085, reaction: 0.85, burstMin: 2, burstMax: 4,  burstPause: [0.75, 1.35], aimSpeed: 2.6, hp: 100, fovDeg: 95,  sight: 42, lead: 0.2 },
-  regular:  { name: '正規兵',   aimError: 0.055, reaction: 0.62, burstMin: 3, burstMax: 5,  burstPause: [0.55, 1.05], aimSpeed: 3.8, hp: 100, fovDeg: 105, sight: 55, lead: 0.45 },
-  veteran:  { name: '古参兵',   aimError: 0.034, reaction: 0.42, burstMin: 4, burstMax: 7,  burstPause: [0.42, 0.85], aimSpeed: 5.4, hp: 100, fovDeg: 115, sight: 70, lead: 0.7 },
-  elite:    { name: '特殊部隊', aimError: 0.021, reaction: 0.28, burstMin: 5, burstMax: 9,  burstPause: [0.32, 0.62], aimSpeed: 7.2, hp: 100, fovDeg: 125, sight: 85, lead: 0.9 },
+  recruit:  { name: '新兵',     aimError: 0.030, spread: 0.044, dmgScale: 0.52, reaction: 0.95, spotTime: 1.15, settleTime: 1.60, burstMin: 2, burstMax: 4, burstPause: [1.40, 2.40], aimSpeed: 2.4, hp: 100, fovDeg: 90,  sight: 42, lead: 0.15 },
+  regular:  { name: '正規兵',   aimError: 0.022, spread: 0.029, dmgScale: 0.55, reaction: 0.70, spotTime: 0.86, settleTime: 1.25, burstMin: 3, burstMax: 5, burstPause: [1.15, 2.00], aimSpeed: 3.4, hp: 100, fovDeg: 100, sight: 52, lead: 0.35 },
+  veteran:  { name: '古参兵',   aimError: 0.016, spread: 0.026, dmgScale: 0.64, reaction: 0.55, spotTime: 0.66, settleTime: 1.05, burstMin: 4, burstMax: 7, burstPause: [0.95, 1.65], aimSpeed: 4.6, hp: 100, fovDeg: 110, sight: 66, lead: 0.6 },
+  elite:    { name: '特殊部隊', aimError: 0.011, spread: 0.021, dmgScale: 0.72, reaction: 0.45, spotTime: 0.48, settleTime: 0.80, burstMin: 5, burstMax: 9, burstPause: [0.78, 1.30], aimSpeed: 6.2, hp: 100, fovDeg: 120, sight: 80, lead: 0.85 },
 };
+
+/**
+ * 味方（プレイヤーと同じチーム）の練度補正。
+ *
+ * 同じ難易度をそのまま使うと、敵はプレイヤーという「よく動く的」に
+ * 集中して有利に立つのに対し、味方は数でも押されて一方的に溶ける。
+ * 味方だけ、狙いを締め・反応を速め・発見を早めて釣り合わせる。
+ */
+const ALLY_BONUS = { aim: 0.80, spread: 0.66, dmg: 1.25, reaction: 0.78, spot: 0.78, settle: 0.78, sight: 1.15 };
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -47,6 +62,9 @@ const _fUp = new THREE.Vector3();
 const _fMuzzle = new THREE.Vector3();
 const _UP = new THREE.Vector3(0, 1, 0);
 
+// 射撃が抑止された理由の計測用（調整ツールから参照する）
+export const BOT_GATE = { pause: 0, state: 0, react: 0, notgt: 0, ammo: 0, los: 0, dot: 0, timer: 0, fire: 0, dotSum: 0, dotN: 0 };
+
 let _nextId = 1;
 
 export class Bot {
@@ -59,7 +77,20 @@ export class Bot {
     this.ctx = ctx;
     this.team = opt.team ?? 'B';
     this.name = opt.name || `BOT-${String(this.id).padStart(2, '0')}`;
-    this.diff = DIFFICULTY[opt.difficulty] || DIFFICULTY.regular;
+    const base = DIFFICULTY[opt.difficulty] || DIFFICULTY.regular;
+    // 味方は少し強くする（詳細は ALLY_BONUS のコメント）
+    this.diff = opt.ally
+      ? {
+        ...base,
+        aimError: base.aimError * ALLY_BONUS.aim,
+        spread: base.spread * ALLY_BONUS.spread,
+        dmgScale: base.dmgScale * ALLY_BONUS.dmg,
+        reaction: base.reaction * ALLY_BONUS.reaction,
+        spotTime: base.spotTime * ALLY_BONUS.spot,
+        settleTime: base.settleTime * ALLY_BONUS.settle,
+        sight: base.sight * ALLY_BONUS.sight,
+      }
+      : base;
     this.weaponId = opt.weaponId || 'm4a1';
     this.weapon = WEAPONS[this.weaponId];
 
@@ -99,6 +130,30 @@ export class Bot {
     this.lastSeenTime = -99;
     this._reactionT = 0;
     this._losT = 0;
+    /** 索敵の蓄積量（相手 → 0..1）。1 を超えて初めて「見つけた」 */
+    this._spot = new Map();
+    /** 目標を見失ってからの経過。長いと再発見時にまた反応時間がかかる */
+    this._sinceTarget = 99;
+    /** 狙いの収束（1=まだ定まっていない → 0=本来の精度） */
+    this._settle = 1;
+    /** 照準の角速度（急に向きを変えないための慣性） */
+    this._aimVelYaw = 0;
+    this._aimVelPitch = 0;
+    /** 交戦時の移動先を保持する時間（毎フレーム作り直すと震える） */
+    this._posHoldT = 0;
+    this._engageMove = new THREE.Vector3();
+    /** 巡回中に首を振るための位相 */
+    this._scanPhase = Math.random() * Math.PI * 2;
+    /** 交戦中に動けなかった回数（続くと無理にでも動く） */
+    this._stuckEngage = 0;
+    /** 「何か見えた気がする」方向。索敵の途中で目を離さないための保持 */
+    this._glancePos = new THREE.Vector3();
+    this._glanceT = 0;
+    /** 銃声を聞いた地点と、その警戒が続く残り時間 */
+    this._alertPos = new THREE.Vector3();
+    this._alertT = 0;
+    /** その場に留まって撃つ時間（常時動き回るのは不自然） */
+    this._standT = 0;
 
     // 射撃
     this.ammo = this.weapon.magSize;
@@ -143,6 +198,17 @@ export class Bot {
     this._reloadT = 0;
     this.moveTarget = null;
     this._lastPos.copy(pos);
+    // 知覚・照準の状態も一から
+    this._spot.clear();
+    this._sinceTarget = 99;
+    this._settle = 1;
+    this._reactionT = 0;
+    this._aimVelYaw = this._aimVelPitch = 0;
+    this._posHoldT = 0;
+    this._standT = 0;
+    this._alertT = 0;
+    this._glanceT = 0;
+    this._stuckEngage = 0;
   }
 
   /**
@@ -182,6 +248,31 @@ export class Bot {
 
   hide() { this.char.model.visible = false; }
 
+  /**
+   * 銃声を聞く。
+   *
+   * 目だけに頼らせると、10m 先で撃ち合いが起きていても後ろを向いていれば
+   * 何事もなかったように巡回を続けてしまい、いかにも「置物」に見える。
+   * 音は「敵の位置」ではなく「気にする方向」として扱う。
+   * 発見そのものは従来どおり視線と索敵時間で決まるので、
+   * 聞こえた瞬間に撃ってくる、といった理不尽にはならない。
+   *
+   * @param {THREE.Vector3} pos  発砲位置
+   * @param {object} shooter     撃った者（自分と同じ陣営なら小さく扱う）
+   */
+  hearShot(pos, shooter) {
+    if (!this.alive || shooter === this) return;
+    const d = this.char.position.distanceTo(pos);
+    const range = shooter?.team === this.team ? 26 : 52;
+    if (d > range) return;
+    // 交戦中なら今の相手に集中する
+    if (this.targetEnemy) return;
+    // 遠いほど気づきにくい
+    if (Math.random() > 1 - d / range * 0.75) return;
+    this._alertPos.copy(pos);
+    this._alertT = 5.0 + Math.random() * 3.0;
+  }
+
   /* ================= 更新 ================= */
 
   /**
@@ -217,55 +308,119 @@ export class Bot {
 
   /* ---------------- 知覚 ---------------- */
 
+  /**
+   * 索敵。
+   *
+   * 「視線が通った瞬間に発見」ではなく、条件に応じて発見までの時間を積む。
+   * 以前は視界に入った次のフレームには標的化され、しかも同じ相手を
+   * 見失って再発見しても反応時間が入らなかったため、
+   * 物陰から出た瞬間に撃たれて即死する状態になっていた。
+   *
+   * 発見が早くなる条件 : 近い / 視野の正面 / 相手が走っている
+   * 発見が遅くなる条件 : 遠い / 視野の端 / 相手がしゃがんで静止している
+   */
   _perceive(dt, world) {
     const now = world.time;
     const myEye = this.char.getEyePosition(_v);
+    const cosFov = Math.cos(THREE.MathUtils.degToRad(this.diff.fovDeg) / 2);
+    const fwd = _v3.set(-Math.sin(this.aimYaw), 0, -Math.cos(this.aimYaw));
 
-    let best = null, bestD = Infinity;
+    let best = null, bestScore = -Infinity;
+    let glanceAt = null, glanceBest = 0;
+    const seenNow = new Set();
+
     for (const e of world.enemiesOf(this.team)) {
       if (!e.alive) continue;
       const ep = e.getEyePosition ? e.getEyePosition(_v2) : _v2.copy(e.position);
       const d = myEye.distanceTo(ep);
       if (d > this.diff.sight) continue;
 
-      // 視野角
       _dir.copy(ep).sub(myEye).normalize();
-      const fwd = _v3.set(-Math.sin(this.aimYaw), 0, -Math.cos(this.aimYaw));
       const dot = fwd.x * _dir.x + fwd.z * _dir.z;
-      const cosFov = Math.cos(THREE.MathUtils.degToRad(this.diff.fovDeg) / 2);
       const inFov = dot > cosFov;
-      // 近距離は視野外でも気配で気づく
-      const close = d < 7;
+      const close = d < 5;                       // 至近は視野外でも気配で気づく
       if (!inFov && !close) continue;
-
-      // 遮蔽判定
       if (this.ctx.physics.losBlocked(myEye, ep)) continue;
 
-      if (d < bestD) { bestD = d; best = e; }
+      seenNow.add(e);
+
+      /* --- 発見までの速さを決める --- */
+      // 距離: 近いほど速い
+      const distF = 1.6 - Math.min(1.3, d / this.diff.sight * 1.6);
+      // 視野中心からのズレ: 正面ほど速い
+      const centerF = 0.45 + Math.max(0, (dot - cosFov) / Math.max(0.05, 1 - cosFov)) * 0.85;
+      // 相手の動き: 走っていると見つかりやすい、しゃがんで静止だと見つかりにくい
+      const spd = e.velocity ? Math.hypot(e.velocity.x, e.velocity.z) : 0;
+      const moveF = 0.78 + Math.min(1.0, spd / 4.5) * 0.75;
+      const crouch = (e.stance ?? e.char?.stance ?? 0) > 0 ? 0.7 : 1.0;
+
+      // 銃声で警戒しているあいだは少しだけ気づきやすい
+      const alerted = this._alertT > 0 ? 1.3 : 1.0;
+      const rate = (distF * centerF * moveF * crouch * alerted) / Math.max(0.05, this.diff.spotTime);
+      const cur = Math.min(1.4, (this._spot.get(e) || 0) + rate * dt);
+      this._spot.set(e, cur);
+
+      /*
+       * まだ確信には至らない段階でも、視界の隅に何か動いた以上は
+       * そちらを見続ける。これがないと、索敵が溜まりきる前に巡回先へ
+       * 顔を向けてしまい、目の前に立っている相手を延々と見落とす。
+       * 実測でも「12m 先に棒立ちの相手を 25 秒間まったく発見しない」
+       * という結果になっていた。
+       */
+      if (cur > 0.18 && cur > glanceBest) { glanceBest = cur; glanceAt = ep; }
+
+      // 発見済みの相手だけが標的候補。近いほど優先。
+      if (cur >= 1) {
+        const score = 100 - d;
+        if (score > bestScore) { bestScore = score; best = e; }
+      }
+    }
+
+    if (glanceAt) { this._glancePos.copy(glanceAt); this._glanceT = 1.1; }
+    else if (this._glanceT > 0) this._glanceT -= dt;
+
+    // 見えていない相手の索敵蓄積は少しずつ抜ける
+    for (const [e, v] of this._spot) {
+      if (!seenNow.has(e)) {
+        const nv = v - dt * 0.55;
+        if (nv <= 0) this._spot.delete(e); else this._spot.set(e, nv);
+      }
     }
 
     if (best) {
-      if (this.targetEnemy !== best) {
-        this.targetEnemy = best;
-        this._reactionT = this.diff.reaction * (0.7 + Math.random() * 0.6);
+      /*
+       * 標的を切り替えたときだけでなく、しばらく標的を失っていた場合も
+       * 反応時間を入れ直す。ここを入れないと、物陰から出た瞬間に
+       * 待ち構えていたかのように撃たれる。
+       */
+      if (this.targetEnemy !== best || this._sinceTarget > 1.2) {
+        this._reactionT = this.diff.reaction * (0.75 + Math.random() * 0.55);
+        this._settle = 1;                        // 狙いも一から付け直す
       }
+      this.targetEnemy = best;
+      this._sinceTarget = 0;
       const ep = best.getEyePosition ? best.getEyePosition(_v2) : _v2.copy(best.position);
       this.lastSeenPos.copy(ep);
       this.lastSeenTime = now;
       this._losT = 0;
     } else {
       this._losT += dt;
-      // しばらく見失ったら追跡をやめる
+      this._sinceTarget += dt;
       if (this._losT > 5.5) this.targetEnemy = null;
     }
 
     if (this._reactionT > 0) this._reactionT -= dt;
+    // 狙いの収束（撃てる状態で狙い続けている間だけ締まっていく）
+    if (this.targetEnemy && this._reactionT <= 0) {
+      this._settle = Math.max(0, this._settle - dt / Math.max(0.05, this.diff.settleTime));
+    }
   }
 
   /* ---------------- 意思決定 ---------------- */
 
   _think(dt, world) {
     const now = world.time;
+    if (this._alertT > 0) this._alertT -= dt;
     const hasTarget = !!this.targetEnemy && this.targetEnemy.alive;
     const seenRecently = now - this.lastSeenTime < 1.2;
 
@@ -292,6 +447,10 @@ export class Bot {
     } else if (hasTarget) {
       this.state = BOT_STATE.SEEK;
       this.moveTarget = _v.copy(this.lastSeenPos).setY(0).clone();
+    } else if (this._alertT > 0) {
+      // 銃声のした方へ確かめに行く
+      this.state = BOT_STATE.SEEK;
+      if (!this.moveTarget || this.moveTarget !== this._alertPos) this.moveTarget = this._alertPos;
     } else {
       if (this.state !== BOT_STATE.PATROL || !this.moveTarget) {
         this.state = BOT_STATE.PATROL;
@@ -313,43 +472,117 @@ export class Bot {
     if (this.moveTarget) {
       const d = Math.hypot(this.moveTarget.x - this.char.position.x, this.moveTarget.z - this.char.position.z);
       if (d < 1.4) {
+        if (this.moveTarget === this._alertPos) this._alertT = 0;   // 確かめ終えた
         this.moveTarget = null;
         this._repathT = 0;
       }
     }
   }
 
-  /** 交戦中の立ち回り（距離を保ちつつ横移動） */
+  /**
+   * 交戦中の立ち回り。
+   *
+   * 以前は毎フレーム移動先を作り直していたため、目標が細かく揺れて
+   * 「その場で小刻みに震える」不自然な動きになっていた。
+   * ここでは一定時間ごとに行き先を決め、その間は保持する。
+   * また、常に横移動し続けるのもロボット的なので、
+   * ときどき足を止めて撃つ「据え撃ち」の時間を挟む。
+   */
   _engagePositioning(dt) {
     const t = this.targetEnemy;
     const tp = t.getEyePosition ? t.getEyePosition(_v2) : _v2.copy(t.position);
     const d = this.char.position.distanceTo(tp);
 
-    this._strafeT -= dt;
-    if (this._strafeT <= 0) {
-      this._strafeDir = Math.random() < 0.5 ? -1 : 1;
-      this._strafeT = 0.9 + Math.random() * 1.6;
+    _dir.copy(tp).sub(this.char.position).setY(0).normalize();
+    const right = _v3.set(-_dir.z, 0, _dir.x);
+
+    // 低 HP なら遮蔽へ退く（最優先）
+    if (this.hp < this.maxHp * 0.32) {
+      this.state = BOT_STATE.COVER;
+      this._standT = 0;
+      if (this._posHoldT <= 0) {
+        this._posHoldT = 1.2 + Math.random() * 0.8;
+        this._engageMove.copy(this.char.position)
+          .addScaledVector(_dir, -5.5)
+          .addScaledVector(right, this._strafeDir * 2.0);
+      }
+      this._posHoldT -= dt;
+      this.moveTarget = this._engageMove;
+      return;
+    }
+
+    // 据え撃ち中は動かない
+    if (this._standT > 0) {
+      this._standT -= dt;
+      this.moveTarget = null;
+      return;
+    }
+
+    this._posHoldT -= dt;
+    if (this._posHoldT > 0) {
+      this.moveTarget = this._engageMove;
+      return;
+    }
+
+    // 次の行動を決める
+    this._strafeDir = Math.random() < 0.5 ? -1 : 1;
+    // 3 回に 1 回くらいは足を止めて撃つ
+    if (Math.random() < 0.34) {
+      this._standT = 0.8 + Math.random() * 1.2;
+      this.moveTarget = null;
+      return;
     }
 
     // 武器の得意距離を保つ
     const ideal = this.weapon.class.includes('サブマシンガン') ? 10
-      : this.weapon.class.includes('スナイパー') ? 34 : 18;
-
-    _dir.copy(tp).sub(this.char.position).setY(0).normalize();
-    const right = _v3.set(-_dir.z, 0, _dir.x);
-
+      : this.weapon.class.includes('スナイパー') ? 34
+        : this.weapon.class.includes('軽機関銃') ? 24 : 18;
     const approach = (d > ideal * 1.25) ? 1 : (d < ideal * 0.6 ? -1 : 0);
-    const tgt = _v.copy(this.char.position)
-      .addScaledVector(_dir, approach * 4.5)
-      .addScaledVector(right, this._strafeDir * 3.2);
-    this.moveTarget = tgt.clone();
 
-    // 低 HP なら遮蔽へ退く
-    if (this.hp < this.maxHp * 0.32) {
-      this.state = BOT_STATE.COVER;
-      this.moveTarget = _v.copy(this.char.position).addScaledVector(_dir, -5.5)
-        .addScaledVector(right, this._strafeDir * 2.0).clone();
+    /*
+     * 行き先は「そこから相手が見えるか」で選ぶ。
+     * これを見ないと、撃ち合いの最中に横へ動いた先が物陰で、
+     * そのまま相手を見失って巡回に戻ってしまう。
+     * 実際「12m 先に棒立ちの相手がいるのに 8 割の時間を巡回に使う」
+     * という計測結果になっていた。
+     * 左右どちらもだめなら足を止めてその場で撃つ。
+     */
+    const eyeY = this.char.getEyePosition(_v).y - this.char.position.y;
+    const canSeeFrom = (p) => {
+      _v.set(p.x, this.char.position.y + eyeY, p.z);
+      return !this.ctx.physics.losBlocked(_v, tp);
+    };
+    const plan = (sign, scale) => this._engageMove.copy(this.char.position)
+      .addScaledVector(_dir, approach * 4.5 * scale)
+      .addScaledVector(right, sign * 3.2 * scale);
+
+    let ok = false;
+    for (const [sign, scale] of [[this._strafeDir, 1], [-this._strafeDir, 1], [this._strafeDir, 0.45], [-this._strafeDir, 0.45]]) {
+      plan(sign, scale);
+      if (canSeeFrom(this._engageMove)) { this._strafeDir = sign; ok = true; break; }
     }
+    if (!ok) {
+      /*
+       * どこへ動いても相手が見えなくなる位置（狭い射線から撃っている）。
+       * その場に留まるのは戦術的には正しいが、何度も続くとまったく
+       * 動かない置物になってしまうので、続いたら射線を捨てて詰める。
+       */
+      this._stuckEngage++;
+      if (this._stuckEngage >= 3) {
+        this._stuckEngage = 0;
+        this._posHoldT = 0.9 + Math.random() * 0.7;
+        this._engageMove.copy(this.char.position).addScaledVector(_dir, 4.0);
+        this.moveTarget = this._engageMove;
+        return;
+      }
+      this._standT = 0.6 + Math.random() * 0.8;
+      this.moveTarget = null;
+      return;
+    }
+    this._stuckEngage = 0;
+
+    this._posHoldT = 1.0 + Math.random() * 1.4;
+    this.moveTarget = this._engageMove;
   }
 
   /* ---------------- 移動 ---------------- */
@@ -440,26 +673,52 @@ export class Bot {
       const horiz = Math.hypot(_dir.x, _dir.z);
       wantYaw = Math.atan2(-_dir.x, -_dir.z);
       wantPitch = Math.atan2(_dir.y, horiz);
+    } else if (this._glanceT > 0) {
+      // 気配のした方から目を離さない
+      wantYaw = Math.atan2(-(this._glancePos.x - this.char.position.x), -(this._glancePos.z - this.char.position.z));
+      wantPitch = 0;
     } else if (this.moveTarget) {
-      wantYaw = Math.atan2(-(this.moveTarget.x - this.char.position.x), -(this.moveTarget.z - this.char.position.z));
+      /*
+       * 進行方向だけを見つめて歩かせると、真横に敵が立っていても
+       * 視野に入らないまま通り過ぎてしまう。
+       * ゆっくり首を振らせることで、周囲を警戒している見た目になり、
+       * 索敵としても機能する。
+       */
+      this._scanPhase += dt * 0.9;
+      wantYaw = Math.atan2(-(this.moveTarget.x - this.char.position.x), -(this.moveTarget.z - this.char.position.z))
+        + Math.sin(this._scanPhase) * 0.62;
       wantPitch = 0;
     }
 
-    // 照準の揺らぎ（人間らしさ）
+    // 照準の揺らぎ（人間らしさ）。狙いが定まる前ほど大きく揺れる。
     this._noisePhase += dt;
-    const n = this.diff.aimError;
+    const n = this.diff.aimError * (1 + this._settle * 1.8);
     const nx = Math.sin(this._noisePhase * 2.3) * 0.5 + Math.sin(this._noisePhase * 5.7) * 0.3;
     const ny = Math.cos(this._noisePhase * 1.9) * 0.5 + Math.cos(this._noisePhase * 4.3) * 0.3;
     wantYaw += nx * n;
     wantPitch += ny * n * 0.7;
 
-    // 追従（角度差を最短方向で詰める）
-    const k = Math.min(1, this.diff.aimSpeed * dt);
+    /*
+     * 追従は「角速度」で行い、さらにその角速度自体をなまして加速させる。
+     * 単純な線形補間だと、標的を見つけた瞬間に首だけ機械的に飛ぶ動きになり、
+     * 人が銃を向け直しているようには見えない。
+     * 立ち上がりを鈍らせ、最大角速度で頭打ちにすることで
+     * 「振り向いて、狙いを付ける」動作になる。
+     */
     let dy = wantYaw - this.aimYaw;
     while (dy > Math.PI) dy -= Math.PI * 2;
     while (dy < -Math.PI) dy += Math.PI * 2;
-    this.aimYaw += dy * k;
-    this.aimPitch += (wantPitch - this.aimPitch) * k;
+
+    const maxVel = this.diff.aimSpeed;
+    // 目標角速度: 残り角度に比例させ、上限で頭打ちにする
+    const desiredYawVel = THREE.MathUtils.clamp(dy * 4.2, -maxVel, maxVel);
+    const accelK = Math.min(1, 7.5 * dt);
+    this._aimVelYaw += (desiredYawVel - this._aimVelYaw) * accelK;
+    this.aimYaw += this._aimVelYaw * dt;
+    const dp = wantPitch - this.aimPitch;
+    const desiredPitchVel = THREE.MathUtils.clamp(dp * 4.2, -maxVel, maxVel);
+    this._aimVelPitch += (desiredPitchVel - this._aimVelPitch) * accelK;
+    this.aimPitch += this._aimVelPitch * dt;
     this.aimPitch = Math.max(-1.2, Math.min(1.2, this.aimPitch));
 
     this.char.yaw = this.aimYaw;
@@ -470,17 +729,18 @@ export class Bot {
 
   _shoot(dt, world) {
     if (this._fireTimer > 0) this._fireTimer -= dt;
-    if (this._burstPauseT > 0) { this._burstPauseT -= dt; return; }
-    if (this.state !== BOT_STATE.ENGAGE || this._reactionT > 0) return;
-    if (!this.targetEnemy || !this.targetEnemy.alive) return;
-    if (this.ammo <= 0) return;
+    if (this._burstPauseT > 0) { this._burstPauseT -= dt; BOT_GATE.pause++; return; }
+    if (this.state !== BOT_STATE.ENGAGE) { BOT_GATE.state++; return; }
+    if (this._reactionT > 0) { BOT_GATE.react++; return; }
+    if (!this.targetEnemy || !this.targetEnemy.alive) { BOT_GATE.notgt++; return; }
+    if (this.ammo <= 0) { BOT_GATE.ammo++; return; }
 
     const me = this.char.getEyePosition(_v);
     const t = this.targetEnemy;
     const tp = t.getEyePosition ? t.getEyePosition(_v2) : _v2.copy(t.position);
 
     // 遮蔽があれば撃たない
-    if (this.ctx.physics.losBlocked(me, tp)) return;
+    if (this.ctx.physics.losBlocked(me, tp)) { BOT_GATE.los++; return; }
 
     // 狙いが十分合っているか
     _dir.copy(tp).sub(me).normalize();
@@ -490,9 +750,12 @@ export class Bot {
       -Math.cos(this.aimYaw) * Math.cos(this.aimPitch)
     );
     // 大まかに向いていれば撃つ。命中の当たり外れは拡散側で決める。
-    if (fwd.dot(_dir) < 0.965) return;
+    const _d = fwd.dot(_dir);
+    BOT_GATE.dotSum += _d; BOT_GATE.dotN++;
+    if (_d < 0.965) { BOT_GATE.dot++; return; }
 
-    if (this._fireTimer > 0) return;
+    if (this._fireTimer > 0) { BOT_GATE.timer++; return; }
+    BOT_GATE.fire++;
 
     // バースト管理
     if (this._burstLeft <= 0) {
@@ -535,14 +798,37 @@ export class Bot {
     const dist = origin.distanceTo(tp);
 
     const dir = _dir.copy(tp).sub(origin).normalize();
-    // 狙いが定まっていない分（aimError）＋ 連射による広がり
+    /*
+     * 拡散の内訳:
+     *   aimError          … 難易度ごとの基準
+     *   settle            … 撃ち始めの狙いの甘さ（最初の一連射は大きく外す）
+     *   burstSpread       … 連射で広がる分
+     *   距離              … 遠いほど当てにくい
+     * これで「見つけた瞬間に頭へ吸い込まれる」ことがなくなる。
+     */
+    const settleSpread = 1 + this._settle * 3.0;
     const burstSpread = Math.min(1, this._shotsInBurst * 0.16);
-    const spread = this.diff.aimError * (1 + burstSpread)
-      * (1 + Math.max(0, dist - 12) * 0.022);
+    // 走りながらだと当たらない
+    const moveSpread = 1 + Math.min(1, Math.hypot(this.velocity.x, this.velocity.z) / 4.5) * 0.65;
+    // 自機を大勢で囲んだときは、近い数人以外は制圧射撃（大きく散らす）
+    const press = world.playerPressure ? world.playerPressure(this) : 0;
+    const pressSpread = 1 + Math.max(0, press - 2) * 0.55;
+    // 遠距離で無限に広がらないよう頭打ちにする
+    const sigma = Math.min(0.075, this.diff.spread * settleSpread * (1 + burstSpread)
+      * moveSpread * pressSpread * (1 + Math.max(0, dist - 12) * 0.014));
 
+    /*
+     * 着弾は狙点まわりの 2 次元正規分布（Box-Muller）。
+     * 以前は r = rand*rand*spread としていたが、この分布は中心に寄りすぎで、
+     * 拡散を 1.4 倍に広げても命中率が 36%→31% までしか落ちなかった。
+     * （解析するとこの式の命中率は拡散にほぼ反比例しかしない）
+     * 正規分布なら「わずかに外す弾が多く、大きく外す弾もたまに出る」という
+     * 実際の射撃らしいばらつきになり、命中率も σ で素直に調整できる。
+     */
+    const u = Math.max(1e-6, Math.random());
+    const mag = Math.sqrt(-2 * Math.log(u)) * sigma;
     const a = Math.random() * Math.PI * 2;
-    // 中心寄りの分布（sqrt を取らないので中心に集まる）
-    const r = Math.random() * Math.random() * spread;
+    const r = Math.min(mag, sigma * 3.5);      // 極端な暴発だけは切る
     _fRight.crossVectors(dir, _UP).normalize();
     _fUp.crossVectors(_fRight, dir).normalize();
     dir.addScaledVector(_fRight, Math.cos(a) * r)

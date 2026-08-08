@@ -13,6 +13,12 @@ const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 
 /**
+ * 同時に自機を狙えるボットの上限。
+ * これを超える数に囲まれると、遮蔽へ入る間もなく削り切られてしまう。
+ */
+
+
+/**
  * 試合全体を統括するコントローラ。
  * マップ・プレイヤー・ボット・ゲームモード・エフェクトを繋ぐ。
  */
@@ -192,20 +198,32 @@ export class Game {
 
     /*
      * チーム人数を揃える。
-     * 以前は敵を 6 割にしていたため、プレイヤー側を数に入れても
-     * 5 対 4 で常に不利な状態から始まっていた。
-     * プレイヤーは A チームなので、味方ボットを 1 人少なくして同数にする。
+     * 自機を人数に数えるので、1 チームぶんは
+     *   敵ボット = perTeam / 味方ボット = perTeam - 1 (+ 自機)
+     * になる。要求されたボット数が偶数だと必ずどちらかが 1 人多くなるため、
+     * 均衡する側へ切り下げる（要求より 1 体少ないボット数で始まる）。
+     * 以前は allyCount = total - enemyCount - 1 としており、
+     * total=7 のとき 敵4・味方2・自機1 の 4 対 3 になっていた。
+     * 「味方が弱すぎる」という体感の主因はこの人数差だった。
      */
-    const enemyCount = Math.ceil(total / 2);
-    const allyCount = Math.max(0, total - enemyCount - 1);
+    const perTeam = Math.max(1, Math.floor((total + 1) / 2));
+    const enemyCount = perTeam;
+    const allyCount = perTeam - 1;      // 残る 1 枠が自機
     const ctx = { scene: this.engine.scene, physics: this.physics, effects: this.effects, mats: this.mats, game: this };
 
+    const myTeam = this.playerStats.team;
     const plan = [];
     for (let i = 0; i < enemyCount; i++) {
-      plan.push({ team: 'B', difficulty: this.difficulty, weaponId: pool[i % pool.length], name: names[i % names.length] });
+      plan.push({
+        team: 'B', difficulty: this.difficulty, ally: myTeam === 'B',
+        weaponId: pool[i % pool.length], name: names[i % names.length],
+      });
     }
     for (let i = 0; i < allyCount; i++) {
-      plan.push({ team: 'A', difficulty: this.difficulty, weaponId: pool[(i + 3) % pool.length], name: names[(i + 6) % names.length] });
+      plan.push({
+        team: 'A', difficulty: this.difficulty, ally: myTeam === 'A',
+        weaponId: pool[(i + 3) % pool.length], name: names[(i + 6) % names.length],
+      });
     }
 
     for (let i = 0; i < plan.length; i++) {
@@ -301,7 +319,15 @@ export class Game {
     bot.spawn(s.pos.clone(), s.yaw);
   }
 
-  /** 指定チームの敵を列挙（プレイヤーを含む） */
+  /**
+   * 指定チームから見た敵を列挙する。
+   *
+   * プレイヤーは常に見える。
+   * 以前は「同時に自機を狙える人数」に上限を設け、溢れた分には自機を
+   * 見せない実装にしていたが、これは目の前に立っている相手を無視して
+   * 巡回を続けるボットを生むだけだった。人数の圧は playerPressure()
+   * 側（＝溢れた者は制圧射撃に回る）で調整する。
+   */
   *enemiesOf(team) {
     if (this.playerStats.team !== team && this.playerStats.alive) {
       yield this._playerAsTarget();
@@ -309,6 +335,26 @@ export class Game {
     for (const b of this.bots) {
       if (b.team !== team && b.alive) yield b;
     }
+  }
+
+  /**
+   * 自機を狙っているボットのうち、自分より近い者の数を返す。
+   *
+   * 全員が正確に撃ってくると四方から同時に倒されて何もできないので、
+   * 近い数人だけが本気で狙い、後ろの者は制圧射撃（大きく散らす）に回る。
+   * 「撃ってはいるが当たらない」状態を作ることで、包囲されている緊張感を
+   * 残したまま理不尽さだけを取り除く。
+   */
+  playerPressure(bot) {
+    const pt = this._pt;
+    if (!pt || bot.targetEnemy !== pt) return 0;
+    const my = bot.position.distanceToSquared(this.player.position);
+    let closer = 0;
+    for (const b of this.bots) {
+      if (!b.alive || b === bot || b.targetEnemy !== pt) continue;
+      if (b.position.distanceToSquared(this.player.position) < my) closer++;
+    }
+    return closer;
   }
 
   /** ボットから見たプレイヤーの疑似ターゲット */
@@ -324,6 +370,7 @@ export class Game {
     this._pt.position = this.player.position;
     this._pt.velocity = this.player.velocity;
     this._pt.alive = this.playerStats.alive;
+    this._pt.team = this.playerStats.team;
     return this._pt;
   }
 
@@ -376,6 +423,17 @@ export class Game {
       this.effects.ejectCasing(ejectPos, right, this.player.velocity);
 
       this.audio?.playShot(def, muzzle, stats.silent);
+
+      /*
+       * 自機の銃声もボットに届ける。
+       * これがないと、目の前で撃っても背を向けているボットは
+       * まったく反応せず「置物」に見える。
+       * サプレッサー付きは音が小さいので届かないことにする。
+       */
+      if (!stats.silent) {
+        const pt = this._playerAsTarget();
+        for (const b of this.bots) b.hearShot(origin, pt);
+      }
     };
 
     this.weapons.onHit = (info) => {
@@ -427,18 +485,22 @@ export class Game {
     if (Math.random() < 0.5) this.effects.tracer(muzzle, endPoint, weapon.muzzleVelocity);
     this.audio?.playShot(weapon, muzzle, false, true);
 
+    // 周囲のボットに銃声を届ける（音は「気にする方向」として扱われる）
+    for (const b of this.bots) b.hearShot(origin, shooter);
+
     if (!first) return;
 
     if (first.kind === 'world') {
       this.effects.impact(first.data.point, first.data.normal, first.data.collider.surface);
       this.audio?.playImpact(first.data.collider.surface, first.data.point);
     } else if (first.kind === 'player') {
-      const dmg = damageAt(weapon, first.t, first.data.zone);
+      const dmg = damageAt(weapon, first.t, first.data.zone) * (shooter.diff?.dmgScale ?? 1);
       this._damagePlayer(dmg, shooter, dir, first.data.zone, weapon);
     } else {
       const bot = first.data.target;
       this.effects.bloodImpact(first.data.point, first.data.normal, first.data.zone === HIT_ZONE.HEAD);
-      const dmg = damageAt(weapon, first.t, first.data.zone);
+      // ボット同士の撃ち合いにも練度倍率を効かせる（味方が一方的に溶けないように）
+      const dmg = damageAt(weapon, first.t, first.data.zone) * (shooter.diff?.dmgScale ?? 1);
       const killed = bot.damage(dmg, shooter, first.data.zone);
       if (killed) this._registerKill(shooter, bot, weapon, first.data.zone === HIT_ZONE.HEAD);
     }

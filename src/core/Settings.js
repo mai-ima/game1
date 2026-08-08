@@ -67,13 +67,12 @@ export class Settings {
     const dm = navigator.deviceMemory || 4;
     const hc = navigator.hardwareConcurrency || 4;
     const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    // 端末性能は事前に当てられない。ここでは控えめに始め、
-    // 実際のフレーム時間を見てエンジン側の動的解像度が上下させる。
-    // ultra は GTAO まで有効になるため、明示的に選んだときだけ使う。
+    // 端末性能は事前に当てられない。実際のフレーム時間を見て
+    // エンジン側の動的解像度が上下させるので、推奨値は強気に取る。
     if (mobile) return (dm >= 6 && hc >= 6) ? 'high' : 'medium';
-    if (dm >= 8 && hc >= 8) return 'high';
-    if (dm >= 4) return 'medium';
-    return 'low';
+    if (dm >= 8 && hc >= 8) return 'ultra';
+    if (dm >= 4) return 'high';
+    return 'medium';
   }
 }
 

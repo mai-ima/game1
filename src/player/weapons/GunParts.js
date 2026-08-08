@@ -44,8 +44,8 @@ export function roundedBox(w, h, d, r = 0.004, bevel = 0.0025) {
     bevelEnabled: true,
     bevelThickness: b,
     bevelSize: b,
-    bevelSegments: 2,
-    curveSegments: 5,
+    bevelSegments: 3,
+    curveSegments: 8,
   });
   g.translate(0, 0, -(d - b * 2) / 2 - b);
   g.computeVertexNormals();
@@ -53,19 +53,19 @@ export function roundedBox(w, h, d, r = 0.004, bevel = 0.0025) {
 }
 
 /** Z 軸方向の円筒（銃身・ガスチューブなど） */
-export function tubeZ(radiusTop, radiusBottom, length, seg = 16, open = false) {
+export function tubeZ(radiusTop, radiusBottom, length, seg = 24, open = false) {
   const g = new THREE.CylinderGeometry(radiusTop, radiusBottom, length, seg, 1, open);
   g.rotateX(Math.PI / 2);
   return g;
 }
 
 /** Y 軸方向の円筒 */
-export function tubeY(radiusTop, radiusBottom, length, seg = 16, open = false) {
+export function tubeY(radiusTop, radiusBottom, length, seg = 20, open = false) {
   return new THREE.CylinderGeometry(radiusTop, radiusBottom, length, seg, 1, open);
 }
 
 /** X 軸方向の円筒（ピン・軸など） */
-export function tubeX(radius, length, seg = 12) {
+export function tubeX(radius, length, seg = 18) {
   const g = new THREE.CylinderGeometry(radius, radius, length, seg);
   g.rotateZ(Math.PI / 2);
   return g;
@@ -456,7 +456,14 @@ export class GunBuilder {
     for (const [key, geos] of this.groups) {
       const merged = merge(geos);
       if (!merged) continue;
-      merged.computeVertexNormals();
+      /*
+       * ここで computeVertexNormals() を呼んではいけない。
+       * マージ後のジオメトリは非インデックスなので、再計算すると
+       * 頂点が共有されず「面ごとの法線」になる。つまり銃身・ガスチューブ・
+       * サプレッサといった円筒がすべて平面の集合として陰影付けされ、
+       * 多角形の柱にしか見えなくなる。
+       * CylinderGeometry などが持っている滑らかな法線をそのまま使う。
+       */
       // 全パーツ共通のワールドスケールで UV を貼り直す
       boxProjectUV(merged);
       const mat = materials[key] || materials.default;

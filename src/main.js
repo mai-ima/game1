@@ -6,6 +6,7 @@ import { AudioManager } from './core/AudioManager.js';
 import { MaterialLibrary } from './render/MaterialLibrary.js';
 import { Game } from './game/Game.js';
 import { GAME_MODES } from './game/GameModes.js';
+import { BOT_GATE } from './ai/Bot.js';
 import { HUD } from './ui/HUD.js';
 import { Menu } from './ui/Menu.js';
 import { MobileControls } from './ui/MobileControls.js';
@@ -168,7 +169,7 @@ async function main() {
   requestAnimationFrame(loop);
 
   // --- 開発用フック ---
-  window.__DEV = { engine, mats, game, hud, menu, input, settings, audio, THREE,
+  window.__DEV = { engine, mats, game, hud, menu, input, settings, audio, THREE, BOT_GATE,
     startMatch: (cfg) => menu.onStart(cfg || menu.sel) };
 
   /* ============ ここから下は上のスコープを使うヘルパ ============ */

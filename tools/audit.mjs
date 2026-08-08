@@ -30,10 +30,30 @@ const ok = (cond, msg) => console.log(`  ${cond ? '○' : '×'} ${msg}`);
 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction('!!window.__DEV', { timeout: 300000 });
 
-/** ゲーム内時間で待つ（ソフトウェア描画では実時間と大きくずれるため） */
+/**
+ * ゲーム内時間を進める。
+ *
+ * 実時間で待つと破綻する。ヘッドレス（SwiftShader）の描画は 1〜2 fps しか
+ * 出ないため、「ゲーム内 30 秒」を実時間で待っても数十フレームしか進まず、
+ * 1 フレーム 1 発が上限のボットは撃つ機会をほとんど得られない。
+ * 実際それで「ボット発砲数 0」という誤った監査結果が出ていた。
+ * ここでは描画から切り離し、固定 60Hz でロジックだけを回す。
+ */
 const waitGame = async (sec) => {
-  const t0 = await page.evaluate('window.__DEV.game.time');
-  await page.waitForFunction(`window.__DEV.game.time >= ${t0 + sec}`, { timeout: 300000 }).catch(() => {});
+  const started = await page.evaluate('!!(window.__DEV.game && window.__DEV.game.running)');
+  if (!started) {
+    // 試合前（メニュー等）は実時間で待つしかない
+    await page.waitForTimeout(Math.min(4000, sec * 1000));
+    return;
+  }
+  const steps = Math.round(sec * 60);
+  for (let done = 0; done < steps; done += 120) {
+    const n = Math.min(120, steps - done);
+    await page.evaluate(`(() => {
+      const g = window.__DEV.game;
+      for (let i = 0; i < ${n}; i++) g.update(1 / 60);
+    })()`);
+  }
 };
 
 /** 画面の明るさ分布を調べる（真っ黒＝何も描画されていない） */
