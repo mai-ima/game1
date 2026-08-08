@@ -1,6 +1,17 @@
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { roundedBox } from '../player/weapons/GunParts.js';
+import { roundedBox as roundedBoxHi } from '../player/weapons/GunParts.js';
+
+/*
+ * 人物向けの分割数。
+ *
+ * roundedBox の既定はビューモデルの武器に合わせた細かさで、
+ * これをそのまま使うと兵士 1 体が 34,000 面になっていた。
+ * 7 体でシーン全体の 87% を占めており、内蔵 GPU では無視できない。
+ * 兵士は画面上せいぜい数百ピクセルなので、角の分割はぐっと粗くてよい。
+ */
+const BODY_SEG = { bevelSegments: 1, curveSegments: 3 };
+const roundedBox = (w, h, d, r, b) => roundedBoxHi(w, h, d, r, b, BODY_SEG);
 
 /**
  * 兵士キャラクタ。
@@ -82,26 +93,26 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
 
   // 骨盤（座面に向かってすぼまる）
   addMesh(hips, mergeParts([
-    translated(taper(0.148, 0.112, 0.20, 16), 0, -0.055, 0),
-    translated(scaled(ball(0.143, 16, 12), 1.0, 0.60, 0.74), 0, 0.02, 0),
+    translated(taper(0.148, 0.112, 0.20, 10), 0, -0.055, 0),
+    translated(scaled(ball(0.143, 10, 7), 1.0, 0.60, 0.74), 0, 0.02, 0),
   ]), M.uniform);
 
   // 腹（骨盤と胸をつなぐ）
   addMesh(spine, mergeParts([
-    translated(scaled(ball(0.145, 16, 12), 1.0, 0.90, 0.72), 0, -0.01, 0),
+    translated(scaled(ball(0.145, 10, 7), 1.0, 0.90, 0.72), 0, -0.01, 0),
   ]), M.uniform);
 
   // 胸郭（肩に向かって広がる）
   addMesh(chest, mergeParts([
-    translated(scaled(ball(0.175, 18, 14), 1.0, 1.15, 0.70), 0, 0.055, 0),
+    translated(scaled(ball(0.175, 11, 9), 1.0, 1.15, 0.70), 0, 0.055, 0),
     // 僧帽筋（首の付け根の盛り上がり）
-    translated(scaled(ball(0.125, 14, 10), 1.15, 0.5, 0.75), 0, 0.20, -0.008),
+    translated(scaled(ball(0.125, 9, 6), 1.15, 0.5, 0.75), 0, 0.20, -0.008),
   ]), M.uniform);
 
   // 肩（三角筋）— これが無いと腕が胴から浮いて見える
   for (const s of [1, -1]) {
     addMesh(chest, mergeParts([
-      translated(scaled(ball(0.076, 14, 11), 1.0, 1.10, 1.0), s * 0.176, 0.148, 0),
+      translated(scaled(ball(0.076, 9, 7), 1.0, 1.10, 1.0), s * 0.176, 0.148, 0),
     ]), M.uniform);
   }
 
@@ -134,7 +145,7 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
   pouches.push(translated(roundedBox(0.092, 0.082, 0.055, 0.014, 0.006), 0.128, 0.095, 0.140));
   // 無線機（左胸）とアンテナ
   pouches.push(translated(roundedBox(0.062, 0.105, 0.045, 0.012, 0.005), -0.132, 0.100, 0.140));
-  pouches.push(translated(rotated(tube(0.006, 0.005, 0.16, 8), -0.22, 0, 0.1), -0.132, 0.225, 0.128));
+  pouches.push(translated(rotated(tube(0.006, 0.005, 0.16, 7), -0.22, 0, 0.1), -0.132, 0.225, 0.128));
   // 腰のダンプポーチ（背面右）
   pouches.push(translated(roundedBox(0.115, 0.125, 0.085, 0.022, 0.009), 0.145, -0.145, -0.075));
   addMesh(chest, mergeParts(pouches), M.gear);
@@ -144,14 +155,14 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
     translated(roundedBox(0.265, 0.335, 0.145, 0.052, 0.02), 0, 0.045, -0.185),
     translated(roundedBox(0.125, 0.095, 0.062, 0.022, 0.009), 0, -0.085, -0.278),
     // 上部のロールと圧縮ストラップ
-    translated(rotated(tube(0.038, 0.038, 0.24, 12), 0, 0, Math.PI / 2), 0, 0.205, -0.185),
+    translated(rotated(tube(0.038, 0.038, 0.24, 7), 0, 0, Math.PI / 2), 0, 0.205, -0.185),
     translated(roundedBox(0.022, 0.30, 0.02, 0.006, 0.003), 0.082, 0.045, -0.258),
     translated(roundedBox(0.022, 0.30, 0.02, 0.006, 0.003), -0.082, 0.045, -0.258),
   ]), M.gear);
 
   // 腰のベルトとホルスター
   addMesh(hips, mergeParts([
-    translated(scaled(ball(0.146, 16, 8), 1.0, 0.16, 0.78), 0, 0.055, 0),
+    translated(scaled(ball(0.146, 10, 6), 1.0, 0.16, 0.78), 0, 0.055, 0),
     translated(roundedBox(0.078, 0.145, 0.058, 0.018, 0.007), 0.152, -0.062, 0.015),
   ]), M.gear);
 
@@ -167,14 +178,14 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
 
   // 頭蓋・頬・顎
   addMesh(head, mergeParts([
-    translated(scaled(ball(0.093, 18, 14), 1.0, 1.10, 1.08), 0, 0.028, 0),
+    translated(scaled(ball(0.093, 11, 9), 1.0, 1.10, 1.08), 0, 0.028, 0),
     // 頬から顎へ（下すぼまり）
-    translated(scaled(taper(0.082, 0.058, 0.10, 14), 1.0, 1.0, 1.05), 0, -0.062, 0.006),
+    translated(scaled(taper(0.082, 0.058, 0.10, 9), 1.0, 1.0, 1.05), 0, -0.062, 0.006),
     // 顎先
-    translated(scaled(ball(0.055, 12, 10), 1.05, 0.7, 1.15), 0, -0.098, 0.012),
+    translated(scaled(ball(0.055, 8, 6), 1.05, 0.7, 1.15), 0, -0.098, 0.012),
     // 耳
-    translated(scaled(ball(0.026, 8, 8), 0.45, 1.0, 0.75), 0.092, -0.012, -0.004),
-    translated(scaled(ball(0.026, 8, 8), 0.45, 1.0, 0.75), -0.092, -0.012, -0.004),
+    translated(scaled(ball(0.026, 8, 6), 0.45, 1.0, 0.75), 0.092, -0.012, -0.004),
+    translated(scaled(ball(0.026, 8, 6), 0.45, 1.0, 0.75), -0.092, -0.012, -0.004),
   ]), M.skin);
 
   /*
@@ -189,9 +200,9 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
      * SphereGeometry の thetaStart で切ると縁がきれいな円になる。
      */
     translated(scaled(shell(0.089, 0.44, 0.62), 1.0, 1.0, 1.04), 0, -0.028, 0.008),
-    translated(scaled(taper(0.079, 0.054, 0.070, 14), 1.0, 1.0, 1.04), 0, -0.100, 0.013),
+    translated(scaled(taper(0.079, 0.054, 0.070, 9), 1.0, 1.0, 1.04), 0, -0.100, 0.013),
     // 後頭部へ回るストラップ
-    translated(rotated(tube(0.007, 0.007, 0.180, 8), 0, 0, Math.PI / 2), 0, -0.058, -0.030),
+    translated(rotated(tube(0.007, 0.007, 0.180, 7), 0, 0, Math.PI / 2), 0, -0.058, -0.030),
   ]), M.gear);
 
   /*
@@ -203,11 +214,11 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
    */
   addMesh(head, mergeParts([
     // 本体
-    translated(scaled(ball(0.104, 20, 14, Math.PI * 0.545), 1.03, 0.98, 1.12), 0, 0.038, -0.006),
+    translated(scaled(ball(0.104, 12, 9, Math.PI * 0.545), 1.03, 0.98, 1.12), 0, 0.038, -0.006),
     // 後頭部の張り出し（後ろだけ深く下りる）
-    translated(scaled(ball(0.098, 16, 12, Math.PI * 0.60), 1.0, 0.92, 1.0), 0, 0.020, -0.040),
+    translated(scaled(ball(0.098, 10, 7, Math.PI * 0.60), 1.0, 0.92, 1.0), 0, 0.020, -0.040),
     // 前庇
-    translated(scaled(ball(0.100, 16, 6, Math.PI * 0.5), 1.0, 0.34, 0.66), 0, 0.026, 0.056),
+    translated(scaled(ball(0.100, 10, 6, Math.PI * 0.5), 1.0, 0.34, 0.66), 0, 0.026, 0.056),
     // サイドレール
     translated(roundedBox(0.013, 0.016, 0.105, 0.004, 0.002), 0.107, 0.032, -0.010),
     translated(roundedBox(0.013, 0.016, 0.105, 0.004, 0.002), -0.107, 0.032, -0.010),
@@ -226,11 +237,11 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
 
   // ヘッドセット（イヤーカップとマイクブーム）
   addMesh(head, mergeParts([
-    translated(rotated(tube(0.031, 0.029, 0.022, 14), 0, 0, Math.PI / 2), 0.098, -0.042, -0.004),
-    translated(rotated(tube(0.031, 0.029, 0.022, 14), 0, 0, Math.PI / 2), -0.098, -0.042, -0.004),
+    translated(rotated(tube(0.031, 0.029, 0.022, 9), 0, 0, Math.PI / 2), 0.098, -0.042, -0.004),
+    translated(rotated(tube(0.031, 0.029, 0.022, 9), 0, 0, Math.PI / 2), -0.098, -0.042, -0.004),
     // マイクブーム（左耳から口元へ）
-    translated(rotated(tube(0.0055, 0.0055, 0.105, 8), 0, 0, -1.15), -0.075, -0.070, 0.050),
-    translated(ball(0.011, 8, 8), -0.028, -0.088, 0.082),
+    translated(rotated(tube(0.0055, 0.0055, 0.105, 7), 0, 0, -1.15), -0.075, -0.070, 0.050),
+    translated(ball(0.011, 8, 6), -0.028, -0.088, 0.082),
   ]), M.gear);
 
   // NVG マウント（前面中央）
@@ -241,8 +252,8 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
 
   // ゴーグル（眉のすぐ下。バンドがヘルメット後方まで回る）
   addMesh(head, mergeParts([
-    translated(scaled(ball(0.086, 16, 10), 1.04, 0.34, 0.98), 0, 0.010, 0.020),
-    translated(rotated(tube(0.010, 0.010, 0.19, 8), 0, 0, Math.PI / 2), 0, 0.014, -0.054),
+    translated(scaled(ball(0.086, 10, 6), 1.04, 0.34, 0.98), 0, 0.010, 0.020),
+    translated(rotated(tube(0.010, 0.010, 0.19, 7), 0, 0, Math.PI / 2), 0, 0.014, -0.054),
   ]), M.metal);
 
   /* ==================================================================
@@ -250,23 +261,23 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
    * ================================================================== */
   for (const [g, s] of [[armL, 1], [armR, -1]]) {
     addMesh(g, mergeParts([
-      translated(taper(0.052, 0.043, 0.27, 12), 0, -0.135, 0),
-      translated(ball(0.049, 12, 10), 0, -0.268, 0),          // 肘
+      translated(taper(0.052, 0.043, 0.27, 7), 0, -0.135, 0),
+      translated(ball(0.049, 8, 6), 0, -0.268, 0),          // 肘
     ]), M.uniform);
   }
   for (const [g, s] of [[foreL, 1], [foreR, -1]]) {
     addMesh(g, mergeParts([
-      translated(taper(0.045, 0.036, 0.235, 12), 0, -0.113, 0),
+      translated(taper(0.045, 0.036, 0.235, 7), 0, -0.113, 0),
     ]), M.uniform);
     // 手袋（手首・手のひら・親指）
     addMesh(g, mergeParts([
       translated(scaled(roundedBox(0.062, 0.088, 0.048, 0.020, 0.008), 1, 1, 1), 0, -0.272, 0.008),
-      translated(scaled(ball(0.030, 10, 8), 0.7, 1.0, 1.0), s * 0.030, -0.252, 0.018),
+      translated(scaled(ball(0.030, 8, 6), 0.7, 1.0, 1.0), s * 0.030, -0.252, 0.018),
       translated(roundedBox(0.056, 0.036, 0.050, 0.014, 0.006), 0, -0.226, 0.006),
     ]), M.gear);
     // 肘パッド
     addMesh(g, mergeParts([
-      translated(scaled(ball(0.055, 12, 10), 1.0, 0.9, 0.85), 0, 0.006, 0.012),
+      translated(scaled(ball(0.055, 8, 6), 1.0, 0.9, 0.85), 0, 0.006, 0.012),
     ]), M.gear);
   }
 
@@ -275,19 +286,19 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
    * ================================================================== */
   for (const g of [legL, legR]) {
     addMesh(g, mergeParts([
-      translated(taper(0.086, 0.062, 0.43, 14), 0, -0.205, 0),
-      translated(scaled(ball(0.082, 14, 12), 1.0, 0.9, 1.0), 0, 0.015, 0),   // 股関節
-      translated(ball(0.063, 12, 10), 0, -0.418, 0),                          // 膝
+      translated(taper(0.086, 0.062, 0.43, 9), 0, -0.205, 0),
+      translated(scaled(ball(0.082, 9, 7), 1.0, 0.9, 1.0), 0, 0.015, 0),   // 股関節
+      translated(ball(0.063, 8, 6), 0, -0.418, 0),                          // 膝
     ]), M.uniform);
   }
   for (const g of [shinL, shinR]) {
     addMesh(g, mergeParts([
-      translated(taper(0.060, 0.046, 0.395, 12), 0, -0.198, 0),
-      translated(scaled(ball(0.050, 12, 10), 1.0, 0.85, 1.0), 0, -0.392, 0), // 足首
+      translated(taper(0.060, 0.046, 0.395, 7), 0, -0.198, 0),
+      translated(scaled(ball(0.050, 8, 6), 1.0, 0.85, 1.0), 0, -0.392, 0), // 足首
     ]), M.uniform);
     // ニーパッド（膝の球を覆う）
     addMesh(g, mergeParts([
-      translated(scaled(ball(0.072, 14, 12), 1.0, 0.95, 0.85), 0, 0.008, 0.014),
+      translated(scaled(ball(0.072, 9, 7), 1.0, 0.95, 0.85), 0, 0.008, 0.014),
       translated(roundedBox(0.115, 0.030, 0.055, 0.010, 0.004), 0, -0.052, 0.020),
     ]), M.gear);
     /*
@@ -311,7 +322,7 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
   // 陣営色のアームバンド（上腕）
   for (const g of [armL, armR]) {
     addMesh(g, mergeParts([
-      translated(tube(0.054, 0.053, 0.042, 12), 0, -0.075, 0),
+      translated(tube(0.054, 0.053, 0.042, 7), 0, -0.075, 0),
     ]), M.accent);
   }
 
@@ -365,12 +376,12 @@ function tube(rTop, rBot, len, seg = 10) {
  * t0/t1 は 0=北極 1=南極 の比率。上端・下端がきれいな円になるので、
  * 面覆いのように「縁の線をはっきり見せたい」ものに使う。
  */
-function shell(r, t0, t1, wSeg = 18, hSeg = 12) {
+function shell(r, t0, t1, wSeg = 12, hSeg = 8) {
   return new THREE.SphereGeometry(r, wSeg, hSeg, 0, Math.PI * 2, Math.PI * t0, Math.PI * (t1 - t0));
 }
 
 /** 球。phiLength を渡すと上半分だけの椀になる */
-function ball(r, wSeg = 14, hSeg = 12, thetaLength = Math.PI) {
+function ball(r, wSeg = 10, hSeg = 8, thetaLength = Math.PI) {
   return new THREE.SphereGeometry(r, wSeg, hSeg, 0, Math.PI * 2, 0, thetaLength);
 }
 function rotated(g, x, y, z) {

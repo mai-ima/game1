@@ -36,7 +36,12 @@ function roundedRectShape(w, h, r) {
  * @param {number} w 幅(X) @param {number} h 高さ(Y) @param {number} d 奥行(Z)
  * @param {number} r 角丸半径 @param {number} bevel 面取り量
  */
-export function roundedBox(w, h, d, r = 0.004, bevel = 0.0025) {
+/**
+ * @param {object} [seg] 分割数。既定は武器向けの細かさ。
+ *   画面いっぱいに写る武器と、遠くに小さく写る人物とでは
+ *   必要な分割数が桁違いなので、呼び出し側で選べるようにしてある。
+ */
+export function roundedBox(w, h, d, r = 0.004, bevel = 0.0025, seg = null) {
   const b = Math.min(bevel, d / 2 - 0.0002, r * 0.9);
   const shape = roundedRectShape(w - b * 2, h - b * 2, Math.max(0.0005, r - b));
   const g = new THREE.ExtrudeGeometry(shape, {
@@ -44,8 +49,8 @@ export function roundedBox(w, h, d, r = 0.004, bevel = 0.0025) {
     bevelEnabled: true,
     bevelThickness: b,
     bevelSize: b,
-    bevelSegments: 3,
-    curveSegments: 8,
+    bevelSegments: seg?.bevelSegments ?? 3,
+    curveSegments: seg?.curveSegments ?? 8,
   });
   g.translate(0, 0, -(d - b * 2) / 2 - b);
   g.computeVertexNormals();

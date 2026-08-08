@@ -56,8 +56,24 @@ const out = await page.evaluate(`(() => {
     else if (r.大きさm < 5) buckets['1.7-5m']++;
     else buckets['5m+']++;
   }
+  // 兵士 1 体あたりの面数を数える
+  let soldierTris = 0, soldierMeshes = 0, soldiers = 0;
+  d.engine.scene.traverse((o) => {
+    if (o.name !== 'soldier') return;
+    soldiers++;
+    if (soldiers > 1) return;
+    o.traverse((m) => {
+      if (!m.isMesh) return;
+      soldierMeshes++;
+      soldierTris += m.geometry.index ? m.geometry.index.count / 3 : m.geometry.attributes.position.count / 3;
+    });
+  });
+
   return JSON.stringify({
     軽量モード: d.engine.lightweight,
+    兵士1体の面数: Math.round(soldierTris),
+    兵士1体のメッシュ数: soldierMeshes,
+    兵士の数: soldiers,
     画質: d.engine.quality,
     メッシュ総数: meshes,
     影を落とす数: casters,
