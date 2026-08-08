@@ -13,6 +13,14 @@ export function hash2(x, y, seed = 0) {
   return (h >>> 0) / 4294967296;
 }
 
+/**
+ * セル（ワーリー格子）ごとに 0..1 の固定値を返す。
+ * 骨材や砕石のように「粒ごとに色を変えたい」ときに使う。
+ */
+export function hash01(u, v, period, seed = 0) {
+  return hash2(Math.floor(u * period), Math.floor(v * period), seed);
+}
+
 /** 2成分ハッシュ (セルラーノイズの特徴点用) */
 export function hash2v(x, y, seed = 0) {
   return [hash2(x, y, seed), hash2(x, y, seed + 9871)];

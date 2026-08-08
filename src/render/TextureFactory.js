@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { fbm, fbmP, ridged, worley, voronoiEdge, valueNoise, warp, clamp01, smoothstep, mix, hash2 } from './Noise.js';
+import { fbm, fbmP, ridged, worley, voronoiEdge, valueNoise, warp, clamp01, smoothstep, mix, hash01 } from './Noise.js';
+import { DEFS2 } from './TextureDefs2.js';
 
 /**
  * 手続き型 PBR テクスチャ工房。
@@ -9,14 +10,6 @@ import { fbm, fbmP, ridged, worley, voronoiEdge, valueNoise, warp, clamp01, smoo
  */
 
 const TAU = Math.PI * 2;
-
-/**
- * セル（ワーリー格子）ごとに 0..1 の固定値を返す。
- * テラゾーの骨材や砕石のように「粒ごとに色を変えたい」ときに使う。
- */
-function hash01(u, v, period, seed) {
-  return hash2(Math.floor(u * period), Math.floor(v * period), seed);
-}
 
 /* ------------------------------------------------------------------ *
  *  マテリアル定義
@@ -1133,6 +1126,13 @@ const DEFS = {
     o.ao = clamp01(0.96 - mica * 0.06);
   },
 };
+
+/*
+ * 第 2 群を取り込む。
+ * 定義がこのファイルだけで 1000 行を超えたので、武器の表面処理・
+ * 被服・建材・小物は TextureDefs2.js に分けてある。
+ */
+Object.assign(DEFS, DEFS2);
 
 /* ------------------------------------------------------------------ *
  *  生成エンジン

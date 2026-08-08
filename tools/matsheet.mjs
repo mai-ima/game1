@@ -26,33 +26,12 @@ await page.waitForFunction('!!window.__DEV', { timeout: 300000 });
 await page.evaluate('window.__DEV.startMatch()');
 await page.waitForFunction('window.__DEV.game.running===true', { timeout: 300000 }).catch(() => {});
 
-const names = JSON.parse(await page.evaluate(`(() => {
+const list = JSON.parse(await page.evaluate(`(() => {
   const d = window.__DEV;
   d.game.paused = true;
   d.hud.hide();
   d.engine.autoResolution = false;
-  return JSON.stringify(d.mats.names ? d.mats.names() : Object.keys(d.mats.constructor.PRESETS || {}));
-})()`).catch(() => '[]'));
-
-// プリセット名はライブラリ側から取れないこともあるので、こちらで持つ
-const list = names.length ? names : JSON.parse(await page.evaluate(`(() => {
-  // get() は未定義名で例外を投げるので、試して通ったものだけ集める
-  const cand = ${JSON.stringify([
-    'concrete', 'concreteFloor', 'paintedWall', 'paintedWallBlue', 'plaster', 'brick', 'brickPale',
-    'rock', 'tile', 'paving', 'asphalt', 'dirt', 'sand', 'gravel',
-    'rustedMetal', 'paintedMetal', 'paintedMetalTan', 'brushedMetal', 'aluminum', 'carbon',
-    'diamondPlate', 'corrugated', 'hazardStripe', 'gunMetal',
-    'wood', 'woodDark', 'plywood', 'fabric', 'camo', 'leather', 'sandbag', 'cardboard',
-    'rubber', 'tireTread', 'polymer',
-    'marble', 'marbleDark', 'terrazzo', 'granite', 'woodFloor', 'woodFloorDark',
-    'carpet', 'carpetRed', 'wallpaper', 'wallpaperWarm', 'ceramicTile', 'ceilingPanel',
-    'velvet', 'brassPolished',
-    'roadMarking', 'tactilePaving', 'ballast', 'railSteel', 'shutter',
-    'rebar', 'galvanized', 'formPly', 'tarp', 'tarpGreen',
-  ])};
-  const okList = [];
-  for (const n of cand) { try { window.__DEV.mats.get(n); okList.push(n); } catch (e) { /* 未定義 */ } }
-  return JSON.stringify(okList);
+  return JSON.stringify(d.mats.names());
 })()`));
 
 console.log(`プリセット ${list.length} 種`);
@@ -71,7 +50,7 @@ await page.evaluate(`(() => {
   stage.add(key, fill);
 })()`);
 
-const COLS = 5, ROWS = 3, PER = COLS * ROWS;
+const COLS = 5, ROWS = 4, PER = COLS * ROWS;
 const pages = Math.ceil(list.length / PER);
 for (let p = 0; p < pages; p++) {
   const chunk = list.slice(p * PER, (p + 1) * PER);
@@ -85,7 +64,7 @@ for (let p = 0; p < pages; p++) {
     const COLS = ${COLS};
     names.forEach((n, i) => {
       const cx = (i % COLS - (COLS - 1) / 2) * 1.25;
-      const cy = -(Math.floor(i / COLS) - 1) * 1.25;
+      const cy = -(Math.floor(i / COLS) - 1.5) * 1.25;
       // 板 1m 角（UV をワールドに合わせる）
       const mat = d.mats.scaled(n, 1, 1);
       const plane = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 0.06), mat);
@@ -103,7 +82,7 @@ for (let p = 0; p < pages; p++) {
     });
     const cam = d.engine.camera;
     cam.fov = 40; cam.updateProjectionMatrix();
-    cam.position.set(0, 0, 6.0);
+    cam.position.set(0, 0, 7.4);
     cam.lookAt(0, 0, 0);
     cam.updateMatrixWorld();
   })()`);
