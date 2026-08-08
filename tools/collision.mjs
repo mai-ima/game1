@@ -50,7 +50,18 @@ const out = await page.evaluate(`(() => {
   const floorBad = [];
   const wallBad = [];
   let floorN = 0, wallN = 0;
-  const B = g.bounds || { min: { x: -36, z: -36 }, max: { x: 36, z: 36 } };
+  /*
+   * 検査範囲はコライダ全体から求める。
+   * マップごとに広さが違うので固定値にすると、
+   * 広げた部分をまるごと見落とす。
+   */
+  const B = { min: { x: 1e9, z: 1e9 }, max: { x: -1e9, z: -1e9 } };
+  for (const c of g.physics.colliders) {
+    if (!c.active) continue;
+    if (Math.max(c.half.x, c.half.z) > 40) continue;   // 地面や外周など巨大なものは除く
+    B.min.x = Math.min(B.min.x, c.min.x); B.min.z = Math.min(B.min.z, c.min.z);
+    B.max.x = Math.max(B.max.x, c.max.x); B.max.z = Math.max(B.max.z, c.max.z);
+  }
   const STEP = ${step};
 
   for (let x = B.min.x + 1; x <= B.max.x - 1; x += STEP) {
@@ -89,10 +100,19 @@ const out = await page.evaluate(`(() => {
         rc.far = 12;
         const v = rc.intersectObjects(targets, false);
         const p2 = g.physics.raycast(eye, dir, 12, { forBullets: true });
-        if (!v.length && !p2) continue;
+        /*
+         * 金網や網戸は「弾は抜けるが体は止まる」ように作ってある。
+         * 弾用のレイだけで見ると素通りに見えるので、
+         * 移動用のレイでも当たらないときだけ問題として数える。
+         */
+        const pMove = g.physics.raycast(eye, dir, 12, { forBullets: false });
+        if (!v.length && !p2 && !pMove) continue;
         wallN++;
         const vd = v.length ? v[0].distance : 99;
         const pd = p2 ? p2.dist : 99;
+        const md = pMove ? pMove.dist : 99;
+        // 弾は抜けても体が止まるなら、遮蔽としては成立している
+        if (Math.abs(vd - md) < 0.30) continue;
         if (Math.abs(vd - pd) > 0.30 && Math.min(vd, pd) < 12) {
           const row = { x: +x.toFixed(1), z: +z.toFixed(1), 向き: [dx, dz],
             見た目m: +vd.toFixed(2), 判定m: +pd.toFixed(2), 差: +(pd - vd).toFixed(2) };

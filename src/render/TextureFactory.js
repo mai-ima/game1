@@ -895,13 +895,19 @@ const DEFS = {
 
   /* --- 白線入りアスファルト（車道） --- */
   roadMarking(u, v, o, S) {
-    const grit = worley(u * 55, v * 55, 55, S, 1).f1;
-    const stone = smoothstep(0.24, 0.05, grit);
+    /*
+     * 骨材は細かく。
+     * 1 タイルが 7.7m もあるので、粒を大きく取ると
+     * 一粒が 10cm を超えて砂利道に見えてしまう。
+     */
+    const grit = worley(u * 130, v * 130, 130, S, 1).f1;
+    const stone = smoothstep(0.20, 0.05, grit);
+    const grit2 = smoothstep(0.16, 0.04, worley(u * 260, v * 260, 260, S + 5, 1).f1);
     const bind = fbm(u * 9, v * 9, { octaves: 5, period: 9, seed: S + 7 });
     const crack = (1 - smoothstep(0, 0.012, voronoiEdge(u * 6, v * 6, 6, S + 19, 1)))
       * smoothstep(0.55, 0.85, fbm(u * 3, v * 3, { octaves: 3, period: 3, seed: S + 67 }));
 
-    let l = 0.068 + bind * 0.030 + stone * 0.016 - crack * 0.025;
+    let l = 0.068 + bind * 0.026 + stone * 0.011 + grit2 * 0.007 - crack * 0.025;
     let r = l, g = l * 1.005, b = l * 1.02;
 
     // 中央に破線（進行方向 = v）。実寸で 5m 塗って 5m 空けるくらい
@@ -914,7 +920,7 @@ const DEFS = {
     r = mix(r, 0.46, pm); g = mix(g, 0.455, pm); b = mix(b, 0.43, pm);
 
     o.r = r; o.g = g; o.b = b;
-    o.h = stone * 0.6 + bind * 0.2 - crack * 0.5 + pm * 0.15;
+    o.h = stone * 0.35 + grit2 * 0.25 + bind * 0.2 - crack * 0.5 + pm * 0.15;
     o.rough = clamp01(0.88 + stone * 0.1 - pm * 0.2);
     o.metal = 0;
     o.ao = clamp01(0.85 - crack * 0.4);

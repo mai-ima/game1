@@ -280,7 +280,8 @@ export function pipeRun(b, o) {
 
 /** 屋台（骨組み + 布の日除け + 台） */
 export function marketStall(b, o) {
-  const { x, y = 0, z, yaw = 0, w = 2.6, d = 1.7, h = 2.25, cloth = 'fabric' } = o;
+  // 日除けは縞のテント地。fabric（迷彩混じりの布）だと市場ではなく野営に見える
+  const { x, y = 0, z, yaw = 0, w = 2.6, d = 1.7, h = 2.25, cloth = 'awningFabric' } = o;
   // 支柱 4 本
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
     const lx = (w / 2 - 0.08) * sx, lz = (d / 2 - 0.08) * sz;
@@ -297,7 +298,7 @@ export function marketStall(b, o) {
     w, h: 0.05, d: 0.75, yaw, mat: cloth, surface: SURFACE.FABRIC, collide: false, rx: 0.42,
   });
   // 陳列台
-  b.box({ x, y: y + 0.86, z, w: w * 0.92, h: 0.06, d: d * 0.75, yaw, mat: 'plywood', surface: SURFACE.WOOD, collide: false });
+  b.box({ x, y: y + 0.86, z, w: w * 0.92, h: 0.06, d: d * 0.75, yaw, mat: 'scaffoldPlank', surface: SURFACE.WOOD, collide: false });
   b.box({ x, y: y + 0.43, z, w: w * 0.88, h: 0.05, d: d * 0.7, yaw, mat: 'plywood', surface: SURFACE.WOOD, collide: false });
   // 台に置く木箱
   for (let i = 0; i < 3; i++) {
@@ -570,8 +571,267 @@ export function litter(b, o) {
   return b;
 }
 
+
+/* ================= 工事現場 ================= */
+
+/**
+ * 金網フェンス（仮囲い）。
+ * 支柱は実体、網は薄いので弾は抜けるが体は止まる。
+ * 「見えているのに素通りできる」より「撃てるが通れない」ほうが
+ * 遮蔽としての読みが素直になる。
+ */
+export function chainFence(b, o) {
+  const {
+    x1, z1, x2, z2, y = 0, h = 2.0, panel = 2.4,
+    mat = 'chainlink', post = 'galvanized', tarp = null,
+  } = o;
+  const dx = x2 - x1, dz = z2 - z1;
+  const len = Math.hypot(dx, dz);
+  if (len < 0.1) return b;
+  const yaw = Math.atan2(dx, dz);
+  const n = Math.max(1, Math.round(len / panel));
+
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    b.cylinder({
+      x: x1 + dx * t, y, z: z1 + dz * t,
+      radius: 0.032, height: h + 0.08, segments: 8,
+      mat: post, surface: SURFACE.METAL, collide: false,
+    });
+  }
+  for (const hy of [h - 0.04, 0.12]) {
+    b.box({
+      x: (x1 + x2) / 2, y: y + hy, z: (z1 + z2) / 2,
+      w: 0.036, h: 0.036, d: len, yaw, mat: post, surface: SURFACE.METAL, collide: false,
+    });
+  }
+  b.box({
+    x: (x1 + x2) / 2, y: y + h / 2, z: (z1 + z2) / 2,
+    w: 0.012, h: h - 0.1, d: len, yaw, mat, surface: SURFACE.METAL, collide: false,
+  });
+  if (tarp) {
+    b.box({
+      x: (x1 + x2) / 2, y: y + h * 0.56, z: (z1 + z2) / 2,
+      w: 0.02, h: h * 0.82, d: len * 0.98, yaw, mat: tarp, surface: SURFACE.FABRIC, collide: false,
+    });
+  }
+  b.physics.addBox((x1 + x2) / 2, y + h / 2, (z1 + z2) / 2, 0.07, h / 2, len / 2, yaw,
+    { surface: SURFACE.METAL, blocksBullets: false });
+  return b;
+}
+
+/**
+ * 単管足場。
+ * 建物の外周に沿って組む。踏板は乗れる床、手すりは腰の高さ。
+ */
+export function scaffold(b, o) {
+  const {
+    x, y = 0, z, yaw = 0, length = 6.0, levels = 2, levelH = 2.0,
+    depth = 1.2, net = true,
+  } = o;
+  const s = Math.sin(yaw), c = Math.cos(yaw);
+  const tx = (lx, lz) => x + c * lx + s * lz;
+  const tz = (lx, lz) => z - s * lx + c * lz;
+  const bays = Math.max(1, Math.round(length / 1.8));
+
+  for (let i = 0; i <= bays; i++) {
+    const lz = -length / 2 + (length / bays) * i;
+    for (const lx of [-depth / 2, depth / 2]) {
+      b.cylinder({
+        x: tx(lx, lz), y, z: tz(lx, lz),
+        radius: 0.024, height: levels * levelH + 1.1, segments: 8,
+        mat: 'galvanized', surface: SURFACE.METAL, collide: false,
+      });
+    }
+  }
+
+  for (let L = 1; L <= levels; L++) {
+    const ly = y + L * levelH;
+    b.box({
+      x: tx(0, 0), y: ly, z: tz(0, 0),
+      w: depth, h: 0.05, d: length, yaw, mat: 'scaffoldPlank', surface: SURFACE.WOOD,
+    });
+    for (const hy of [0.5, 1.0]) {
+      b.box({
+        x: tx(depth / 2, 0), y: ly + hy, z: tz(depth / 2, 0),
+        w: 0.05, h: 0.05, d: length, yaw, mat: 'galvanized', surface: SURFACE.METAL, collide: false,
+      });
+    }
+    b.box({
+      x: tx(depth / 2, 0), y: ly + 0.13, z: tz(depth / 2, 0),
+      w: 0.03, h: 0.20, d: length, yaw, mat: 'scaffoldPlank', surface: SURFACE.WOOD, collide: false,
+    });
+    if (net) {
+      b.box({
+        x: tx(depth / 2 + 0.04, 0), y: ly + 0.62, z: tz(depth / 2 + 0.04, 0),
+        w: 0.012, h: 1.15, d: length, yaw, mat: 'meshScreen', surface: SURFACE.FABRIC, collide: false,
+      });
+    }
+    // 段差を上がるための足がかり
+    b.box({
+      x: tx(-depth / 2 + 0.1, -length / 2 + 0.5), y: ly - levelH / 2, z: tz(-depth / 2 + 0.1, -length / 2 + 0.5),
+      w: 0.5, h: 0.06, d: 0.9, yaw, mat: 'scaffoldPlank', surface: SURFACE.WOOD,
+    });
+  }
+  return b;
+}
+
+/** 鉄筋の束（寝かせて置く） */
+export function rebarBundle(b, o) {
+  const { x, y = 0, z, yaw = 0, count = 9, length = 4.0 } = o;
+  for (let i = 0; i < count; i++) {
+    const row = Math.floor(i / 3), col = i % 3;
+    const lx = (col - 1) * 0.05, ly = 0.02 + row * 0.045;
+    const geo = new THREE.CylinderGeometry(0.016, 0.016, length, 6);
+    geo.rotateX(Math.PI / 2);
+    b.mesh('rebar', geo, {
+      x: x + Math.cos(yaw) * lx, y: y + ly, z: z - Math.sin(yaw) * lx, ry: yaw,
+    });
+  }
+  b.physics.addBox(x, y + 0.08, z, 0.10, 0.08, length / 2, yaw, { surface: SURFACE.METAL, penetration: 0.5 });
+  return b;
+}
+
+/** 型枠合板の山 */
+export function formworkStack(b, o) {
+  const { x, y = 0, z, yaw = 0, count = 7 } = o;
+  const W = 0.9, D = 1.8, T = 0.024;
+  for (let i = 0; i < count; i++) {
+    b.box({
+      x: x + R(-0.03, 0.03), y: y + T / 2 + i * T, z: z + R(-0.04, 0.04),
+      w: W, h: T, d: D, yaw: yaw + R(-0.03, 0.03),
+      mat: 'formPly', surface: SURFACE.WOOD, collide: false,
+    });
+  }
+  b.physics.addBox(x, y + count * T / 2, z, W / 2, count * T / 2, D / 2, yaw,
+    { surface: SURFACE.WOOD, penetration: 0.3 });
+  return b;
+}
+
+/** コンクリートブロックのパレット積み */
+export function blockPallet(b, o) {
+  const { x, y = 0, z, yaw = 0, rows = 4 } = o;
+  pallet(b, { x, y, z, yaw });
+  const BW = 0.39, BH = 0.19, BD = 0.19;
+  for (let r = 0; r < rows; r++) {
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 4; j++) {
+        const lx = -BW + i * BW;
+        const lz = -0.42 + j * (BD + 0.02);
+        b.box({
+          x: x + Math.cos(yaw) * lx + Math.sin(yaw) * lz,
+          y: y + 0.14 + BH / 2 + r * BH,
+          z: z - Math.sin(yaw) * lx + Math.cos(yaw) * lz,
+          w: BW, h: BH, d: BD, yaw: yaw + (r % 2 ? 0.02 : -0.02),
+          mat: 'concreteBlock', surface: SURFACE.CONCRETE, collide: false,
+        });
+      }
+    }
+  }
+  b.physics.addBox(x, y + 0.14 + rows * BH / 2, z, 0.62, rows * BH / 2 + 0.07, 0.52, yaw,
+    { surface: SURFACE.CONCRETE });
+  return b;
+}
+
+/** 砂・砕石の山（登れる） */
+export function aggregatePile(b, o) {
+  const { x, y = 0, z, radius = 2.2, height = 1.3, mat = 'gravel' } = o;
+  const geo = new THREE.ConeGeometry(radius, height, 14, 1);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i);
+    if (py < height / 2 - 0.01) {
+      pos.setX(i, px * R(0.92, 1.08));
+      pos.setZ(i, pz * R(0.92, 1.08));
+    }
+    pos.setY(i, py + R(-0.04, 0.04));
+  }
+  geo.computeVertexNormals();
+  b.mesh(mat, geo, { x, y: y + height / 2, z });
+  // 山なので登れる。段状の判定で近似する
+  const steps = 3;
+  for (let i = 0; i < steps; i++) {
+    const t = i / steps;
+    const r = radius * (1 - t) * 0.82;
+    b.physics.addBox(x, y + height * t + height / (steps * 2), z, r, height / (steps * 2), r, 0,
+      { surface: SURFACE.GRAVEL });
+  }
+  return b;
+}
+
+/** 三角コーンと単管バリケード */
+export function siteBarrier(b, o) {
+  const { x1, z1, x2, z2, y = 0, cones = true } = o;
+  const dx = x2 - x1, dz = z2 - z1;
+  const len = Math.hypot(dx, dz);
+  const yaw = Math.atan2(dx, dz);
+  for (const hy of [0.55, 0.95]) {
+    b.box({
+      x: (x1 + x2) / 2, y: y + hy, z: (z1 + z2) / 2,
+      w: 0.05, h: 0.14, d: len, yaw, mat: 'hazardStripe', surface: SURFACE.METAL, collide: false,
+    });
+  }
+  for (const t of [0.04, 0.96]) {
+    for (const s of [-1, 1]) {
+      b.box({
+        x: x1 + dx * t + Math.cos(yaw) * 0.22 * s, y: y + 0.5, z: z1 + dz * t - Math.sin(yaw) * 0.22 * s,
+        w: 0.05, h: 1.0, d: 0.05, yaw, mat: 'paintedMetal', surface: SURFACE.METAL, collide: false,
+      });
+    }
+  }
+  if (cones) {
+    const n = Math.max(2, Math.round(len / 1.6));
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const cx = x1 + dx * t + Math.cos(yaw) * 0.5, cz = z1 + dz * t - Math.sin(yaw) * 0.5;
+      const cone = new THREE.ConeGeometry(0.16, 0.62, 10, 1);
+      b.mesh('plasticGlossRed', cone, { x: cx, y: y + 0.31, z: cz });
+      b.box({ x: cx, y: y + 0.02, z: cz, w: 0.34, h: 0.04, d: 0.34, mat: 'plasticBlack', surface: SURFACE.RUBBER, collide: false });
+      b.cylinder({ x: cx, y: y + 0.26, z: cz, radius: 0.105, height: 0.09, segments: 10, mat: 'plasticGloss', surface: SURFACE.RUBBER, collide: false });
+    }
+  }
+  b.physics.addBox((x1 + x2) / 2, y + 0.55, (z1 + z2) / 2, 0.28, 0.55, len / 2, yaw,
+    { surface: SURFACE.METAL, penetration: 0.7 });
+  return b;
+}
+
+/** 現場事務所（プレハブ）。屋根に登れる */
+export function siteOffice(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 5.4, d = 2.6, h = 2.5 } = o;
+  const s = Math.sin(yaw), c = Math.cos(yaw);
+  const tx = (lx, lz) => x + c * lx + s * lz;
+  const tz = (lx, lz) => z - s * lx + c * lz;
+
+  for (const lx of [-w / 2 + 0.4, 0, w / 2 - 0.4]) {
+    for (const lz of [-d / 2 + 0.3, d / 2 - 0.3]) {
+      b.box({ x: tx(lx, lz), y: y + 0.12, z: tz(lx, lz), w: 0.4, h: 0.24, d: 0.4, yaw, mat: 'concreteBlock', surface: SURFACE.CONCRETE, collide: false });
+    }
+  }
+  const fy = y + 0.24;
+  b.box({ x, y: fy + h / 2, z, w, h, d, yaw, mat: 'sidingMetal', surface: SURFACE.METAL, collide: false });
+  b.box({ x, y: fy + h + 0.06, z, w: w + 0.24, h: 0.12, d: d + 0.24, yaw, mat: 'metalRoof', surface: SURFACE.METAL, collide: false });
+  for (const lx of [-w * 0.28, w * 0.10]) {
+    b.box({ x: tx(lx, d / 2 + 0.01), y: fy + 1.55, z: tz(lx, d / 2 + 0.01), w: 1.1, h: 0.75, d: 0.04, yaw, mat: 'anodized', surface: SURFACE.METAL, collide: false });
+    const g = new THREE.BoxGeometry(1.0, 0.66, 0.02);
+    const gm = new THREE.Mesh(g, b.mats.glass({ opacity: 0.4, transmission: 0.8 }));
+    gm.position.set(tx(lx, d / 2 + 0.04), fy + 1.55, tz(lx, d / 2 + 0.04));
+    gm.rotation.y = yaw;
+    b.addExtra(gm);
+  }
+  b.box({ x: tx(w * 0.36, d / 2 + 0.02), y: fy + 1.0, z: tz(w * 0.36, d / 2 + 0.02), w: 0.85, h: 2.0, d: 0.06, yaw, mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+  b.box({ x: tx(w * 0.36, d / 2 + 0.45), y: y + 0.12, z: tz(w * 0.36, d / 2 + 0.45), w: 1.0, h: 0.24, d: 0.7, yaw, mat: 'expandedMetal', surface: SURFACE.METAL });
+  b.box({ x: tx(-w * 0.42, d / 2 + 0.03), y: fy + 1.35, z: tz(-w * 0.42, d / 2 + 0.03), w: 0.9, h: 0.7, d: 0.05, yaw, mat: 'paperPrint', surface: SURFACE.WOOD, collide: false });
+  acUnit(b, { x: tx(w * 0.3, 0), y: fy + h + 0.12, z: tz(w * 0.3, 0), yaw });
+  b.box({ x: tx(-w * 0.2, 0), y: fy + h + 0.22, z: tz(-w * 0.2, 0), w: 1.6, h: 0.06, d: 1.0, yaw, mat: 'solarPanel', surface: SURFACE.GLASS, collide: false });
+
+  b.physics.addBox(x, fy + h / 2, z, w / 2, h / 2, d / 2, yaw, { surface: SURFACE.METAL });
+  return b;
+}
+
 export const PROPS = {
   woodCrate, ammoCrate, barrel, sandbagStack, pallet, tireStack, cardboardStack,
   container, acUnit, railing, pipeRun, marketStall, clothesline, rubble,
   streetLight, utilityPole, vehicle, sign, waterTank, rooftopClutter, jerryCan, litter,
+  chainFence, scaffold, rebarBundle, formworkStack, blockPallet, aggregatePile,
+  siteBarrier, siteOffice,
 };

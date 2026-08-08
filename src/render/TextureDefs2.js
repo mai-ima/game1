@@ -1051,24 +1051,79 @@ export const DEFS2 = {
 
   /* --- 落書き（壁のスプレー） --- */
   graffiti(u, v, o, S) {
-    // 太いストロークを数本引く。文字にはせず、色と勢いだけを出す
-    const [wx, wy] = warp(u * 3, v * 3, 1.1, { octaves: 3, period: 3, seed: S });
-    // 線は細く。被覆率を上げると壁面ではなく「塗り絵」に見える
-    const s1 = 1 - smoothstep(0.0, 0.042, Math.abs(fbmP(wx, wy, { octaves: 3, period: 3, seed: S + 5 }) - 0.52));
-    const s2 = 1 - smoothstep(0.0, 0.026, Math.abs(fbmP(wx * 1.7, wy * 1.7, { octaves: 3, period: 5, seed: S + 19 }) - 0.44));
-    const s3 = 1 - smoothstep(0.0, 0.018, Math.abs(fbmP(wx * 2.6, wy * 2.6, { octaves: 3, period: 8, seed: S + 37 }) - 0.58));
-    const mist = fbm(u * 40, v * 40, { octaves: 3, period: 40, seed: S + 53 });
-    // 下地はくすんだコンクリート
-    const base = 0.255 + fbm(u * 6, v * 6, { octaves: 5, period: 6, seed: S + 61 }) * 0.045;
-    let r = base, g = base * 0.995, b = base * 0.98;
-    // 3 色のスプレー
-    r = mix(r, 0.055 + mist * 0.02, s1); g = mix(g, 0.135 + mist * 0.02, s1); b = mix(b, 0.230 + mist * 0.02, s1);
-    r = mix(r, 0.240, s2 * 0.9); g = mix(g, 0.055, s2 * 0.9); b = mix(b, 0.075, s2 * 0.9);
-    r = mix(r, 0.235, s3 * 0.85); g = mix(g, 0.215, s3 * 0.85); b = mix(b, 0.045, s3 * 0.85);
+    /*
+     * タグ（署名）を模す。
+     *
+     * 最初はドメインワープした fbm の等高線をストロークに使ったが、
+     * 閉じたループばかりになって「絡まった紐」にしか見えなかった。
+     * 実際のタグは、太い斜めの筆致を何本か重ね、その上から
+     * 黒で縁取り、さらに一部へ明るい差し色を入れて作られる。
+     * ここではその構成をそのまま組む。
+     */
+    const wall = 0.250 + fbm(u * 6, v * 6, { octaves: 5, period: 6, seed: S + 61 }) * 0.045;
+    let r = wall, g = wall * 0.995, b = wall * 0.98;
+
+    // 描かれている範囲（壁いっぱいだと落書きに見えない）
+    const inArea = smoothstep(0.06, 0.14, u) * smoothstep(0.06, 0.14, 1 - u)
+                 * smoothstep(0.22, 0.32, v) * smoothstep(0.10, 0.20, 1 - v);
+    if (inArea > 0.001) {
+      /**
+       * 1 本の筆致。
+       * 中心 (cx,cy) を通り、角度 ang に伸びる帯。
+       * 進む向きに沿って波打たせ、端は細くすぼめる。
+       */
+      const stroke = (cx, cy, ang, len, thick, wob) => {
+        const dx = u - cx, dy = v - cy;
+        const c = Math.cos(ang), sn = Math.sin(ang);
+        const lx = dx * c + dy * sn;
+        let ly = -dx * sn + dy * c;
+        ly += Math.sin(lx * wob) * 0.045;                  // 筆の振り
+        const t = clamp01(1 - Math.abs(lx) / len);          // 端で細くなる
+        if (t <= 0) return 0;
+        const w = thick * (0.45 + t * 0.55);
+        return 1 - smoothstep(w * 0.55, w, Math.abs(ly));
+      };
+
+      // 筆致（太い順に重ねる）
+      const s1 = stroke(0.30, 0.55, -0.55, 0.26, 0.085, 22);
+      const s2 = stroke(0.52, 0.48, 0.42, 0.22, 0.075, 26);
+      const s3 = stroke(0.70, 0.58, -0.62, 0.20, 0.070, 30);
+      const s4 = stroke(0.45, 0.70, 0.10, 0.30, 0.045, 18);
+      const body = clamp01(Math.max(Math.max(s1, s2), Math.max(s3, s4)));
+
+      // 同じ形をひと回り太らせたものが縁取りになる
+      const o1 = stroke(0.30, 0.55, -0.55, 0.28, 0.135, 22);
+      const o2 = stroke(0.52, 0.48, 0.42, 0.24, 0.125, 26);
+      const o3 = stroke(0.70, 0.58, -0.62, 0.22, 0.118, 30);
+      const o4 = stroke(0.45, 0.70, 0.10, 0.32, 0.082, 18);
+      const outline = clamp01(Math.max(Math.max(o1, o2), Math.max(o3, o4)));
+
+      const mist = fbm(u * 45, v * 45, { octaves: 3, period: 45, seed: S + 53 });
+      // 縁取り（黒）→ 本体（差し色）の順に乗せる
+      const ol = outline * inArea;
+      r = mix(r, 0.030, ol); g = mix(g, 0.030, ol); b = mix(b, 0.034, ol);
+      const bd = body * inArea;
+      r = mix(r, 0.225 + mist * 0.02, bd);
+      g = mix(g, 0.060 + mist * 0.02, bd);
+      b = mix(b, 0.055 + mist * 0.02, bd);
+      // ハイライト（本体の片側だけ明るく）
+      const hi = clamp01(body - stroke(0.30, 0.585, -0.55, 0.24, 0.055, 22)) * inArea;
+      r = mix(r, 0.255, hi * 0.5); g = mix(g, 0.215, hi * 0.5); b = mix(b, 0.060, hi * 0.5);
+      // 吹きこぼれ（スプレーのミスト）
+      const spray = smoothstep(0.55, 0.95, mist) * outline * 0.35 * inArea;
+      r = mix(r, 0.16, spray); g = mix(g, 0.09, spray); b = mix(b, 0.09, spray);
+
+      o.h = -ol * 0.05;
+      o.rough = clamp01(0.86 - bd * 0.22 + mist * 0.05);
+      o.r = r; o.g = g; o.b = b;
+      o.metal = 0;
+      o.ao = 0.95;
+      return;
+    }
+
     o.r = r; o.g = g; o.b = b;
-    // 塗膜はごく薄いので凹凸はほぼ無い
-    o.h = mist * 0.15;
-    o.rough = clamp01(0.86 - (s1 + s2 + s3) * 0.16 + mist * 0.06);
+    o.h = 0;
+    o.rough = 0.88;
     o.metal = 0;
     o.ao = 0.95;
   },
