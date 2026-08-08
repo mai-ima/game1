@@ -188,13 +188,18 @@ export function suppressor(radius = 0.019, length = 0.185) {
 /** ピストルグリップ（人間工学形状 + 指の窪み） */
 export function pistolGrip(w = 0.030, h = 0.105, d = 0.040, rake = 0.34) {
   const geos = [];
-  const SEG = 7;
+  /*
+   * 積み上げる輪切りの数。少ないと側面に階段状の段差が出る。
+   * 重なり量（1.45）も併せて増やし、隣の輪切りと十分に食い込ませる。
+   */
+  const SEG = 14;
   for (let i = 0; i < SEG; i++) {
     const t = i / (SEG - 1);
-    // 下に行くほど細く、後ろに傾く
-    const sw = w * (1 - t * 0.16);
-    const sd = d * (1 - t * 0.30);
-    const seg = roundedBox(sw, h / SEG * 1.12, sd, 0.008, 0.003);
+    // 下に行くほど細く、後ろに傾く。握りらしく中ほどをわずかに絞る。
+    const waist = 1 - Math.sin(t * Math.PI) * 0.05;
+    const sw = w * (1 - t * 0.16) * waist;
+    const sd = d * (1 - t * 0.30) * waist;
+    const seg = roundedBox(sw, h / SEG * 1.45, sd, 0.008, 0.003);
     seg.translate(0, -h * t, Math.sin(rake) * h * t * 0.55);
     geos.push(seg);
   }
@@ -330,8 +335,16 @@ export function chargingHandle(len = 0.055, knobR = 0.0058) {
  * 生成されるため、そのままでは mergeGeometries が失敗する。
  * 全て非インデックス化し、属性を position / normal / uv の 3 つに揃える。
  */
-/** ボックス投影 UV の 1 タイルあたりのワールド長（メートル） */
-export const UV_TILE = 0.16;
+/**
+ * ボックス投影 UV の 1 タイルあたりのワールド長（メートル）。
+ *
+ * 銃はマップの壁と違い、手元で数十センチの物体を至近距離から見る。
+ * 0.16m/タイルだと樹脂の滑り止め（テクスチャ内で 1 タイル 26 個）が
+ * 6mm ピッチになり、画面上では巨大な市松模様として現れていた。
+ * 実物の滑り止めは 1〜2mm ピッチなので、タイルを 5cm まで詰める。
+ * 金属の肌目や木目も同時に細かくなり、手元の解像感が上がる。
+ */
+export const UV_TILE = 0.05;
 
 /**
  * ボックス（トライプラナー）投影で UV を貼り直す。

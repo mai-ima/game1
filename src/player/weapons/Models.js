@@ -4,6 +4,7 @@ import {
   picatinnyRail, flashHider, suppressor, pistolGrip, triggerGuard, trigger,
   frontSight, rearSight, boltHead, slingLoop, chargingHandle, merge,
 } from './GunParts.js';
+import { buildSCARH, buildP90, buildM249, buildGlock17 } from './Models2.js';
 
 /**
  * 武器の手続き型モデル定義。
@@ -464,6 +465,10 @@ export const MODEL_BUILDERS = {
   pistol: buildPistol,
   sniper: buildSniper,
   shotgun: buildShotgun,
+  scarh: buildSCARH,
+  p90: buildP90,
+  m249: buildM249,
+  glock17: buildGlock17,
 };
 
 export const ATTACHMENT_BUILDERS = {

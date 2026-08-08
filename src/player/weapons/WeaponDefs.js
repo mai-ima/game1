@@ -81,7 +81,7 @@ export const WEAPONS = {
     damage: 28,
     headMul: 1.5,
     limbMul: 0.9,
-    rpm: 760,
+    rpm: 800,          // M4A1 のサイクリックレート（実測 700〜950 の中央値）
     falloff: [30, 58, 0.72],
 
     magSize: 30,
@@ -119,7 +119,7 @@ export const WEAPONS = {
     damage: 24,
     headMul: 1.42,
     limbMul: 0.92,
-    rpm: 855,
+    rpm: 800,          // MP5A3 のサイクリックレート
     falloff: [16, 34, 0.55],
 
     magSize: 30,
@@ -147,22 +147,23 @@ export const WEAPONS = {
   /* ---------------- スナイパーライフル ---------------- */
   sniper: {
     id: 'sniper',
-    name: 'MK-14 INTERVENTION',
-    nameJa: 'MK-14 インターベンション',
+    name: 'M200 INTERVENTION',
+    nameJa: 'M200 インターベンション',
     class: WEAPON_CLASS.SNIPER,
-    desc: 'ボルトアクションの対人狙撃銃。胴体命中で確殺だが、次弾までの隙が大きく近距離では脆い。',
+    desc: '.408 CheyTac を撃つ大型ボルトアクション狙撃銃。胴体命中で確殺だが、次弾までの隙が大きく近距離では脆い。',
     model: 'sniper',
     fireMode: FIRE_MODE.BOLT,
 
+    // 実銃: .408 CheyTac、7 連弾倉、初速 910m/s
     damage: 110,
     headMul: 1.5,
     limbMul: 0.85,
-    rpm: 48,
-    boltTime: 1.05,
-    falloff: [120, 200, 0.9],
+    rpm: 45,
+    boltTime: 1.10,
+    falloff: [150, 240, 0.92],
 
-    magSize: 5,
-    reserveAmmo: 30,
+    magSize: 7,
+    reserveAmmo: 35,
     reloadTime: 3.15,
     reloadEmptyTime: 3.75,
 
@@ -177,8 +178,8 @@ export const WEAPONS = {
       pattern: [[1.0, 0.0]],
     },
     kick: { back: 0.075, up: 0.055, roll: 0.045 },
-    muzzleVelocity: 900,
-    penetration: 0.92,
+    muzzleVelocity: 910,
+    penetration: 0.94,
     scope: { magnification: 6.5, defaultAttachment: 'scope8x' },
     unlockLevel: 4,
     attachments: ['scope8x', 'suppressor'],
@@ -262,6 +263,164 @@ export const WEAPONS = {
     unlockLevel: 1,
     attachments: ['suppressor'],
   },
+
+  /* ---------------- 追加: SCAR-H (Mk 17) ---------------- */
+  scarh: {
+    id: 'scarh',
+    name: 'SCAR-H Mk17',
+    nameJa: 'SCAR-H Mk17',
+    class: WEAPON_CLASS.AR,
+    desc: '7.62mm を撃つ重量級バトルライフル。一発が重く中遠距離で強いが、装弾数が少なく反動も大きい。',
+    model: 'scarh',
+    fireMode: FIRE_MODE.AUTO,
+
+    // 実銃: 7.62×51mm NATO、20 連弾倉、サイクリック 600rpm、初速 715m/s（16 インチ銃身）
+    damage: 40,
+    headMul: 1.55,
+    limbMul: 0.9,
+    rpm: 550,
+    falloff: [38, 70, 0.78],
+
+    magSize: 20,
+    reserveAmmo: 120,
+    reloadTime: 2.42,
+    reloadEmptyTime: 3.15,
+
+    adsTime: 0.32,
+    sprintOutTime: 0.26,
+    swapTime: 0.72,
+
+    spread: { hip: 0.055, ads: 0.0016, moveMul: 1.9, airMul: 3.2, crouchMul: 0.7 },
+    recoil: {
+      vertical: 0.0295, horizontal: 0.0105, randomness: 0.30,
+      recovery: 6.4, adsMul: 0.74, firstShotMul: 1.30,
+      pattern: [[1.0, 0.0], [1.0, 0.25], [0.95, -0.35], [0.9, 0.45], [0.85, -0.2]],
+    },
+    kick: { back: 0.042, up: 0.034, roll: 0.026 },
+    muzzleVelocity: 715,
+    penetration: 0.72,
+    unlockLevel: 6,
+    attachments: ['redDot', 'scope4x', 'suppressor'],
+  },
+
+  /* ---------------- 追加: FN P90 ---------------- */
+  p90: {
+    id: 'p90',
+    name: 'FN P90',
+    nameJa: 'FN P90',
+    class: WEAPON_CLASS.SMG,
+    desc: '機関部上面に 50 連の横置き弾倉を載せたブルパップ短機関銃。継戦能力と取り回しに優れる。',
+    model: 'p90',
+    fireMode: FIRE_MODE.AUTO,
+
+    // 実銃: 5.7×28mm、50 連弾倉、サイクリック 900rpm、初速 715m/s
+    damage: 20,
+    headMul: 1.45,
+    limbMul: 0.94,
+    rpm: 900,
+    falloff: [20, 40, 0.58],
+
+    magSize: 50,
+    reserveAmmo: 200,
+    reloadTime: 2.60,
+    reloadEmptyTime: 3.20,
+
+    adsTime: 0.20,
+    sprintOutTime: 0.14,
+    swapTime: 0.48,
+
+    spread: { hip: 0.040, ads: 0.0014, moveMul: 1.30, airMul: 2.1, crouchMul: 0.82 },
+    recoil: {
+      vertical: 0.0132, horizontal: 0.0060, randomness: 0.40,
+      recovery: 11.5, adsMul: 0.62, firstShotMul: 1.05,
+      pattern: [[1.0, 0.0], [0.95, 0.3], [0.9, -0.35], [0.9, 0.2]],
+    },
+    kick: { back: 0.020, up: 0.017, roll: 0.016 },
+    muzzleVelocity: 715,
+    penetration: 0.44,
+    unlockLevel: 5,
+    attachments: ['redDot', 'suppressor'],
+  },
+
+  /* ---------------- 追加: M249 SAW（軽機関銃） ---------------- */
+  m249: {
+    id: 'm249',
+    name: 'M249 SAW',
+    nameJa: 'M249 SAW',
+    class: WEAPON_CLASS.LMG,
+    desc: 'ベルト給弾の分隊支援火器。100 発を撃ち続けられる制圧力が身上だが、構えも移動も鈍重。',
+    model: 'm249',
+    fireMode: FIRE_MODE.AUTO,
+
+    // 実銃: 5.56×45mm NATO、200 連ベルト（携行は 100 連ボックス）、
+    //       サイクリック 800rpm、初速 915m/s
+    damage: 30,
+    headMul: 1.45,
+    limbMul: 0.9,
+    rpm: 800,
+    falloff: [34, 66, 0.74],
+
+    magSize: 100,
+    reserveAmmo: 200,
+    reloadTime: 5.20,        // ベルト交換は遅い
+    reloadEmptyTime: 6.10,
+
+    adsTime: 0.46,
+    sprintOutTime: 0.38,
+    swapTime: 0.95,
+
+    // 腰だめは大きく散るが、伏せ・しゃがみで一気に締まる
+    spread: { hip: 0.078, ads: 0.0022, moveMul: 2.4, airMul: 4.2, crouchMul: 0.52 },
+    recoil: {
+      vertical: 0.0205, horizontal: 0.0115, randomness: 0.46,
+      recovery: 7.2, adsMul: 0.70, firstShotMul: 1.0,
+      pattern: [[1.0, 0.0], [0.95, 0.4], [0.9, -0.5], [0.85, 0.55], [0.8, -0.35], [0.8, 0.3]],
+    },
+    kick: { back: 0.030, up: 0.024, roll: 0.030 },
+    muzzleVelocity: 915,
+    penetration: 0.68,
+    unlockLevel: 7,
+    attachments: ['redDot', 'scope4x'],
+  },
+
+  /* ---------------- 追加: Glock 17 ---------------- */
+  glock17: {
+    id: 'glock17',
+    name: 'GLOCK 17',
+    nameJa: 'グロック 17',
+    class: WEAPON_CLASS.PISTOL,
+    desc: '9mm を 17 発装填するポリマーフレーム拳銃。M1911 より一発は軽いが、弾数と連射で押せる。',
+    model: 'glock17',
+    fireMode: FIRE_MODE.SEMI,
+
+    // 実銃: 9×19mm、17 連弾倉、初速 375m/s
+    damage: 26,
+    headMul: 1.5,
+    limbMul: 0.9,
+    rpm: 450,
+    falloff: [16, 32, 0.62],
+
+    magSize: 17,
+    reserveAmmo: 68,
+    reloadTime: 1.48,
+    reloadEmptyTime: 1.95,
+
+    adsTime: 0.16,
+    sprintOutTime: 0.10,
+    swapTime: 0.34,
+
+    spread: { hip: 0.030, ads: 0.0016, moveMul: 1.35, airMul: 2.1, crouchMul: 0.78 },
+    recoil: {
+      vertical: 0.0126, horizontal: 0.0044, randomness: 0.32,
+      recovery: 14.0, adsMul: 0.7, firstShotMul: 1.0,
+      pattern: [[1.0, 0.0], [1.0, 0.25], [0.95, -0.25]],
+    },
+    kick: { back: 0.020, up: 0.017, roll: 0.018 },
+    muzzleVelocity: 375,
+    penetration: 0.24,
+    unlockLevel: 2,
+    attachments: ['suppressor'],
+  },
 };
 
 /** アタッチメントによるステータス補正 */
@@ -326,4 +485,7 @@ export const DEFAULT_LOADOUTS = [
   { primary: 'mp5', secondary: 'pistol', attachments: {} },
   { primary: 'sniper', secondary: 'pistol', attachments: { sniper: ['scope8x'] } },
   { primary: 'shotgun', secondary: 'pistol', attachments: {} },
+  { primary: 'p90', secondary: 'glock17', attachments: { p90: ['redDot'] } },
+  { primary: 'scarh', secondary: 'glock17', attachments: { scarh: ['scope4x'] } },
+  { primary: 'm249', secondary: 'glock17', attachments: {} },
 ];
