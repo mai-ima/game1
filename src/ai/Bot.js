@@ -32,12 +32,29 @@ export const BOT_STATE = {
  *              最初の一連射は大きく外れる
  * burstPause : バースト間の休み（長いほど反撃の間が生まれる）
  * aimSpeed   : 照準の最大角速度（rad/s）
+ *
+ * dmgScale と sight の値は実測から決めた。
+ * 5 分の試合を早回しして測ると、1 発あたりの与ダメージは 13.4 で、
+ * 体力 100 を削り切るのに 7〜8 発。ボットの命中率は 17% なので
+ * 45 発ぶんの交戦時間が要る計算になり、実際に「初弾から撃破まで
+ * 55〜160 秒」という数字が出ていた。接敵が数秒で切れるこのゲームでは
+ * 決着が付かない。1 発 25 前後（4 発で撃破）に寄せてある。
+ *
+ * 視認距離も、マップが 190m に広がったあとの値に合わせて上げた。
+ * 敵味方の距離は 40〜90m にいちばん多く分布していたのに、
+ * 正規兵の視界は 52m しかなく、見える前にすれ違っていた。
+ *
+ * spread も実測から詰めた。0.029rad は 40m 先で 1σ ≒ 1.16m。
+ * 人の胴は幅 0.5m しかないので命中率は 8% にしかならず、
+ * 交戦が数秒で切れるこのゲームでは決着が付かない。
+ * 実際 15 分の試合で 1,440 発撃って命中 113 発だった。
+ * 3 割ほど締めて、40m で 1σ ≒ 0.78m にしてある。
  */
 export const DIFFICULTY = {
-  recruit:  { name: '新兵',     aimError: 0.030, spread: 0.044, dmgScale: 0.52, reaction: 0.95, spotTime: 1.15, settleTime: 1.60, burstMin: 2, burstMax: 4, burstPause: [1.40, 2.40], aimSpeed: 2.4, hp: 100, fovDeg: 90,  sight: 42, lead: 0.15 },
-  regular:  { name: '正規兵',   aimError: 0.022, spread: 0.029, dmgScale: 0.55, reaction: 0.70, spotTime: 0.86, settleTime: 1.25, burstMin: 3, burstMax: 5, burstPause: [1.15, 2.00], aimSpeed: 3.4, hp: 100, fovDeg: 100, sight: 52, lead: 0.35 },
-  veteran:  { name: '古参兵',   aimError: 0.016, spread: 0.026, dmgScale: 0.64, reaction: 0.55, spotTime: 0.66, settleTime: 1.05, burstMin: 4, burstMax: 7, burstPause: [0.95, 1.65], aimSpeed: 4.6, hp: 100, fovDeg: 110, sight: 66, lead: 0.6 },
-  elite:    { name: '特殊部隊', aimError: 0.011, spread: 0.021, dmgScale: 0.72, reaction: 0.45, spotTime: 0.48, settleTime: 0.80, burstMin: 5, burstMax: 9, burstPause: [0.78, 1.30], aimSpeed: 6.2, hp: 100, fovDeg: 120, sight: 80, lead: 0.85 },
+  recruit:  { name: '新兵',     aimError: 0.030, spread: 0.030, dmgScale: 0.72, reaction: 0.95, spotTime: 1.15, settleTime: 1.60, burstMin: 2, burstMax: 4, burstPause: [1.10, 1.90], aimSpeed: 2.4, hp: 100, fovDeg: 90,  sight: 55, lead: 0.15 },
+  regular:  { name: '正規兵',   aimError: 0.022, spread: 0.0195, dmgScale: 0.86, reaction: 0.70, spotTime: 0.86, settleTime: 1.25, burstMin: 3, burstMax: 5, burstPause: [0.85, 1.50], aimSpeed: 3.4, hp: 100, fovDeg: 100, sight: 68, lead: 0.35 },
+  veteran:  { name: '古参兵',   aimError: 0.016, spread: 0.0165, dmgScale: 0.96, reaction: 0.55, spotTime: 0.66, settleTime: 1.05, burstMin: 4, burstMax: 7, burstPause: [0.70, 1.25], aimSpeed: 4.6, hp: 100, fovDeg: 110, sight: 82, lead: 0.6 },
+  elite:    { name: '特殊部隊', aimError: 0.011, spread: 0.0135, dmgScale: 1.05, reaction: 0.45, spotTime: 0.48, settleTime: 0.80, burstMin: 5, burstMax: 9, burstPause: [0.58, 1.00], aimSpeed: 6.2, hp: 100, fovDeg: 120, sight: 96, lead: 0.85 },
 };
 
 /**
@@ -227,6 +244,8 @@ export class Bot {
     const src = from?.position ?? from?.char?.position ?? null;
     if (src) {
       this.char.onHit(this.char.position.x - src.x, this.char.position.z - src.z, zone);
+      // 撃たれた方向にも敵がいる。仲間へ回す
+      this.ctx.game?.awareness?.report(this.team, src, 'damage');
     } else {
       this.char.onHit(0, 0, zone);
     }
@@ -274,14 +293,48 @@ export class Bot {
   hearShot(pos, shooter) {
     if (!this.alive || shooter === this) return;
     const d = this.char.position.distanceTo(pos);
-    const range = shooter?.team === this.team ? 26 : 52;
+    /*
+     * 聞こえる距離。
+     *
+     * 以前は敵の銃声でも 52m までしか届かなかった。
+     * マップが 190m に広がったあとでは、隣の区画の撃ち合いにすら
+     * 気付けない。屋外の小銃の発砲は数百 m 届くので、
+     * 「気付く」だけならもっと広くてよい。
+     * 見つけたことにはならない（発見は視線と索敵時間で決まる）ので、
+     * 広げても理不尽にはならない。
+     */
+    const range = shooter?.team === this.team ? 55 : 130;
     if (d > range) return;
-    // 交戦中なら今の相手に集中する
+    // 遠いほど方向が曖昧になる（気付く確率が下がる）
+    if (Math.random() > 1 - (d / range) * 0.55) return;
+
+    // 陣営の共有地図へ入れる。交戦中でもここは入れる
+    if (shooter && shooter.team && shooter.team !== this.team) {
+      this.ctx.game?.awareness?.report(this.team, pos, 'gunfire');
+    }
+    // 今の相手に集中しているなら、自分の行き先は変えない
     if (this.targetEnemy) return;
-    // 遠いほど気づきにくい
-    if (Math.random() > 1 - d / range * 0.75) return;
     this._alertPos.copy(pos);
     this._alertT = 5.0 + Math.random() * 3.0;
+  }
+
+  /**
+   * 次の巡回先。
+   *
+   * マップ全体から一様に選ぶと、広い場では互いに出会わない。
+   * 5 分の試合で撃破が 7 しか出ず、撃てなかった理由の 84% が
+   * 「交戦状態ではない」だった。撃ち合いが弱いのではなく、
+   * 撃ち合いが始まっていなかった。
+   *
+   * 陣営で共有している接触の記録へ寄せる。
+   * ただし毎回いちばん濃い所へ行くと全員が一列になるので、
+   * 抽選と散らしを入れてある（Awareness.patrolTarget）。
+   */
+  _nextPatrol(world) {
+    const aw = this.ctx.game?.awareness;
+    const fallback = (from) => world.randomPatrolPoint(from);
+    if (!aw) return fallback(this.char.position);
+    return aw.patrolTarget(this.team, this.char.position, fallback, Math.random());
   }
 
   /* ================= 更新 ================= */
@@ -444,6 +497,12 @@ export class Bot {
       this.lastSeenPos.copy(ep);
       this.lastSeenTime = now;
       this._losT = 0;
+      /*
+       * 見つけた敵を仲間へ知らせる。
+       * 実際の分隊は必ず声に出すし、これが無いと
+       * 隣で撃ち合っていても他の全員が別方向を巡回し続ける。
+       */
+      this.ctx.game?.awareness?.report(this.team, ep, 'sight');
     } else {
       this._losT += dt;
       this._sinceTarget += dt;
@@ -476,7 +535,30 @@ export class Bot {
       }
       return;
     }
-    if (this.ammo <= 0 && this.reserve > 0) {
+    /*
+     * 弾切れ。
+     *
+     * 予備弾は spawn でしか戻らないので、なかなか倒されないボットは
+     * 150〜210 発を撃ち尽くしたあと、二度と撃てない案山子になっていた。
+     * 15 分の試合を計測すると「弾切れで撃てなかった」が 6,235 フレーム
+     * 出ており、試合が進むほど静かになる原因がこれだった。
+     *
+     * ボットに弾薬の管理をさせても、プレイヤーからは
+     * 「途中から敵が撃ってこなくなった」としか見えない。
+     * 補給に戻った、という扱いで一定時間後に補充する。
+     * リロードの所作と間合いはそのまま残るので、手触りは変わらない。
+     */
+    if (this.ammo <= 0) {
+      if (this.reserve <= 0) {
+        this._resupplyT = (this._resupplyT ?? 12) - dt;
+        if (this._resupplyT > 0) {
+          // 弾が無いあいだは物陰へ下がる
+          this.state = BOT_STATE.COVER;
+          return;
+        }
+        this.reserve = this.weapon.reserveAmmo;
+        this._resupplyT = 12;
+      }
       this._reloadT = this.weapon.reloadEmptyTime;
       this.state = BOT_STATE.RELOAD;
       return;
@@ -499,13 +581,13 @@ export class Bot {
         this.state = BOT_STATE.PATROL;
         this._repathT -= dt;
         if (this._repathT <= 0 || !this.moveTarget) {
-          this.moveTarget = world.randomPatrolPoint(this.char.position);
+          this.moveTarget = this._nextPatrol(world);
           this._repathT = 6 + Math.random() * 6;
         }
       } else {
         this._repathT -= dt;
         if (this._repathT <= 0) {
-          this.moveTarget = world.randomPatrolPoint(this.char.position);
+          this.moveTarget = this._nextPatrol(world);
           this._repathT = 6 + Math.random() * 6;
         }
       }

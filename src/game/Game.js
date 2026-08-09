@@ -8,6 +8,7 @@ import { Bot, DIFFICULTY } from '../ai/Bot.js';
 import { HIT_ZONE } from '../ai/Character.js';
 import { damageAt, WEAPONS } from '../player/weapons/WeaponDefs.js';
 import { GAME_MODES } from './GameModes.js';
+import { Awareness } from '../ai/Awareness.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -40,6 +41,12 @@ export class Game {
     this.weapons = new WeaponSystem(this.engine, this.physics, this.input, this.player, this.mats);
 
     this.bots = [];
+    /*
+     * 陣営ごとの状況把握。
+     * 「誰かが見た敵」を仲間で共有し、巡回先をそちらへ寄せる。
+     * これが無いと、広いマップでボットが互いに出会わない。
+     */
+    this.awareness = new Awareness();
     this.builder = null;
     this.mapInfo = null;
     this.mode = null;
@@ -154,10 +161,20 @@ export class Game {
     }
     for (const o of b.objectives) this.patrolPoints.push(o.pos.clone());
 
-    // マップ上に格子状に候補を撒き、床がある場所だけ残す
-    const R = 30;
-    for (let x = -R; x <= R; x += 6) {
-      for (let z = -R; z <= R; z += 6) {
+    /*
+     * マップ上に格子状に候補を撒き、床がある場所だけ残す。
+     *
+     * 以前は ±30m 固定だった。マップを広げたあともここが据え置きで、
+     * 184 × 164m のテストベッドでも中央 60m 四方しか巡回先が無く、
+     * 敷地の大半へボットが立ち入らなかった。
+     * マップの実寸から決める。
+     */
+    const bd = this.mapInfo?.bounds;
+    const RX = bd ? Math.max(20, Math.min(120, Math.max(Math.abs(bd.min.x), Math.abs(bd.max.x)) - 4)) : 30;
+    const RZ = bd ? Math.max(20, Math.min(120, Math.max(Math.abs(bd.min.z), Math.abs(bd.max.z)) - 4)) : 30;
+    const STEP = Math.max(6, Math.round(Math.max(RX, RZ) / 12));
+    for (let x = -RX; x <= RX; x += STEP) {
+      for (let z = -RZ; z <= RZ; z += STEP) {
         const p = _v.set(x, 6, z);
         const hit = this.physics.raycast(p, _v2.set(0, -1, 0), 12, { forBullets: false });
         if (hit && hit.point.y < 4.5) {
@@ -230,6 +247,8 @@ export class Game {
     await this.engine.precompile();
 
     this.time = 0;
+    // 前の試合で共有していた敵の位置は持ち越さない
+    this.awareness.clear();
     this.matchOver = false;
     this.running = true;
     this.paused = false;
@@ -665,6 +684,7 @@ export class Game {
   update(dt) {
     if (!this.running || this.paused) return;
     this.time += dt;
+    this.awareness.update(dt);
 
     // --- プレイヤー ---
     /*
