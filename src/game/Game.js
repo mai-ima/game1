@@ -136,7 +136,14 @@ export class Game {
       fillColor: 0xa6bacd, fillIntensity: 0.22,
     });
     this.mats.applyEnvironment(this.engine.envRT.texture, 1.0);
+    /*
+     * 霧そのものは大気遠近（Atmosphere.js）が描く。
+     * ここで Fog を置くのは USE_FOG を立てるためで、
+     * color / near / far の 3 つはシェーダ側では読まれない。
+     * 濃さと色は engine.applyAtmosphere が決める。
+     */
     this.engine.scene.fog = new THREE.Fog(this.mapInfo.fog.color, this.mapInfo.fog.near, this.mapInfo.fog.far);
+    this.engine.applyAtmosphere(this.mapInfo.fog);
 
     this.builder = new MapBuilder(this.engine.scene, this.physics, this.mats);
     mapModule.build(this.builder);

@@ -58,7 +58,16 @@ export const MAP_INFO = {
     fillColor: 0xc6ced6, fillIntensity: 0.46,
     env: 0.34,
   },
-  fog: { color: 0xd3d0c9, near: 150, far: 460, density: 0.0005 },
+  /*
+   * 検証の場なので空気は澄ませる。
+   * 砂塵をほとんど混ぜず、見通しも 520m まで伸ばして、
+   * 材質の色が霞で狂わないようにする。
+   */
+  fog: {
+    color: 0xd3d0c9, near: 150, far: 460,
+    dust: 0xdcd6c8, dustMix: 0.16, hazeGain: 1.04,
+    distance: 520, scaleHeight: 130, max: 0.92,
+  },
   bounds: { min: { x: -94, z: -82 }, max: { x: 94, z: 86 } },
   viewDistance: 460,
   /** 一覧で「これは検証用」と分かるようにする印 */

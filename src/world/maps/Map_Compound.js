@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { SURFACE } from '../Physics.js';
 import * as P from '../Props.js';
+import { surroundings } from '../Surroundings.js';
 
 /**
  * マップ 1: COMPOUND（コンパウンド）
@@ -22,7 +23,23 @@ export const MAP_INFO = {
   size: '中規模',
   players: '6〜12人',
   sun: { elevation: 42, azimuth: 132 },
-  fog: { color: 0xc8b898, near: 55, far: 210, density: 0.0016 },
+  /*
+   * 大気。
+   *
+   * 砂漠なので、地表付近には砂塵が溜まる。
+   * dustMix で空の色へ砂の色味を混ぜ、hazeGain で少し明るく飛ばす。
+   * distance 280m は「280m 先で 63% 霞む」の意味で、
+   * 中景（118〜180m）はまだ形が読め、遠景（215〜365m）で溶け始め、
+   * 稜線（430〜520m）はほぼ空に沈む、という段になる。
+   * scaleHeight 90m を切っているので、高いビルは頭が霞から抜ける。
+   *
+   * color / near / far は three の Fog を作るためだけに残してある。
+   */
+  fog: {
+    color: 0xc8b898, near: 55, far: 210,
+    dust: 0xd6bf9a, dustMix: 0.42, hazeGain: 1.10,
+    distance: 280, scaleHeight: 88, max: 0.95,
+  },
   /*
    * 遊べる範囲。ミニマップの焼き込みなど、
    * 「マップがどこまであるか」を要る側がここを見る。
@@ -156,6 +173,15 @@ export function buildCompound(b) {
   // 中央広場の脇に草地（一面が土だけだと単調になる）
   b.box({ x: -13.5, y: 0.016, z: -20, w: 11, h: 0.03, d: 12, mat: 'grass', surface: SURFACE.DIRT, collide: false });
   b.box({ x: 26, y: 0.016, z: -24, w: 14, h: 0.03, d: 12, mat: 'grassDry', surface: SURFACE.DIRT, collide: false });
+
+  /* ============ 敷地の外 ============ */
+  /*
+   * 塀の向こうに何も無かった。
+   * 上から見ると世界が 66m で終わっているのがはっきり見え、
+   * 見上げても壁の上端から空しか出てこない。
+   * テストベッドで作った街並みを、こちらでも使う。
+   */
+  surroundings(b, { west: WEST + 1, east: EAST - 1, north: -HALF + 1, south: HALF - 1 }, rand);
 
   /* ============ 外周壁 ============ */
   const W = HALF - 1, WX = WEST + 1, EX = EAST - 1;

@@ -7,6 +7,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { Clouds } from '../render/Clouds.js';
+import { installAtmosphere, setAtmosphere, setAtmosphereSun } from '../render/Atmosphere.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
@@ -33,6 +34,14 @@ import { LightPool } from '../render/LightPool.js';
  * 実体は近い数灯だけに絞り、LightPool が近い順に割り当て直す。
  * 遠くの光は元々減衰しきっているので、見える絵は変わらない。
  */
+/*
+ * 霧を大気遠近へ差し替える。
+ *
+ * ShaderChunk を触るので、マテリアルが 1 つでも組まれる前に済ませる。
+ * モジュールの読み込み時に呼んでおけば、その条件は必ず満たされる。
+ */
+installAtmosphere();
+
 export const QUALITY = {
   low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 4, dropRoughIBL: true, cloudOctaves: 3 },
   medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 6, cloudOctaves: 4 },
@@ -584,6 +593,8 @@ export class Engine {
       this.sun.target.position.set(0, 0, 0);
       this.sun.target.updateMatrixWorld();
     }
+    // 霞の色は空から取っているので、太陽が動いたら取り直す
+    if (this._atmoCfg) this.applyAtmosphere(this._atmoCfg);
     this._sunDirty = true;
   }
 
@@ -626,6 +637,128 @@ export class Engine {
     this.viewScene.environment = this.envRT.texture;
     this._sunDirty = false;
     return this.envRT.texture;
+  }
+
+  /**
+   * 空の放射輝度を指定方向で実測する。
+   *
+   * 霞の色を手で決めると、空を作り直すたびに地平線で色が食い違う。
+   * 実際、砂色（0xc8b898）で固定していたときは、水色の空の下に
+   * 砂色の帯が横一文字に出ていた。
+   * 空そのものを 1 度描いて読めば、どの太陽角でも必ず一致する。
+   *
+   * トーンマップ前の線形値がほしいので、レンダーターゲットへ描く。
+   * three は「描画先がキャンバス以外」のときトーンマップを外すので、
+   * 読める値はそのまま放射輝度になる。
+   *
+   * @param {THREE.Vector3[]} dirs 見る向き
+   * @returns {THREE.Color[]|null} 読めなければ null
+   */
+  sampleSkyRadiance(dirs) {
+    const r = this.renderer;
+    const sky = this.sky;
+    if (!sky) return null;
+
+    let rt = this._skySampleRT;
+    if (!rt) {
+      try {
+        rt = this._skySampleRT = new THREE.WebGLRenderTarget(4, 4, {
+          type: THREE.FloatType,
+          minFilter: THREE.NearestFilter,
+          magFilter: THREE.NearestFilter,
+          depthBuffer: false,
+          generateMipmaps: false,
+        });
+      } catch { return null; }
+    }
+    if (!this._skySampleCam) {
+      this._skySampleCam = new THREE.PerspectiveCamera(16, 1, 0.1, 400);
+      this._skySampleScene = new THREE.Scene();
+    }
+    const cam = this._skySampleCam;
+    const scratch = this._skySampleScene;
+
+    const parent = sky.parent;
+    const prevScale = sky.scale.x;
+    const prevDisc = sky.material.uniforms.showSunDisc.value;
+    const prevRT = r.getRenderTarget();
+
+    // 太陽ディスクを含めない。1e7 級の輝度が 4 画素の平均を支配してしまう
+    sky.material.uniforms.showSunDisc.value = 0;
+    sky.scale.setScalar(120);
+    scratch.add(sky);
+
+    const buf = new Float32Array(4 * 4 * 4);
+    const out = [];
+    try {
+      r.setRenderTarget(rt);
+      for (const d of dirs) {
+        cam.position.set(0, 0, 0);
+        cam.lookAt(d.x, d.y, d.z);
+        cam.updateMatrixWorld();
+        r.render(scratch, cam);
+        r.readRenderTargetPixels(rt, 0, 0, 4, 4, buf);
+        let cr = 0, cg = 0, cb = 0;
+        for (let i = 0; i < 16; i++) { cr += buf[i * 4]; cg += buf[i * 4 + 1]; cb += buf[i * 4 + 2]; }
+        out.push(new THREE.Color(cr / 16, cg / 16, cb / 16));
+      }
+    } catch {
+      out.length = 0;
+    } finally {
+      r.setRenderTarget(prevRT);
+      parent?.add(sky);
+      sky.scale.setScalar(prevScale);
+      sky.material.uniforms.showSunDisc.value = prevDisc;
+    }
+    if (!out.length || !Number.isFinite(out[0].r)) return null;
+    return out;
+  }
+
+  /**
+   * マップの大気を設定する。
+   *
+   * 色は空から実測し、マップ側の設定は「どれだけ砂を混ぜるか」
+   * 「どこまで見通せるか」といった量だけを受け取る。
+   *
+   * @param {object} cfg MAP_INFO.fog
+   */
+  applyAtmosphere(cfg = {}) {
+    const sun = this.sunPosition;
+    setAtmosphereSun(sun);
+
+    /*
+     * 測る向きは 3 つ。
+     *
+     * 地平線の明るさは方位で 3 倍以上変わる（実測: 太陽側 0.90、
+     * 反対側 0.26）。片方だけ測って全方位に使うと、
+     * 太陽と反対を向いたときの空に合わせた暗い霞が、
+     * 明るい空を背にした遠景にも乗ってしまう。
+     * 両端を測ってシェーダ側で方位補間する。
+     */
+    const h = Math.hypot(sun.x, sun.z) || 1;
+    const sx = sun.x / h, sz = sun.z / h;
+    const dirs = [
+      new THREE.Vector3(-sx, 0.035, -sz).normalize(),  // 順光側の地平線 → 霞の地色
+      new THREE.Vector3(sx, 0.035, sz).normalize(),    // 逆光側の地平線 → 前方散乱の色
+      // 太陽と直交する方位の中天。真上ほど暗くなく、方位の偏りも小さい
+      new THREE.Vector3(-sz * 0.82, 0.58, sx * 0.82).normalize(),
+    ];
+    const s = this.sampleSkyRadiance(dirs);
+
+    setAtmosphere({
+      horizon: s?.[0],
+      sunGlow: s?.[1],
+      sky: s?.[2],
+      dust: cfg.dust ?? cfg.color ?? 0xffffff,
+      dustMix: cfg.dustMix ?? 0.28,
+      hazeGain: cfg.hazeGain ?? 1.0,
+      skyGain: cfg.skyGain ?? 1.0,
+      distance: cfg.distance ?? 320,
+      scaleHeight: cfg.scaleHeight ?? 110,
+      groundY: cfg.groundY ?? 0,
+      max: cfg.max ?? 0.96,
+    });
+    this._atmoCfg = cfg;
   }
 
   _setupLights() {

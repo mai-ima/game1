@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { TextureFactory } from './TextureFactory.js';
+import { injectAtmosphere } from './Atmosphere.js';
 
 /**
  * マテリアルのプリセット定義。
@@ -144,6 +145,24 @@ const PRESETS = {
 
   /* ---- 建材・壁・屋根 ---- */
   concreteRaw:     { tex: 'concreteRaw',  repeat: 0.55, params: { roughness: 1, metalness: 1 } },
+  /*
+   * 遠景の街並み用。
+   *
+   * 敷地の外に建てたビルを 2〜3 種類の材質で回していたら、
+   * 同じ色の箱が地平線に並び、書き割りにしか見えなかった。
+   * 街は「1 棟ごとに施主も竣工年も違う」から色がばらける。
+   * 色味だけ変えた面を何段か用意して、棟ごとに引く。
+   *
+   * テクスチャは既存のものを使い回すので、増えるのは
+   * マテリアルとドローコールが数個だけ。
+   */
+  cityCream:       { tex: 'concreteRaw',  repeat: 0.5,  params: { roughness: 1, metalness: 1, color: 0xd6cdb8 }, seed: 9101 },
+  citySand:        { tex: 'stuccoRough',  repeat: 0.55, params: { roughness: 1, metalness: 1, color: 0xc9b393 }, seed: 9102 },
+  cityGrey:        { tex: 'concreteRaw',  repeat: 0.5,  params: { roughness: 1, metalness: 1, color: 0x9fa0a0 }, seed: 9103 },
+  cityWarmGrey:    { tex: 'plaster',      repeat: 0.6,  params: { roughness: 1, metalness: 1, color: 0xb2a695 }, seed: 9104 },
+  cityRust:        { tex: 'brickOld',     repeat: 0.75, params: { roughness: 1, metalness: 1, color: 0xa8846a }, seed: 9105 },
+  citySlate:       { tex: 'plaster',      repeat: 0.6,  params: { roughness: 1, metalness: 1, color: 0x8b8f95 }, seed: 9106 },
+  cityBone:        { tex: 'stuccoRough',  repeat: 0.55, params: { roughness: 1, metalness: 1, color: 0xdad3c4 }, seed: 9107 },
   concreteBlock:   { tex: 'concreteBlock', repeat: 1.0, params: { roughness: 1, metalness: 1 } },
   stuccoRough:     { tex: 'stuccoRough',  repeat: 0.9,  params: { roughness: 1, metalness: 1 } },
   stuccoWhite:     { tex: 'stuccoRough',  repeat: 0.9,  params: { roughness: 1, metalness: 1, color: 0xd8d5cd }, seed: 383 },
@@ -257,6 +276,15 @@ const SOLIDS = {
  * three がシェーダを別物とみなし、プログラムが人数分できてしまう。
  */
 const PACK_ORM = (shader) => {
+  /*
+   * 大気遠近の共有ユニフォームを差し込む。
+   *
+   * 通常は Material.prototype.onBeforeCompile が面倒を見るが、
+   * ここは自前の実装で上書きしてしまうので、明示的に呼ぶ必要がある。
+   * 忘れると、この工房のマテリアルだけ霞が真っ黒になる。
+   */
+  injectAtmosphere(shader);
+
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <metalnessmap_fragment>', /* glsl */`
       float metalnessFactor = metalness;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SURFACE } from '../../Physics.js';
 import * as P from '../../Props.js';
 import { mulberry32 } from './common.js';
+import { surroundings } from '../../Surroundings.js';
 
 /**
  * 敷地の境界と、その外側。
@@ -56,7 +57,9 @@ export function sectionEdge(b, o) {
     else fenceRun(b, x1, z1, x2, z2, rand);
   }
 
-  skyline(b, { west, east, north, south }, rand);
+  // 塀の外の街は全マップ共通の部品に任せる
+  // 検証場の床はコンクリートなので、外も同じ灰色系で続ける
+  surroundings(b, { west, east, north, south }, rand, { ground: 'gravel' });
 }
 
 /* ================================================================= *
@@ -281,131 +284,3 @@ function fenceRun(b, x1, z1, x2, z2, rand) {
   });
 }
 
-/* ================================================================= *
- *  外の街
- * ================================================================= */
-
-/**
- * 塀の外の街並み。
- *
- * 近景（塀のすぐ外）・中景・遠景の 3 段で置く。
- * 遠景だけ置いても「絵が貼ってある」ようにしか見えない。
- * 段が重なって初めて、街が奥へ続いているように見える。
- *
- * どれも当たり判定を持たず、影も落とさない。
- * 見えるためだけの物なので、負荷はほぼ描画分だけ。
- */
-function skyline(b, bounds, rand) {
-  const { west, east, north, south } = bounds;
-  const cx = (west + east) / 2, cz = (north + south) / 2;
-
-  /*
-   * 外の地面。
-   *
-   * これを忘れると、塀の向こうのビルが宙に浮く。
-   * 敷地の床は 184×164m しか無いので、その外側は
-   * 「何も無い＝空が見える」になり、街が空中に立っているように見えた。
-   *
-   * 敷地より 6cm 低くしてある。同じ高さにすると、
-   * どちらの面が手前か決まらず、境目がちらつく。
-   */
-  b.box({ x: cx, y: -0.10, z: cz, w: 1400, h: 0.2, d: 1400,
-    mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
-  // 敷地のまわりだけ舗装を変えて、外周道路に見せる
-  for (const [ox, oz, w, d] of [
-    [0, north - 14, (east - west) + 80, 16],
-    [0, south + 14, (east - west) + 80, 16],
-    [west - 14, 0, 16, (south - north) + 80],
-    [east + 14, 0, 16, (south - north) + 80],
-  ]) {
-    b.box({ x: cx + ox, y: -0.06, z: cz + oz, w, h: 0.1, d,
-      mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
-    // 中央線
-    const horiz = w > d;
-    b.box({ x: cx + ox, y: -0.005, z: cz + oz, w: horiz ? w : 0.14, h: 0.1, d: horiz ? 0.14 : d,
-      mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
-  }
-
-  /** 1 棟。窓の帯・屋上の設備・パラペットまで入れる */
-  const block = (x, z, w, d, h, yaw, mat, detail) => {
-    b.box({ x, y: h / 2, z, w, h, d, yaw, mat, surface: SURFACE.CONCRETE, collide: false });
-    // パラペット
-    b.box({ x, y: h + 0.35, z, w: w + 0.25, h: 0.7, d: d + 0.25, yaw,
-      mat: 'concreteRaw', surface: SURFACE.CONCRETE, collide: false });
-    if (!detail) return;
-    // 窓の帯（階ごとに 1 本。1 枚ずつ置くと遠景で潰れるだけ）
-    const floors = Math.max(2, Math.floor(h / 3.2));
-    for (let f = 1; f <= floors; f++) {
-      const fy = (h / (floors + 1)) * f;
-      for (const s of [-1, 1]) {
-        b.box({ x: x + Math.sin(yaw) * s * (d / 2 + 0.03), y: fy, z: z + Math.cos(yaw) * s * (d / 2 + 0.03),
-          w: w * 0.86, h: 1.5, d: 0.06, yaw, mat: 'screenPanel', surface: SURFACE.GLASS, collide: false });
-      }
-      for (const s of [-1, 1]) {
-        b.box({ x: x + Math.cos(yaw) * s * (w / 2 + 0.03), y: fy, z: z - Math.sin(yaw) * s * (w / 2 + 0.03),
-          w: 0.06, h: 1.5, d: d * 0.86, yaw, mat: 'screenPanel', surface: SURFACE.GLASS, collide: false });
-      }
-    }
-    // 屋上の塔屋と設備
-    b.box({ x: x + w * 0.2, y: h + 1.5, z: z - d * 0.15, w: w * 0.3, h: 2.2, d: d * 0.35, yaw,
-      mat: 'concreteRaw', surface: SURFACE.CONCRETE, collide: false });
-    if (rand() < 0.6) {
-      P.waterTank(b, { x: x - w * 0.22, y: h + 1.4, z: z + d * 0.18, radius: Math.min(1.4, w * 0.16), height: 1.6, legs: 0.7 });
-    }
-  };
-
-  const MATS = ['concreteRaw', 'plaster', 'brickOldGrey', 'paintedWall', 'tile', 'brickOld'];
-
-  /* --- 近景: 塀のすぐ外。低層が肩を並べる --- */
-  for (const [sx, sz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
-    const along = sx === 0 ? east - west : south - north;
-    const n = Math.round(along / 13);
-    for (let i = 0; i < n; i++) {
-      const t = -along / 2 + along * (i + 0.5) / n + (rand() - 0.5) * 3;
-      /*
-       * 近景は「塀の上に頭が出る」程度に抑える。
-       * 高い建物を境界のすぐ外へ並べると、敷地が井戸の底になり、
-       * 空がまったく見えなくなる。外周道路の向こう側へ下げる。
-       */
-      const w = 9 + rand() * 7, d = 9 + rand() * 8, h = 6 + rand() * 7;
-      const off = 26 + rand() * 10;
-      const x = sx === 0 ? cx + t : (sx < 0 ? west : east) + sx * off;
-      const z = sz === 0 ? cz + t : (sz < 0 ? north : south) + sz * off;
-      block(x, z, w, d, h, (rand() - 0.5) * 0.3, MATS[Math.floor(rand() * MATS.length)], true);
-    }
-  }
-
-  /* --- 中景: 30〜70m 外。中高層が重なる --- */
-  for (let i = 0; i < 46; i++) {
-    const a = (i / 46) * Math.PI * 2 + rand() * 0.1;
-    const r = 118 + rand() * 62;
-    const x = cx + Math.cos(a) * r * 1.18;
-    const z = cz + Math.sin(a) * r;
-    const w = 11 + rand() * 16, d = 11 + rand() * 16, h = 12 + rand() * 26;
-    block(x, z, w, d, h, rand() * 0.6, MATS[Math.floor(rand() * MATS.length)], rand() < 0.55);
-  }
-
-  /* --- 遠景: 200m 超。塊だけ。窓も設備も入れない --- */
-  for (let i = 0; i < 60; i++) {
-    const a = (i / 60) * Math.PI * 2 + rand() * 0.08;
-    const r = 215 + rand() * 150;
-    const x = cx + Math.cos(a) * r * 1.25;
-    const z = cz + Math.sin(a) * r;
-    const w = 14 + rand() * 26, d = 14 + rand() * 26, h = 16 + rand() * 52;
-    b.box({ x, y: h / 2, z, w, h, d, yaw: rand() * 0.8,
-      mat: rand() < 0.5 ? 'concreteRaw' : 'plaster', surface: SURFACE.CONCRETE, collide: false });
-  }
-
-  /* --- 稜線: 400m 超の山。空と地面の境目を埋める --- */
-  for (let i = 0; i < 26; i++) {
-    const a = (i / 26) * Math.PI * 2;
-    const r = 430 + rand() * 90;
-    const x = cx + Math.cos(a) * r * 1.2, z = cz + Math.sin(a) * r;
-    const w = 150 + rand() * 200, h = 40 + rand() * 55;
-    const g = new THREE.ConeGeometry(w / 2, h, 7, 1);
-    // 山は左右非対称に潰す
-    g.scale(1, 1, 0.55 + rand() * 0.5);
-    g.rotateY(rand() * 3.14);
-    b.mesh('rock', g, { x, y: h / 2 - 6, z });
-  }
-}
