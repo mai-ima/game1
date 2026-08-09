@@ -1,5 +1,5 @@
 import { buildCompound, MAP_INFO as COMPOUND } from './Map_Compound.js';
-import { buildTestbed, MAP_INFO as TESTBED } from './Map_Testbed.js';
+import { buildTestbed, MAP_INFO as TESTBED } from './testbed/index.js';
 
 /**
  * 遊べるレベルの一覧。

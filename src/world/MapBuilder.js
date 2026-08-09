@@ -53,6 +53,42 @@ export class MapBuilder {
     this.lights = [];
     this.bounds = new THREE.Box3();
     this.navHints = [];
+    /** 毎フレーム動かすもの（昇降機・可動扉など） */
+    this.movers = [];
+  }
+
+  /**
+   * 動く仕掛けを登録する。
+   *
+   * バッチに積んだジオメトリは動かせない（1 つのメッシュに溶けているため）。
+   * 動くものは独立したメッシュとして持ち、コライダと組にして
+   * ここへ預ける。Game が毎フレーム update(t, dt) を呼ぶ。
+   *
+   * @param {object} o {mesh, collider, update}
+   *   mesh     … 動かす見た目（addExtra 済みでなくてよい。ここで足す）
+   *   collider … 一緒に動かす当たり判定（無くてもよい）
+   *   update   … (t, dt, self) => void。self.setPos(x,y,z) で両方動く
+   */
+  mover(o) {
+    const { mesh, collider = null, update } = o;
+    if (mesh && !this.extras.includes(mesh)) this.addExtra(mesh);
+    const physics = this.physics;
+    const self = {
+      mesh, collider, update, t: 0,
+      /** 見た目と当たり判定をまとめて動かす */
+      setPos(x, y, z) {
+        if (mesh) mesh.position.set(x, y, z);
+        if (collider) physics.moveCollider(collider, x, y, z);
+      },
+      setYaw(yaw) {
+        if (mesh) mesh.rotation.y = yaw;
+        if (collider) {
+          physics.moveCollider(collider, collider.center.x, collider.center.y, collider.center.z, yaw);
+        }
+      },
+    };
+    this.movers.push(self);
+    return self;
   }
 
   /* ================= バッチ ================= */

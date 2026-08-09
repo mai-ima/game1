@@ -181,7 +181,44 @@ export class Physics {
     );
   }
 
+  /**
+   * コライダを動かす。
+   *
+   * 位置を書き換えるだけでは当たり判定は付いてこない。
+   * ブロードフェーズの格子に登録済みなので、
+   * 元の升目から抜いて、新しい升目へ入れ直す必要がある。
+   *
+   * 昇降機や可動扉のように「動くのに当たる」ものはこれを通す。
+   */
+  moveCollider(c, x, y, z, yaw = c.yaw) {
+    this._remove(c);
+    c.center.set(x, y, z);
+    if (yaw !== c.yaw) {
+      c.yaw = yaw;
+      c.rotated = Math.abs(yaw) > 1e-4;
+      c.cos = Math.cos(yaw);
+      c.sin = Math.sin(yaw);
+    }
+    c._updateBounds();
+    this._insert(c);
+    return c;
+  }
+
   _cellKey(ix, iz) { return ix * 73856093 ^ iz * 19349663; }
+
+  _remove(c) {
+    const cs = this.cellSize;
+    const x0 = Math.floor(c.min.x / cs), x1 = Math.floor(c.max.x / cs);
+    const z0 = Math.floor(c.min.z / cs), z1 = Math.floor(c.max.z / cs);
+    for (let x = x0; x <= x1; x++) {
+      for (let z = z0; z <= z1; z++) {
+        const arr = this.grid.get(this._cellKey(x, z));
+        if (!arr) continue;
+        const i = arr.indexOf(c);
+        if (i >= 0) arr.splice(i, 1);
+      }
+    }
+  }
 
   _insert(c) {
     const cs = this.cellSize;

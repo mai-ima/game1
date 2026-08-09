@@ -739,6 +739,12 @@ export class Game {
       }
     }
 
+    // --- 動く仕掛け（昇降機・可動扉など） ---
+    if (this.builder?.movers.length) {
+      this._moverT = (this._moverT || 0) + dt;
+      for (const m of this.builder.movers) m.update(this._moverT, dt, m);
+    }
+
     // --- 点光源の割り当て（近い数灯だけを実体にする） ---
     this.engine.lightPool.update(dt, camPos);
 
