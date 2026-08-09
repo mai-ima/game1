@@ -1,0 +1,1030 @@
+[
+ {
+  "名前": "木箱",
+  "関数": "woodCrate",
+  "寸法": [
+   0.83,
+   0.72,
+   0.83
+  ],
+  "メッシュ": 2,
+  "三角形": 216,
+  "マテリアル": [
+   "plywood",
+   "wood"
+  ]
+ },
+ {
+  "名前": "弾薬箱",
+  "関数": "ammoCrate",
+  "寸法": [
+   0.74,
+   0.35,
+   0.39
+  ],
+  "メッシュ": 2,
+  "三角形": 276,
+  "マテリアル": [
+   "gunMetal",
+   "paintedMetal"
+  ]
+ },
+ {
+  "名前": "ドラム缶",
+  "関数": "barrel",
+  "寸法": [
+   0.61,
+   0.9,
+   0.61
+  ],
+  "メッシュ": 2,
+  "三角形": 360,
+  "マテリアル": [
+   "brushedMetal",
+   "rustedMetal"
+  ]
+ },
+ {
+  "名前": "土嚢の積み",
+  "関数": "sandbagStack",
+  "寸法": [
+   1.59,
+   0.69,
+   0.52
+  ],
+  "メッシュ": 1,
+  "三角形": 1188,
+  "マテリアル": [
+   "sandbag"
+  ]
+ },
+ {
+  "名前": "パレット",
+  "関数": "pallet",
+  "寸法": [
+   1.15,
+   0.12,
+   1.07
+  ],
+  "メッシュ": 1,
+  "三角形": 108,
+  "マテリアル": [
+   "wood"
+  ]
+ },
+ {
+  "名前": "タイヤ積み",
+  "関数": "tireStack",
+  "寸法": [
+   0.85,
+   0.58,
+   0.85
+  ],
+  "メッシュ": 1,
+  "三角形": 1320,
+  "マテリアル": [
+   "tireTread"
+  ]
+ },
+ {
+  "名前": "段ボール積み",
+  "関数": "cardboardStack",
+  "寸法": [
+   0.67,
+   1.08,
+   0.59
+  ],
+  "メッシュ": 2,
+  "三角形": 240,
+  "マテリアル": [
+   "cardboard",
+   "plasticMatte"
+  ]
+ },
+ {
+  "名前": "携行缶",
+  "関数": "jerryCan",
+  "寸法": [
+   0.18,
+   0.5,
+   0.35
+  ],
+  "メッシュ": 2,
+  "三角形": 364,
+  "マテリアル": [
+   "gunMetal",
+   "paintedMetal"
+  ]
+ },
+ {
+  "名前": "鉄筋束",
+  "関数": "rebarBundle",
+  "寸法": [
+   0.13,
+   0.17,
+   2.4
+  ],
+  "メッシュ": 1,
+  "三角形": 240,
+  "マテリアル": [
+   "rebar"
+  ]
+ },
+ {
+  "名前": "型枠合板",
+  "関数": "formworkStack",
+  "寸法": [
+   0.98,
+   0.17,
+   1.88
+  ],
+  "メッシュ": 1,
+  "三角形": 84,
+  "マテリアル": [
+   "formPly"
+  ]
+ },
+ {
+  "名前": "ブロックパレット",
+  "関数": "blockPallet",
+  "寸法": [
+   1.17,
+   0.7,
+   1.07
+  ],
+  "メッシュ": 2,
+  "三角形": 540,
+  "マテリアル": [
+   "concreteBlock",
+   "wood"
+  ]
+ },
+ {
+  "名前": "骨材の山",
+  "関数": "aggregatePile",
+  "寸法": [
+   2.35,
+   0.77,
+   2.45
+  ],
+  "メッシュ": 1,
+  "三角形": 484,
+  "マテリアル": [
+   "gravel"
+  ]
+ },
+ {
+  "名前": "瓦礫",
+  "関数": "rubble",
+  "寸法": [
+   2.38,
+   0.5,
+   2.66
+  ],
+  "メッシュ": 5,
+  "三角形": 732,
+  "マテリアル": [
+   "brickOld",
+   "concrete",
+   "concreteRaw",
+   "rock",
+   "rustedMetal"
+  ]
+ },
+ {
+  "名前": "単管バリケード",
+  "関数": "siteBarrier",
+  "寸法": [
+   6.34,
+   1.02,
+   0.92
+  ],
+  "メッシュ": 5,
+  "三角形": 432,
+  "マテリアル": [
+   "hazardStripe",
+   "paintedMetal",
+   "plasticBlack",
+   "plasticGloss",
+   "plasticGlossRed"
+  ]
+ },
+ {
+  "名前": "足場",
+  "関数": "scaffold",
+  "寸法": [
+   1.52,
+   7.8,
+   8.14
+  ],
+  "メッシュ": 5,
+  "三角形": 2012,
+  "マテリアル": [
+   "galvanized",
+   "gunMetal",
+   "meshScreen",
+   "rustedMetal",
+   "scaffoldPlank"
+  ]
+ },
+ {
+  "名前": "現場事務所",
+  "関数": "siteOffice",
+  "寸法": [
+   5.64,
+   3.52,
+   3.52
+  ],
+  "メッシュ": 15,
+  "三角形": 1796,
+  "マテリアル": [
+   "anodized",
+   "applianceGrey",
+   "concreteBlock",
+   "expandedMetal",
+   "glass",
+   "gunMetal",
+   "metalRoof",
+   "paintedMetal",
+   "paperPrint",
+   "plasticBlack",
+   "plasticMatte",
+   "rubber",
+   "sidingMetal",
+   "solarPanel"
+  ]
+ },
+ {
+  "名前": "コンテナ",
+  "関数": "container",
+  "寸法": [
+   2.76,
+   2.59,
+   6.15
+  ],
+  "メッシュ": 4,
+  "三角形": 848,
+  "マテリアル": [
+   "corrugated",
+   "paintedMetal",
+   "plywood",
+   "rustedMetal"
+  ]
+ },
+ {
+  "名前": "ゴミ",
+  "関数": "litter",
+  "寸法": [
+   1.83,
+   0.07,
+   1.07
+  ],
+  "メッシュ": 7,
+  "三角形": 364,
+  "マテリアル": [
+   "acrylic",
+   "brushedMetal",
+   "concreteRaw",
+   "leafCardDry",
+   "paintedMetal",
+   "plasticGlossRed",
+   "plasticMatte"
+  ]
+ },
+ {
+  "名前": "街灯",
+  "関数": "streetLight",
+  "寸法": [
+   0.32,
+   4.61,
+   1.56
+  ],
+  "メッシュ": 5,
+  "三角形": 244,
+  "マテリアル": [
+   "acrylic",
+   "emissive",
+   "galvanized",
+   "gunMetal",
+   "paintedMetal"
+  ]
+ },
+ {
+  "名前": "電柱",
+  "関数": "utilityPole",
+  "寸法": [
+   1.7,
+   11.05,
+   0.51
+  ],
+  "メッシュ": 5,
+  "三角形": 2596,
+  "マテリアル": [
+   "concrete",
+   "concreteRaw",
+   "galvanized",
+   "paintedMetal",
+   "porcelain"
+  ]
+ },
+ {
+  "名前": "貯水タンク",
+  "関数": "waterTank",
+  "寸法": [
+   1.93,
+   2.37,
+   1.96
+  ],
+  "メッシュ": 4,
+  "三角形": 740,
+  "マテリアル": [
+   "galvanized",
+   "gunMetal",
+   "paintedMetal",
+   "rustedMetal"
+  ]
+ },
+ {
+  "名前": "室外機",
+  "関数": "acUnit",
+  "寸法": [
+   0.87,
+   0.7,
+   0.36
+  ],
+  "メッシュ": 5,
+  "三角形": 1604,
+  "マテリアル": [
+   "applianceGrey",
+   "gunMetal",
+   "plasticBlack",
+   "plasticMatte",
+   "rubber"
+  ]
+ },
+ {
+  "名前": "屋上機器",
+  "関数": "rooftopClutter",
+  "寸法": [
+   2.9,
+   2.3,
+   2.04
+  ],
+  "メッシュ": 6,
+  "三角形": 1042,
+  "マテリアル": [
+   "applianceWhite",
+   "brushedMetal",
+   "concreteRaw",
+   "galvanized",
+   "gunMetal",
+   "plasticMatte"
+  ]
+ },
+ {
+  "名前": "看板",
+  "関数": "sign",
+  "寸法": [
+   2.07,
+   2.59,
+   0.19
+  ],
+  "メッシュ": 5,
+  "三角形": 192,
+  "マテリアル": [
+   "concreteRaw",
+   "galvanized",
+   "label:関係者以外立入禁止",
+   "plasticGlossRed"
+  ]
+ },
+ {
+  "名前": "金網フェンス",
+  "関数": "chainFence",
+  "寸法": [
+   6.06,
+   2.18,
+   0.06
+  ],
+  "メッシュ": 2,
+  "三角形": 164,
+  "マテリアル": [
+   "chainlink",
+   "galvanized"
+  ]
+ },
+ {
+  "名前": "手すり",
+  "関数": "railing",
+  "寸法": [
+   6.05,
+   1.12,
+   0.05
+  ],
+  "メッシュ": 1,
+  "三角形": 184,
+  "マテリアル": [
+   "rustedMetal"
+  ]
+ },
+ {
+  "名前": "配管",
+  "関数": "pipeRun",
+  "寸法": [
+   6.05,
+   0.13,
+   0.46
+  ],
+  "メッシュ": 2,
+  "三角形": 168,
+  "マテリアル": [
+   "brushedMetal",
+   "rustedMetal"
+  ]
+ },
+ {
+  "名前": "露店",
+  "関数": "marketStall",
+  "寸法": [
+   2.6,
+   2.31,
+   2.37
+  ],
+  "メッシュ": 4,
+  "三角形": 212,
+  "マテリアル": [
+   "awningFabric",
+   "plywood",
+   "rustedMetal",
+   "scaffoldPlank"
+  ]
+ },
+ {
+  "名前": "物干し",
+  "関数": "clothesline",
+  "寸法": [
+   6.05,
+   0.84,
+   0.49
+  ],
+  "メッシュ": 2,
+  "三角形": 132,
+  "マテリアル": [
+   "camo",
+   "fabric"
+  ]
+ },
+ {
+  "名前": "ごみ箱",
+  "関数": "trashBin",
+  "寸法": [
+   0.41,
+   0.78,
+   0.41
+  ],
+  "メッシュ": 4,
+  "三角形": 712,
+  "マテリアル": [
+   "galvanized",
+   "gunMetal",
+   "plasticBlack",
+   "plasticMatte"
+  ]
+ },
+ {
+  "名前": "車両（トラック）",
+  "関数": "vehicle",
+  "寸法": [
+   2.21,
+   2,
+   5.15
+  ],
+  "メッシュ": 16,
+  "三角形": 2000,
+  "マテリアル": [
+   "brushedMetal",
+   "corrugated",
+   "emissive",
+   "glass",
+   "gunMetal",
+   "paintedMetalTan",
+   "paperPrint",
+   "plasticBlack",
+   "rubber",
+   "rustedMetal",
+   "tireTread"
+  ]
+ },
+ {
+  "名前": "車両（乗用車）",
+  "関数": "vehicle",
+  "寸法": [
+   2.21,
+   1.86,
+   4.35
+  ],
+  "メッシュ": 15,
+  "三角形": 1952,
+  "マテリアル": [
+   "brushedMetal",
+   "emissive",
+   "glass",
+   "gunMetal",
+   "paintedMetalTan",
+   "paperPrint",
+   "plasticBlack",
+   "rubber",
+   "rustedMetal",
+   "tireTread"
+  ]
+ },
+ {
+  "名前": "机",
+  "関数": "desk",
+  "寸法": [
+   1.4,
+   0.72,
+   0.7
+  ],
+  "メッシュ": 3,
+  "三角形": 156,
+  "マテリアル": [
+   "brushedMetal",
+   "plasticMatte",
+   "woodFloor"
+  ]
+ },
+ {
+  "名前": "事務椅子",
+  "関数": "officeChair",
+  "寸法": [
+   0.57,
+   0.98,
+   0.56
+  ],
+  "メッシュ": 4,
+  "三角形": 336,
+  "マテリアル": [
+   "brushedMetal",
+   "plasticBlack",
+   "rubber",
+   "upholsteryBlue"
+  ]
+ },
+ {
+  "名前": "棚",
+  "関数": "shelfUnit",
+  "寸法": [
+   1.79,
+   2,
+   0.5
+  ],
+  "メッシュ": 4,
+  "三角形": 240,
+  "マテリアル": [
+   "cardboard",
+   "galvanized",
+   "plasticMatte",
+   "plywood"
+  ]
+ },
+ {
+  "名前": "ロッカー",
+  "関数": "lockerBank",
+  "寸法": [
+   1.3,
+   1.8,
+   0.55
+  ],
+  "メッシュ": 3,
+  "三角形": 360,
+  "マテリアル": [
+   "brushedMetal",
+   "gunMetal",
+   "paintedMetal"
+  ]
+ },
+ {
+  "名前": "ソファ",
+  "関数": "sofa",
+  "寸法": [
+   2.16,
+   0.8,
+   0.86
+  ],
+  "メッシュ": 2,
+  "三角形": 248,
+  "マテリアル": [
+   "upholstery",
+   "wood"
+  ]
+ },
+ {
+  "名前": "食卓",
+  "関数": "diningTable",
+  "寸法": [
+   1.5,
+   0.72,
+   0.85
+  ],
+  "メッシュ": 1,
+  "三角形": 72,
+  "マテリアル": [
+   "woodFineDark"
+  ]
+ },
+ {
+  "名前": "木の椅子",
+  "関数": "woodChair",
+  "寸法": [
+   0.42,
+   0.91,
+   0.4
+  ],
+  "メッシュ": 1,
+  "三角形": 132,
+  "マテリアル": [
+   "woodFine"
+  ]
+ },
+ {
+  "名前": "ベッド",
+  "関数": "bed",
+  "寸法": [
+   1.06,
+   0.86,
+   2.08
+  ],
+  "メッシュ": 3,
+  "三角形": 72,
+  "マテリアル": [
+   "bedding",
+   "fabric",
+   "woodDark"
+  ]
+ },
+ {
+  "名前": "洋服だんす",
+  "関数": "wardrobe",
+  "寸法": [
+   1.14,
+   1.93,
+   0.64
+  ],
+  "メッシュ": 3,
+  "三角形": 84,
+  "マテリアル": [
+   "brushedMetal",
+   "melamine",
+   "woodDark"
+  ]
+ },
+ {
+  "名前": "冷蔵庫",
+  "関数": "fridge",
+  "寸法": [
+   0.6,
+   1.75,
+   0.7
+  ],
+  "メッシュ": 3,
+  "三角形": 72,
+  "マテリアル": [
+   "applianceWhite",
+   "brushedMetal",
+   "plasticBlack"
+  ]
+ },
+ {
+  "名前": "流し台",
+  "関数": "kitchenUnit",
+  "寸法": [
+   2.26,
+   1.15,
+   0.68
+  ],
+  "メッシュ": 5,
+  "三角形": 316,
+  "マテリアル": [
+   "brushedMetal",
+   "chrome",
+   "gunMetal",
+   "melaminePale",
+   "stainless"
+  ]
+ },
+ {
+  "名前": "テレビ",
+  "関数": "tvSet",
+  "寸法": [
+   1.24,
+   1.16,
+   0.44
+  ],
+  "メッシュ": 3,
+  "三角形": 60,
+  "マテリアル": [
+   "acrylic",
+   "melamineDark",
+   "plasticBlack"
+  ]
+ },
+ {
+  "名前": "本棚",
+  "関数": "bookshelf",
+  "寸法": [
+   0.9,
+   1.85,
+   0.3
+  ],
+  "メッシュ": 6,
+  "三角形": 1464,
+  "マテリアル": [
+   "cardboard",
+   "leather",
+   "melaminePale",
+   "paperPrint",
+   "plasticMatte",
+   "plywood"
+  ]
+ },
+ {
+  "名前": "ベンチ",
+  "関数": "bench",
+  "寸法": [
+   2,
+   0.86,
+   0.53
+  ],
+  "メッシュ": 2,
+  "三角形": 156,
+  "マテリアル": [
+   "castIron",
+   "woodDark"
+  ]
+ },
+ {
+  "名前": "カウンター",
+  "関数": "counter",
+  "寸法": [
+   2.5,
+   1.1,
+   0.86
+  ],
+  "メッシュ": 4,
+  "三角形": 48,
+  "マテリアル": [
+   "brassPolished",
+   "gunMetal",
+   "laminateGrey",
+   "melamineDark"
+  ]
+ },
+ {
+  "名前": "鉢植え",
+  "関数": "potPlant",
+  "寸法": [
+   0.88,
+   1.66,
+   0.92
+  ],
+  "メッシュ": 17,
+  "三角形": 232,
+  "マテリアル": [
+   "bark",
+   "ceramicTile",
+   "leafCard",
+   "mud"
+  ]
+ },
+ {
+  "名前": "窓",
+  "関数": "windowUnit",
+  "寸法": [
+   1.34,
+   1.46,
+   0.25
+  ],
+  "メッシュ": 3,
+  "三角形": 96,
+  "マテリアル": [
+   "anodized",
+   "concrete",
+   "glass"
+  ]
+ },
+ {
+  "名前": "扉",
+  "関数": "door",
+  "寸法": [
+   1.04,
+   2,
+   0.19
+  ],
+  "メッシュ": 4,
+  "三角形": 152,
+  "マテリアル": [
+   "brushedMetal",
+   "plaster",
+   "stainless",
+   "woodDark"
+  ]
+ },
+ {
+  "名前": "パラペット",
+  "関数": "parapet",
+  "寸法": [
+   null,
+   null,
+   null
+  ],
+  "メッシュ": 2,
+  "三角形": 96,
+  "マテリアル": [
+   "galvanized",
+   "plaster"
+  ]
+ },
+ {
+  "名前": "切妻屋根",
+  "関数": "gableRoof",
+  "寸法": [
+   7.75,
+   7.7,
+   5.81
+  ],
+  "メッシュ": 4,
+  "三角形": 126,
+  "マテリアル": [
+   "plaster",
+   "plasticMatte",
+   "roofTileRed",
+   "woodDark"
+  ]
+ },
+ {
+  "名前": "壁看板",
+  "関数": "wallSign",
+  "寸法": [
+   2.2,
+   0.7,
+   0.12
+  ],
+  "メッシュ": 2,
+  "三角形": 36,
+  "マテリアル": [
+   "gunMetal",
+   "sign:テスト"
+  ]
+ },
+ {
+  "名前": "小住宅",
+  "関数": "houseSmall",
+  "寸法": [
+   8,
+   10.8,
+   7.4
+  ],
+  "メッシュ": 16,
+  "三角形": 2450,
+  "マテリアル": [
+   "anodized",
+   "applianceGrey",
+   "brushedMetal",
+   "concrete",
+   "glass",
+   "gunMetal",
+   "plaster",
+   "plasticBlack",
+   "plasticMatte",
+   "roofTileRed",
+   "rubber",
+   "stainless",
+   "stuccoWhite",
+   "woodDark"
+  ]
+ },
+ {
+  "名前": "商店",
+  "関数": "shopFront",
+  "寸法": [
+   8.3,
+   8.76,
+   8.68
+  ],
+  "メッシュ": 15,
+  "三角形": 2788,
+  "マテリアル": [
+   "anodized",
+   "applianceGrey",
+   "concrete",
+   "concreteFloor",
+   "galvanized",
+   "glass",
+   "gunMetal",
+   "metalRoofGreen",
+   "paintedMetal",
+   "plasticBlack",
+   "plasticMatte",
+   "rubber",
+   "rustedMetal",
+   "shutter",
+   "stuccoRough"
+  ]
+ },
+ {
+  "名前": "集合住宅",
+  "関数": "apartment",
+  "寸法": [
+   15.62,
+   8.4,
+   12.77
+  ],
+  "メッシュ": 38,
+  "三角形": 11336,
+  "マテリアル": [
+   "anodized",
+   "applianceGrey",
+   "brushedMetal",
+   "concrete",
+   "concreteBlock",
+   "concreteFloor",
+   "galvanized",
+   "glass",
+   "gunMetal",
+   "paintedMetal",
+   "plasticBlack",
+   "plasticMatte",
+   "rubber",
+   "rustedMetal",
+   "sign:101",
+   "sign:102",
+   "sign:103",
+   "sign:104",
+   "sign:201",
+   "sign:202",
+   "sign:203",
+   "sign:204",
+   "stainless"
+  ]
+ },
+ {
+  "名前": "倉庫",
+  "関数": "warehouse",
+  "寸法": [
+   16.5,
+   7.59,
+   12.3
+  ],
+  "メッシュ": 15,
+  "三角形": 912,
+  "マテリアル": [
+   "anodized",
+   "concrete",
+   "concreteFloor",
+   "galvanized",
+   "glass",
+   "metalRoof",
+   "shutter",
+   "sidingMetal"
+  ]
+ },
+ {
+  "名前": "売店",
+  "関数": "kiosk",
+  "寸法": [
+   3.7,
+   2.92,
+   3.9
+  ],
+  "メッシュ": 5,
+  "三角形": 208,
+  "マテリアル": [
+   "concrete",
+   "gunMetal",
+   "metalRoofGreen",
+   "paintedMetalTan",
+   "stainless"
+  ]
+ },
+ {
+  "名前": "自販機",
+  "関数": "vendingMachine",
+  "寸法": [
+   1.1,
+   1.9,
+   0.79
+  ],
+  "メッシュ": 7,
+  "三角形": 156,
+  "マテリアル": [
+   "brushedMetal",
+   "gunMetal",
+   "paintedMetal",
+   "plasticBlack",
+   "plasticGloss",
+   "plasticGlossRed",
+   "sign:つめたい"
+  ]
+ }
+]

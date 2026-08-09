@@ -145,4 +145,20 @@ export const MATERIAL_JA = {
   awningFabric: 'テント地',
   awningGreen: 'テント地（緑）',
   solarPanel: '太陽光パネル',
+
+  /* 家具まわり */
+  upholstery: '張り地',
+  upholsteryBlue: '張り地（青）',
+  upholsteryOlive: '張り地（オリーブ）',
+  bedding: '寝具',
+  beddingBlue: '寝具（青）',
+  melamine: '化粧板',
+  melaminePale: '化粧板（淡）',
+  melamineDark: '化粧板（濃）',
+  laminate: 'メラミン天板',
+  laminateGrey: 'メラミン天板（灰）',
+  applianceWhite: '家電塗装（白）',
+  applianceGrey: '家電塗装（灰）',
+  leafCard: '葉の板',
+  leafCardDry: '葉の板（枯れ）',
 };

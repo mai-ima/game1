@@ -31,24 +31,61 @@ export const HUE = {
  * 光の影響を受けない板なので、日陰でも読める。
  */
 export function label(b, o) {
-  const { x, y = 1.5, z, yaw = 0, text, sub = '', accent = '#c8783c', w = 2.6, post = true } = o;
+  const {
+    x, y = 1.5, z, yaw = 0, text, sub = '', accent = '#c8783c', w = 2.6,
+    post = true, twoSided = true,
+  } = o;
   const h = w * 0.25;
   const geo = new THREE.PlaneGeometry(w, h);
-  const mesh = new THREE.Mesh(geo, b.mats.label(text, { sub, accent }));
-  mesh.position.set(x + Math.sin(yaw) * 0.03, y, z + Math.cos(yaw) * 0.03);
-  mesh.rotation.y = yaw;
-  // 向きの自動検査に使う印（tools/facing.mjs が拾う）
-  mesh.userData.signText = text;
-  mesh.userData.signKind = 'label';
-  b.addExtra(mesh);
-  b.box({ x, y, z, w: w + 0.08, h: h + 0.08, d: 0.05, yaw,
-    mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+
+  /*
+   * 板の裏。
+   *
+   * 以前は表に文字板、裏は塗装板 1 枚だった。
+   * 案内板は通路をまたいで立つので、裏から近づく機会のほうが多い。
+   * 実際、資材置き場と実験場では「のっぺりした緑の大板」が
+   * 視界の半分を塞いでいた。
+   * 両面に刷って、どちら側から来ても読めるようにする。
+   */
+  const faces = twoSided ? [1, -1] : [1];
+  for (const f of faces) {
+    const fy = f > 0 ? yaw : yaw + Math.PI;
+    const mesh = new THREE.Mesh(geo, b.mats.label(text, { sub, accent }));
+    mesh.position.set(x + Math.sin(fy) * 0.032, y, z + Math.cos(fy) * 0.032);
+    mesh.rotation.y = fy;
+    // 向きの自動検査に使う印（tools/facing.mjs が拾う）
+    mesh.userData.signText = text;
+    mesh.userData.signKind = 'label';
+    b.addExtra(mesh);
+  }
+
+  /*
+   * 枠。
+   * 板だけだと紙を貼ったように見えるので、四周にアングルを回す。
+   * 中身は表裏の文字板で隠れるため、芯は薄くてよい。
+   */
+  const F = 0.055;                       // 枠の見付け
+  b.box({ x, y, z, w, h, d: 0.03, yaw, mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+  for (const sy of [-1, 1]) {
+    b.box({ x, y: y + sy * (h / 2 + F / 2), z, w: w + F * 2, h: F, d: 0.075, yaw,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  }
+  for (const sx of [-1, 1]) {
+    const ox = Math.cos(yaw) * (w / 2 + F / 2) * sx;
+    const oz = -Math.sin(yaw) * (w / 2 + F / 2) * sx;
+    b.box({ x: x + ox, y, z: z + oz, w: F, h: h + F * 2, d: 0.075, yaw,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  }
+
   if (post) {
     for (const s of [-1, 1]) {
-      b.cylinder({
-        x: x + Math.cos(yaw) * (w / 2 - 0.15) * s, y: 0, z: z - Math.sin(yaw) * (w / 2 - 0.15) * s,
-        radius: 0.035, height: y - h / 2, segments: 6, mat: 'galvanized', surface: SURFACE.METAL, collide: false,
-      });
+      const px = x + Math.cos(yaw) * (w / 2 - 0.15) * s;
+      const pz = z - Math.sin(yaw) * (w / 2 - 0.15) * s;
+      b.cylinder({ x: px, y: 0, z: pz, radius: 0.035, height: y - h / 2,
+        segments: 8, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+      // 根巻き（地面との取り合い。無いと棒が地面に刺さっただけに見える）
+      b.cylinder({ x: px, y: 0, z: pz, radius: 0.085, height: 0.10,
+        segments: 8, mat: 'concreteRaw', surface: SURFACE.CONCRETE, collide: false });
     }
   }
   return b;

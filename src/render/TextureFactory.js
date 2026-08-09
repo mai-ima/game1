@@ -1286,14 +1286,24 @@ export class TextureFactory {
     const orm = new Uint8ClampedArray(n * 4);   // R=AO, G=Roughness, B=Metalness
     const height = new Float32Array(n);
 
-    const o = { r: 0, g: 0, b: 0, h: 0, rough: 0.8, metal: 0, ao: 1 };
+    /*
+     * o.a は「そこに物があるか」。既定は 1（詰まっている）。
+     *
+     * 金網や葉のように、面の大半が穴であるものは
+     * 色と凹凸だけで表現しようとしても必ず板に見える。
+     * 実際、金網フェンスは菱形の模様を持った不透明な板として
+     * 描かれていて、遠景では一続きの帯になっていた。
+     * ここで抜けるようにしておき、プリセット側で cutout を立てる。
+     */
+    const o = { r: 0, g: 0, b: 0, h: 0, rough: 0.8, metal: 0, ao: 1, a: 1 };
     const inv = 1 / size;
+    let minAlpha = 1;
 
     for (let y = 0; y < size; y++) {
       const v = y * inv;
       for (let x = 0; x < size; x++) {
         const u = x * inv;
-        o.r = o.g = o.b = 0; o.h = 0; o.rough = 0.8; o.metal = 0; o.ao = 1;
+        o.r = o.g = o.b = 0; o.h = 0; o.rough = 0.8; o.metal = 0; o.ao = 1; o.a = 1;
         def(u, v, o, seed);
 
         const i = y * size + x, i4 = i * 4;
@@ -1301,7 +1311,9 @@ export class TextureFactory {
         albedo[i4] = srgb(o.r) * 255;
         albedo[i4 + 1] = srgb(o.g) * 255;
         albedo[i4 + 2] = srgb(o.b) * 255;
-        albedo[i4 + 3] = 255;
+        const a = clamp01(o.a);
+        albedo[i4 + 3] = a * 255;
+        if (a < minAlpha) minAlpha = a;
 
         orm[i4] = clamp01(o.ao) * 255;
         orm[i4 + 1] = clamp01(o.rough) * 255;
@@ -1334,6 +1346,8 @@ export class TextureFactory {
       aoMap: null,
       avgRough,
       avgMetal,
+      /** 抜けを含むか（マテリアル側が alphaTest を立てる判断に使う） */
+      hasAlpha: minAlpha < 0.99,
       _orm: orm,
       _size: size,
     };

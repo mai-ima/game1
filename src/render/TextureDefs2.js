@@ -753,25 +753,195 @@ export const DEFS2 = {
     o.ao = clamp01(1 - hole * 0.75);
   },
 
-  /* --- 金網フェンス（菱形） --- */
+  /* --- 金網フェンス（菱形。線の間は抜ける） --- */
   chainlink(u, v, o, S) {
+    /*
+     * 以前は色と凹凸だけで菱形を描いていたため、不透明な板のままだった。
+     * 遠景では模様が潰れて一続きの帯になり、近景では模様の縁が
+     * ぎざぎざに光っていた。線のある所だけを残して抜く。
+     *
+     * 実物の金網は 2 インチ（50mm）目。repeat 1.8（1 タイル ≒ 0.56m）で
+     * N = 11 なら、菱形の一辺が約 51mm になる。
+     */
     const N = 11;
+    // 線の中心は dA が 0 になる所。dA が 0.5 の所が目の中心（穴）。
     const dA = Math.abs(((u + v) * N) % 1 - 0.5);
     const dB = Math.abs(((u - v) * N) % 1 - 0.5);
-    const wire = Math.max(smoothstep(0.42, 0.30, dA), smoothstep(0.42, 0.30, dB));
-    const over = dA < dB ? 1 : 0;             // 上を通る線
-    const round = wire * (0.5 + 0.5 * Math.sin(wire * Math.PI));
+    /*
+     * 線の太さ。
+     * 隣り合う線の間隔は dA でちょうど 1.0 に相当し、
+     * 実寸では 50mm ÷ √2 ≒ 35mm。針金 3.5mm はその 1 割なので
+     * 半幅 0.05。ただし 512px の 1 タイルだと 3px しか無く、
+     * ミップに落ちた途端に消えてしまうため少しだけ太らせてある。
+     */
+    const W0 = 0.075, W1 = 0.040;
+    const wA = smoothstep(W0, W1, dA);
+    const wB = smoothstep(W0, W1, dB);
+    const wire = Math.max(wA, wB);
+    // 手前を通る線（交点で上下に編まれている）
+    const over = wA > wB ? wA : -wB;
+    const round = Math.sin(Math.min(1, wire) * Math.PI * 0.5);
     const rust = smoothstep(0.66, 0.92, fbm(u * 6, v * 6, { octaves: 4, period: 6, seed: S + 11 }));
     const micro = valueNoise(u * 400, v * 400, 400, S + 3);
 
-    let l = (0.245 + round * 0.055 + micro * 0.014) * wire;
+    const l = 0.245 + round * 0.055 + micro * 0.014;
     let r = l * 0.98, g = l * 1.0, b = l * 1.0;
     r = mix(r, l * 1.4, rust); g = mix(g, l * 0.76, rust); b = mix(b, l * 0.44, rust);
     o.r = r; o.g = g; o.b = b;
-    o.h = wire * (0.5 + over * 0.5);
+    // 針金の丸みと編みの前後を法線に出す
+    o.h = round * 0.6 + over * 0.4;
     o.rough = clamp01(0.34 + rust * 0.5 + micro * 0.08);
-    o.metal = clamp01(wire * (1 - rust * 0.5));
-    o.ao = clamp01(0.25 + wire * 0.75);
+    o.metal = clamp01(1 - rust * 0.5);
+    o.ao = clamp01(0.55 + round * 0.45);
+    o.a = wire;
+  },
+
+  /* --- 家具の張り地（平織りの布。麻袋とは別物） --- */
+  upholstery(u, v, o, S) {
+    /*
+     * fabric（麻袋・テント地）しか布が無かったので、
+     * ソファも寝具も事務椅子も麻袋の目になっていた。
+     * こちらは織り目を細かくし、毛羽で角を丸める。
+     */
+    const N = 190;                            // 麻袋の 56 に対して 3 倍以上細かい
+    const wu = (u * N) % 1, wv = (v * N) % 1;
+    const over = ((Math.floor(u * N) + Math.floor(v * N)) % 2) === 0;
+    const weave = over ? Math.sin(wu * Math.PI) : Math.sin(wv * Math.PI);
+    // 毛羽（織り目を少し曇らせる。これが無いと硬いナイロンに見える）
+    const nap = fbm(u * 240, v * 240, { octaves: 3, period: 240, seed: S + 5 });
+    // 生地の張りムラ（座面のたわみ）
+    const slack = fbm(u * 5, v * 5, { octaves: 4, period: 5, seed: S + 23 });
+    const wear = smoothstep(0.74, 0.97, fbm(u * 9, v * 9, { octaves: 3, period: 9, seed: S + 41 }));
+
+    const l = (0.150 + weave * 0.020 + nap * 0.014 + slack * 0.012) * (1 - wear * 0.10);
+    o.r = l * 1.00; o.g = l * 0.96; o.b = l * 0.90;
+    o.h = weave * 0.30 + nap * 0.20 + slack * 0.50;
+    o.rough = clamp01(0.90 + nap * 0.08 - wear * 0.06);
+    o.metal = 0;
+    o.ao = clamp01(0.80 + weave * 0.20 - slack * 0.10);
+  },
+
+  /* --- 寝具（綿。しわが主役） --- */
+  bedding(u, v, o, S) {
+    // 大きなしわ → 中くらいのたるみ → 織り目、の 3 段
+    const foldA = ridged(u * 3.2, v * 3.2, { octaves: 3, period: 3.2, seed: S });
+    const foldB = ridged(u * 9, v * 9, { octaves: 3, period: 9, seed: S + 13 });
+    const N = 220;
+    const weave = Math.sin(((u * N) % 1) * Math.PI) * Math.sin(((v * N) % 1) * Math.PI);
+    const nap = valueNoise(u * 300, v * 300, 300, S + 7);
+
+    const crease = foldA * 0.7 + foldB * 0.3;
+    const l = 0.235 + crease * 0.045 + weave * 0.008 + nap * 0.010;
+    o.r = l * 1.00; o.g = l * 0.99; o.b = l * 0.96;
+    o.h = crease * 0.85 + weave * 0.15;
+    o.rough = clamp01(0.93 + nap * 0.06);
+    o.metal = 0;
+    // しわの谷に影を溜める
+    o.ao = clamp01(0.62 + crease * 0.38);
+  },
+
+  /* --- 化粧板（家具の面材。木目プリント＋薄い艶） --- */
+  melamine(u, v, o, S) {
+    /*
+     * たんす・棚・カウンターの面材。
+     * 無垢材のテクスチャを貼ると木目が強すぎて丸太に見えるので、
+     * 「印刷された木目」らしく、柄を薄く・一定方向に流す。
+     */
+    const grain = fbm(u * 2.4, v * 90, { octaves: 4, period: 90, seed: S });
+    const ring = Math.abs(Math.sin((v * 7.5 + grain * 2.2) * Math.PI));
+    const pore = valueNoise(u * 180, v * 620, 620, S + 11);
+    // 表面の艶（薄いオレンジピール）
+    const peel = fbm(u * 30, v * 30, { octaves: 3, period: 30, seed: S + 29 });
+    const scuff = smoothstep(0.90, 0.995, fbm(u * 16, v * 16, { octaves: 3, period: 16, seed: S + 47 }));
+
+    const l = 0.230 + ring * 0.045 + grain * 0.020 + pore * 0.008;
+    o.r = l * 1.00; o.g = l * 0.84; o.b = l * 0.66;
+    // 印刷なので凹凸はほぼ無い。艶のうねりだけ
+    o.h = peel * 0.25 + pore * 0.1;
+    o.rough = clamp01(0.30 + peel * 0.10 + scuff * 0.35);
+    o.metal = 0;
+    o.ao = 1;
+  },
+
+  /* --- メラミン天板（流し台・カウンター・事務机） --- */
+  laminate(u, v, o, S) {
+    // 細かい粒の柄（無地だと樹脂の板に見えない）
+    const fleck = valueNoise(u * 420, v * 420, 420, S);
+    const fleck2 = smoothstep(0.80, 0.94, valueNoise(u * 210, v * 210, 210, S + 3));
+    const peel = fbm(u * 26, v * 26, { octaves: 3, period: 26, seed: S + 17 });
+    const scratch = smoothstep(0.90, 0.995, ridged(u * 40, v * 14, { octaves: 3, period: 40, seed: S + 31 }));
+    const stain = smoothstep(0.82, 0.98, fbm(u * 6, v * 6, { octaves: 4, period: 6, seed: S + 53 }));
+
+    let l = 0.255 + fleck * 0.016 + fleck2 * 0.020;
+    l *= 1 - stain * 0.12;
+    o.r = l * 0.99; o.g = l * 0.98; o.b = l * 0.94;
+    o.h = peel * 0.2 - scratch * 0.5;
+    o.rough = clamp01(0.24 + peel * 0.08 + scratch * 0.4 + stain * 0.14);
+    o.metal = 0;
+    o.ao = 1;
+  },
+
+  /* --- 白物家電の塗装（冷蔵庫・洗濯機・自販機） --- */
+  applianceWhite(u, v, o, S) {
+    // 粉体塗装のごく浅いゆず肌
+    const peel = fbm(u * 90, v * 90, { octaves: 3, period: 90, seed: S });
+    const wave = fbm(u * 7, v * 7, { octaves: 3, period: 7, seed: S + 9 });
+    const smudge = smoothstep(0.72, 0.96, fbm(u * 12, v * 12, { octaves: 4, period: 12, seed: S + 23 }));
+    const chip = smoothstep(0.965, 0.995, fbm(u * 34, v * 34, { octaves: 3, period: 34, seed: S + 41 }));
+
+    let l = 0.400 + peel * 0.010 + wave * 0.008;
+    l = mix(l, 0.16, chip);                    // 欠けは下地の鋼板
+    o.r = l * 1.00; o.g = l * 1.00; o.b = l * 0.99;
+    /*
+     * ゆず肌は「言われれば判る」程度に留める。
+     * 0.35 では法線が立ちすぎて、冷蔵庫が漆喰塗りの壁のように見えた。
+     */
+    o.h = peel * 0.06 - chip * 0.5;
+    o.rough = clamp01(0.18 + peel * 0.06 + smudge * 0.18 + chip * 0.5);
+    o.metal = chip * 0.8;
+    o.ao = clamp01(1 - chip * 0.2);
+  },
+
+  /* --- 葉の板（鉢植え・街路樹。葉と葉の間が抜ける） --- */
+  leafCard(u, v, o, S) {
+    /*
+     * 板に緑を塗ると必ず「割れた緑のガラス」に見える。
+     * 葉の形に切り抜き、主脈と側脈を法線に出す。
+     * 1 タイルに 3×3 枚。
+     */
+    const N = 3;
+    const gx = u * N, gy = v * N;
+    const cx = Math.floor(gx), cy = Math.floor(gy);
+    let lx = gx - cx - 0.5, ly = gy - cy - 0.5;
+    // 枚ごとに向きと大きさを変える
+    const rot = hash01(cx * 13 + cy * 71 + S) * Math.PI;
+    const cs = Math.cos(rot), sn = Math.sin(rot);
+    const rxp = lx * cs - ly * sn, ryp = lx * sn + ly * cs;
+    const scale = 0.72 + hash01(cx * 7 + cy * 29 + S + 5) * 0.5;
+    const ax = rxp / (0.20 * scale), ay = ryp / (0.44 * scale);
+
+    // 葉身：先の尖った楕円
+    const taper = 1 - Math.abs(ay) * 0.45;
+    const d = Math.hypot(ax / Math.max(0.15, taper), ay);
+    const leaf = smoothstep(1.02, 0.94, d);
+    if (leaf <= 0) { o.r = o.g = o.b = 0; o.a = 0; o.rough = 1; o.metal = 0; o.ao = 1; o.h = 0; return; }
+
+    // 主脈と側脈
+    const mid = smoothstep(0.10, 0.0, Math.abs(ax));
+    const side = Math.abs(Math.sin((ay * 7 + Math.abs(ax) * 3) * Math.PI));
+    const vein = mid * 0.7 + (1 - side) * 0.25;
+    const tone = hash01(cx * 31 + cy * 17 + S + 11);
+    const dry = smoothstep(0.86, 1.0, d);       // 縁が少し枯れる
+
+    let r = 0.055 + tone * 0.030, g = 0.130 + tone * 0.055, bl = 0.038 + tone * 0.020;
+    r = mix(r, 0.150, dry); g = mix(g, 0.115, dry); bl = mix(bl, 0.045, dry);
+    const sh = 0.86 + vein * 0.20;
+    o.r = r * sh; o.g = g * sh; o.b = bl * sh;
+    o.h = vein * 0.8 + (1 - d) * 0.2;
+    o.rough = clamp01(0.62 + dry * 0.25 - vein * 0.08);
+    o.metal = 0;
+    o.ao = clamp01(0.7 + leaf * 0.3);
+    o.a = leaf;
   },
 
   /* --- エキスパンドメタル（グレーチング・足場） --- */
@@ -1201,17 +1371,34 @@ export const DEFS2 = {
 
   /* --- 網戸・防虫網 --- */
   meshScreen(u, v, o, S) {
-    const N = 190;
+    /*
+     * 養生ネット・網戸。
+     *
+     * 以前は抜きが無かったため、足場に張ると濃紺の板になり、
+     * 建物が箱で塞がれたように見えていた。
+     * 目の粗さは残しつつ、線と線の間を抜く。
+     * 実物も「向こうが透けるが、はっきりとは見えない」ので、
+     * 線を少し太めにして半分ほど塞ぐ。
+     */
+    const N = 46;
     const wx = Math.abs(((u * N) % 1) - 0.5);
     const wy = Math.abs(((v * N) % 1) - 0.5);
-    const wire = Math.max(smoothstep(0.42, 0.28, wx), smoothstep(0.42, 0.28, wy));
+    /*
+     * 線の太さは目の 1 割強に留める。
+     * ここを太くすると、ミップに落ちたときの平均 α が 0.5 を超えて
+     * alphaTest が全面を通してしまい、また不透明な板に戻る。
+     */
+    const wire = Math.max(smoothstep(0.17, 0.09, wx), smoothstep(0.17, 0.09, wy));
     const dust = fbm(u * 8, v * 8, { octaves: 4, period: 8, seed: S + 13 });
-    const l = (0.075 + dust * 0.020) * wire;
+    // 織りのゆらぎ（ぴんと張っていない）
+    const slack = fbm(u * 3, v * 3, { octaves: 3, period: 3, seed: S + 29 });
+    const l = 0.075 + dust * 0.020 + slack * 0.012;
     o.r = l; o.g = l * 1.01; o.b = l * 1.0;
-    o.h = wire * 0.6;
+    o.h = wire * 0.6 + slack * 0.3;
     o.rough = clamp01(0.62 + dust * 0.24);
-    o.metal = clamp01(wire * 0.6);
+    o.metal = clamp01(0.6);
     o.ao = clamp01(0.28 + wire * 0.72);
+    o.a = wire;
   },
 
   /* --- 足場板（使い込まれた木の板） --- */

@@ -48,18 +48,76 @@ export function woodCrate(b, o) {
 
 /** 金属製の弾薬箱 */
 export function ammoCrate(b, o) {
-  const { x, y = 0, z, yaw = 0, w = 0.62, h = 0.34, d = 0.34 } = o;
-  b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
-  // 蓋のリップ
-  b.box({ x, y: y + h + 0.018, z, w: w * 1.04, h: 0.036, d: d * 1.04, yaw, mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
-  // ハンドル
-  for (const s of [-1, 1]) {
-    const dx = Math.cos(yaw) * (w / 2 + 0.02) * s;
-    const dz = Math.sin(yaw) * (w / 2 + 0.02) * s;
-    b.box({ x: x + dx, y: y + h * 0.62, z: z + dz, w: 0.03, h: 0.10, d: 0.14, yaw, mat: 'rustedMetal', surface: SURFACE.METAL, collide: false });
+  const { x, y = 0, z, yaw = 0, w = 0.62, h = 0.34, d = 0.34, mat = 'paintedMetal' } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  /** ローカル (右, 前) → ワールド */
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+
+  const bodyH = h * 0.80;
+  // 箱本体（下すぼまりの箱ではなく、実物どおりの箱形）
+  b.box({ x, y: y + bodyH / 2, z, w, h: bodyH, d, yaw, mat, surface: SURFACE.METAL, collide: false });
+
+  /*
+   * 補強のプレス。
+   * 平らな鉄板の箱は、どれだけ材質を良くしても
+   * 「緑に塗った直方体」から抜け出せない。
+   * 実物にある縦のリブと天地の折り返しを入れると、
+   * 光の当たり方が段になって一気に金属の箱に見える。
+   */
+  for (const lx of [-w * 0.28, 0, w * 0.28]) {
+    for (const sz of [-1, 1]) {
+      const [px, pz] = at(lx, sz * (d / 2 + 0.006));
+      b.box({ x: px, y: y + bodyH / 2, z: pz, w: 0.055, h: bodyH * 0.86, d: 0.014, yaw,
+        mat, surface: SURFACE.METAL, collide: false });
+    }
   }
-  // ラッチ
-  b.box({ x: x + Math.sin(yaw) * (d / 2), y: y + h * 0.8, z: z + Math.cos(yaw) * (d / 2), w: 0.09, h: 0.06, d: 0.02, yaw, mat: 'rustedMetal', surface: SURFACE.METAL, collide: false });
+  // 天地の折り返し
+  for (const ly of [0.022, bodyH - 0.022]) {
+    b.box({ x, y: y + ly, z, w: w * 1.015, h: 0.022, d: d * 1.015, yaw, mat, surface: SURFACE.METAL, collide: false });
+  }
+
+  // 蓋（本体よりわずかに大きく、隙間が影になる）
+  b.box({ x, y: y + bodyH + 0.030, z, w: w * 1.035, h: 0.060, d: d * 1.035, yaw, mat, surface: SURFACE.METAL, collide: false });
+  b.box({ x, y: y + bodyH + 0.066, z, w: w * 0.90, h: 0.014, d: d * 0.90, yaw, mat, surface: SURFACE.METAL, collide: false });
+
+  // 蝶番（背面 2 個）
+  for (const lx of [-w * 0.26, w * 0.26]) {
+    const [px, pz] = at(lx, -(d / 2 + 0.014));
+    b.box({ x: px, y: y + bodyH + 0.012, z: pz, w: 0.075, h: 0.030, d: 0.028, yaw,
+      mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  }
+
+  // 掛け金（前面 2 個。ハンドルと爪）
+  for (const lx of [-w * 0.24, w * 0.24]) {
+    const [px, pz] = at(lx, d / 2 + 0.016);
+    b.box({ x: px, y: y + bodyH - 0.010, z: pz, w: 0.070, h: 0.070, d: 0.020, yaw,
+      mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+    b.box({ x: px, y: y + bodyH + 0.030, z: pz, w: 0.048, h: 0.048, d: 0.014, yaw,
+      mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  }
+
+  /*
+   * 提げ手。
+   * 実物は金具に通したロープか、折り畳みの鉄把手。
+   * ここでは鉄把手にして、使わないときに寝る角度で付ける。
+   */
+  for (const sx of [-1, 1]) {
+    const [bx, bz] = at(sx * (w / 2 + 0.010), 0);
+    b.box({ x: bx, y: y + bodyH * 0.62, z: bz, w: 0.018, h: 0.075, d: 0.150, yaw,
+      mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+    // 把手そのもの（軽く外へ倒れる）
+    const [hx, hz] = at(sx * (w / 2 + 0.038), 0);
+    b.box({ x: hx, y: y + bodyH * 0.50, z: hz, w: 0.014, h: 0.115, d: 0.115, yaw, rz: sx * 0.28,
+      mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  }
+
+  // 脚（床から浮かせる。これが無いと地面に埋まって見える）
+  for (const sx of [-1, 1]) {
+    const [px, pz] = at(sx * (w / 2 - 0.055), 0);
+    b.box({ x: px, y: y + 0.008, z: pz, w: 0.045, h: 0.016, d: d * 0.9, yaw,
+      mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  }
+
   b.physics.addBox(x, y + h / 2, z, w / 2, h / 2, d / 2, yaw, { surface: SURFACE.METAL, penetration: 0.3 });
   return b;
 }
@@ -79,23 +137,59 @@ export function barrel(b, o) {
   return b;
 }
 
-/** 土嚢の山 */
+/**
+ * 土嚢の山。
+ *
+ * 直方体を積むと必ず「緑のレンガ」に見える。
+ * 土嚢は中身の重さで潰れ、上に載った袋の形にへこみ、
+ * 端が耳のように余る。角を丸めるだけでは足りず、
+ * 「上面が沈み、腹が張り出す」形にする必要がある。
+ */
 export function sandbagStack(b, o) {
-  const { x, y = 0, z, yaw = 0, rows = 3, perRow = 4, length = 2.2 } = o;
-  const bagW = length / perRow, bagH = 0.24, bagD = 0.42;
+  const { x, y = 0, z, yaw = 0, rows = 3, perRow = 4, length = 2.2, mat = 'sandbag' } = o;
+  const bagW = length / perRow, bagH = 0.22, bagD = 0.44;
+
+  /** 潰れた袋 1 個。上が沈み、腹が出た塊 */
+  const bag = (px, py, pz, byaw, w, h, d, squash) => {
+    const g = new THREE.SphereGeometry(0.5, 9, 7);
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
+      // 上半分を押し潰す（載っている重みで凹む）
+      const top = Math.max(0, vy) * squash;
+      // 腹を張らせる（中身が横へ逃げる）
+      const belly = 1 + (0.5 - Math.abs(vy)) * 0.34;
+      // 縫い目のある短辺だけ耳を残す
+      const ear = 1 + Math.max(0, Math.abs(vx) - 0.34) * 0.6;
+      pos.setXYZ(i,
+        vx * w * belly * ear,
+        (vy - top) * h + (Math.abs(vx) > 0.4 ? 0.012 : 0),
+        vz * d * belly);
+    }
+    // 面ごとのしわ
+    for (let i = 0; i < pos.count; i++) {
+      pos.setY(i, pos.getY(i) + Math.sin(pos.getX(i) * 34 + pos.getZ(i) * 21) * h * 0.045);
+    }
+    g.computeVertexNormals();
+    b.mesh(mat, g, { ry: byaw, x: px, y: py, z: pz });
+  };
+
   for (let r = 0; r < rows; r++) {
     const n = perRow - (r % 2 === 1 ? 1 : 0);
     const off = (r % 2 === 1) ? bagW / 2 : 0;
+    // 上の段ほど強く潰れる（下は載られていない）
+    const squash = 0.30 + (rows - 1 - r) / Math.max(1, rows - 1) * 0.34;
     for (let i = 0; i < n; i++) {
       const lx = -length / 2 + bagW * (i + 0.5) + off;
       const rx = Math.cos(yaw) * lx;
       const rz = Math.sin(yaw) * lx;
-      // 袋は少し潰れた形にして硬さを消す
-      b.box({
-        x: x + rx + R(-0.02, 0.02), y: y + bagH * (r + 0.5), z: z + rz + R(-0.02, 0.02),
-        w: bagW * 0.96, h: bagH * 0.94, d: bagD, yaw: yaw + R(-0.07, 0.07),
-        mat: 'sandbag', surface: SURFACE.FABRIC, collide: false,
-      });
+      bag(
+        x + rx + R(-0.02, 0.02),
+        y + bagH * (r + 0.46),
+        z + rz + R(-0.02, 0.02),
+        yaw + R(-0.09, 0.09),
+        bagW * 1.02, bagH * 1.30, bagD, squash
+      );
     }
   }
   b.physics.addBox(x, y + (rows * bagH) / 2, z, length / 2, (rows * bagH) / 2, bagD / 2, yaw,
@@ -139,11 +233,44 @@ export function cardboardStack(b, o) {
   let yy = y;
   for (let i = 0; i < count; i++) {
     const w = R(0.42, 0.58), h = R(0.28, 0.40), d = R(0.40, 0.54);
-    b.box({
-      x: x + R(-0.06, 0.06), y: yy + h / 2, z: z + R(-0.06, 0.06),
-      w, h, d, yaw: yaw + R(-0.25, 0.25), mat: 'cardboard', surface: SURFACE.FABRIC, collide: false,
-    });
-    yy += h;
+    const byaw = yaw + R(-0.25, 0.25);
+    const px = x + R(-0.06, 0.06), pz = z + R(-0.06, 0.06);
+    const c = Math.cos(byaw), s = Math.sin(byaw);
+    const at = (lx, lz) => [px + c * lx + s * lz, pz - s * lx + c * lz];
+
+    b.box({ x: px, y: yy + h / 2, z: pz, w, h, d, yaw: byaw,
+      mat: 'cardboard', surface: SURFACE.FABRIC, collide: false });
+
+    /*
+     * 無地の直方体だと、いくら材質を段ボールにしても
+     * 「茶色い箱」で止まってしまう。
+     * 段ボール箱を段ボール箱に見せているのは
+     *   ・上面で合わさるフラップの継ぎ目
+     *   ・そこを塞ぐ粘着テープ
+     *   ・角の潰れ
+     * の 3 つなので、そこだけ入れる。
+     */
+    // 上面のフラップ（左右から寄せて中央でわずかに浮く）
+    for (const sx of [-1, 1]) {
+      const [fx, fz] = at(sx * w * 0.245, 0);
+      b.box({ x: fx, y: yy + h + 0.004, z: fz, w: w * 0.49, h: 0.008, d: d * 0.98, yaw: byaw,
+        rz: sx * 0.02, mat: 'cardboard', surface: SURFACE.FABRIC, collide: false });
+    }
+    // 封緘テープ（継ぎ目に沿って 1 本、側面へ折り返す分も）
+    b.box({ x: px, y: yy + h + 0.010, z: pz, w: 0.055, h: 0.004, d: d * 1.01, yaw: byaw,
+      mat: 'plasticMatte', surface: SURFACE.FABRIC, collide: false });
+    for (const sz of [-1, 1]) {
+      const [tx, tz] = at(0, sz * (d / 2 + 0.003));
+      b.box({ x: tx, y: yy + h - 0.035, z: tz, w: 0.055, h: 0.070, d: 0.006, yaw: byaw,
+        mat: 'plasticMatte', surface: SURFACE.FABRIC, collide: false });
+    }
+    // 角の潰れ（下の箱ほど強く）
+    if (i < count - 1) {
+      const [cx2, cz2] = at(-w * 0.5 + 0.03, d * 0.5 - 0.03);
+      b.box({ x: cx2, y: yy + 0.035, z: cz2, w: 0.075, h: 0.055, d: 0.075, yaw: byaw + 0.5, rz: 0.22,
+        mat: 'cardboard', surface: SURFACE.FABRIC, collide: false });
+    }
+    yy += h + 0.012;
   }
   b.physics.addBox(x, y + (yy - y) / 2, z, 0.30, (yy - y) / 2, 0.30, yaw, { surface: SURFACE.FABRIC, penetration: 0.85 });
   return b;
@@ -157,11 +284,34 @@ export function container(b, o) {
   const t = 0.06;
   const hl = length / 2, hw = width / 2;
 
-  // 側面 2 枚（波板）
+  /*
+   * 側面。
+   *
+   * 波板をテクスチャだけで表現すると、遠目には平らな板にしか見えない。
+   * コンテナの側面は深さ 25mm ほどの縦の谷が 30cm 間隔で入っていて、
+   * その陰影が「コンテナらしさ」のほとんどを作っている。
+   * 谷を実体のリブとして並べる。
+   */
+  const RIB = 0.30;
+  const ribs = Math.max(2, Math.round(length / RIB));
   for (const s of [-1, 1]) {
     const dx = Math.cos(yaw) * hw * s;
     const dz = -Math.sin(yaw) * hw * s;
     b.box({ x: x + dx, y: y + height / 2, z: z + dz, w: t, h: height, d: length, yaw, mat, surface: SURFACE.METAL, collide: false });
+    for (let i = 0; i < ribs; i++) {
+      const lz = -hl + length * (i + 0.5) / ribs;
+      b.box({
+        x: x + dx + Math.sin(yaw) * lz + Math.cos(yaw) * 0.026 * s,
+        y: y + height * 0.51,
+        z: z + dz + Math.cos(yaw) * lz - Math.sin(yaw) * 0.026 * s,
+        w: 0.026, h: height * 0.90, d: RIB * 0.52, yaw, mat, surface: SURFACE.METAL, collide: false,
+      });
+    }
+    // 上下のサイドレール（波板の端をくわえる形材）
+    for (const ly of [height - 0.075, 0.075]) {
+      b.box({ x: x + dx, y: y + ly, z: z + dz, w: 0.115, h: 0.15, d: length,
+        yaw, mat: 'rustedMetal', surface: SURFACE.METAL, collide: false });
+    }
   }
   // 前面（扉側）
   const fx = Math.sin(yaw) * hl, fz = Math.cos(yaw) * hl;
@@ -201,21 +351,90 @@ export function container(b, o) {
 }
 
 /** 空調室外機 */
+/**
+ * 室外機。
+ *
+ * 以前は太い輪と 4 本のスポークを前面に貼っていたため、
+ * 荷車の車輪が付いた箱に見えていた。
+ * 実物のグリルは
+ *   ・細い線が同心円状に何十本も並ぶ
+ *   ・そのうしろにファンの羽根が透けて見える
+ *   ・開口部が本体より一段くぼんでいる
+ * この 3 つで、輪ではなく網に見える。
+ */
 export function acUnit(b, o) {
-  const { x, y, z, yaw = 0, w = 0.86, h = 0.66, d = 0.34 } = o;
-  b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
-  // ファングリル
-  const grill = new THREE.TorusGeometry(w * 0.29, 0.02, 8, 20);
-  b.mesh('rustedMetal', grill, { x: x + Math.sin(yaw) * (d / 2 + 0.01), y: y + h * 0.55, z: z + Math.cos(yaw) * (d / 2 + 0.01), ry: yaw });
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI;
-    b.box({
-      x: x + Math.sin(yaw) * (d / 2 + 0.01), y: y + h * 0.55, z: z + Math.cos(yaw) * (d / 2 + 0.01),
-      w: w * 0.56, h: 0.014, d: 0.014, yaw, rz: a, mat: 'rustedMetal', surface: SURFACE.METAL, collide: false,
-    });
+  const { x, y, z, yaw = 0, w = 0.86, h = 0.66, d = 0.34, mat = 'applianceGrey' } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  /** ローカル (右, 手前) → ワールド */
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+
+  // 筐体（前面は一段くぼませる）
+  b.box({ x, y: y + h / 2, z, w, h, d: d * 0.86, yaw, mat, surface: SURFACE.METAL, collide: false });
+  // 側面と天面の枠（くぼみの縁になる）
+  for (const sx of [-1, 1]) {
+    const [px, pz] = at(sx * (w / 2 - 0.022), d * 0.04);
+    b.box({ x: px, y: y + h / 2, z: pz, w: 0.044, h, d, yaw, mat, surface: SURFACE.METAL, collide: false });
   }
-  // 配管
-  b.cylinder({ x: x - w * 0.36, y: y + h, z, radius: 0.032, height: 0.42, segments: 8, mat: 'copper', surface: SURFACE.METAL, collide: false });
+  for (const ly of [h - 0.020, 0.020]) {
+    b.box({ x, y: y + ly, z, w, h: 0.040, d, yaw, mat, surface: SURFACE.METAL, collide: false });
+  }
+
+  /* ---- グリル ---- */
+  const gx = w * 0.20, gy = h * 0.52, gr = Math.min(w * 0.30, h * 0.36);
+  const [fx, fz] = at(gx, d / 2 + 0.004);
+  // 開口の縁（丸いベルマウス）
+  b.mesh('gunMetal', new THREE.TorusGeometry(gr * 1.06, 0.020, 6, 24),
+    { ry: yaw, x: fx, y: y + gy, z: fz });
+  // 同心円の線 5 本
+  for (let i = 1; i <= 5; i++) {
+    b.mesh('gunMetal', new THREE.TorusGeometry(gr * (i / 5.6), 0.0055, 4, 20),
+      { ry: yaw, x: fx, y: y + gy, z: fz });
+  }
+  // 放射の線 12 本
+  for (let i = 0; i < 12; i++) {
+    b.box({ x: fx, y: y + gy, z: fz, w: gr * 2, h: 0.006, d: 0.006, yaw,
+      rz: (i / 12) * Math.PI, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  }
+  // 奥のファン（羽根 4 枚が網ごしに見える）
+  const [bx2, bz2] = at(gx, d * 0.34);
+  b.cylinder({ x: bx2, y: y + gy, z: bz2, radius: 0.035, height: 0.05, segments: 8,
+    mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  for (let i = 0; i < 4; i++) {
+    b.box({ x: bx2, y: y + gy, z: bz2, w: gr * 1.5, h: 0.055, d: 0.010, yaw,
+      rz: (i / 4) * Math.PI * 2, rx: 0.35, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  }
+
+  /* ---- 右側の点検パネルと配管 ---- */
+  const [px2, pz2] = at(-w * 0.34, d / 2 + 0.006);
+  b.box({ x: px2, y: y + h * 0.52, z: pz2, w: w * 0.24, h: h * 0.72, d: 0.012, yaw,
+    mat, surface: SURFACE.METAL, collide: false });
+  // ビス 4 本
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      const [sx2, sz2] = at(-w * 0.34 + sx * w * 0.09, d / 2 + 0.012);
+      b.cylinder({ x: sx2, y: y + h * 0.52 + sy * h * 0.30, z: sz2, radius: 0.008, height: 0.006,
+        segments: 6, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+    }
+  }
+  // 冷媒配管（保温材を巻いた 2 本と、束ねるテープ）
+  const [cx2, cz2] = at(-w * 0.40, -d * 0.28);
+  for (const off of [-0.035, 0.035]) {
+    b.cylinder({ x: cx2 + c * off, y: y + h * 0.18, z: cz2 - s * off, radius: 0.022, height: 0.52,
+      segments: 8, mat: 'plasticMatte', surface: SURFACE.METAL, collide: false });
+  }
+  b.box({ x: cx2, y: y + h * 0.42, z: cz2, w: 0.10, h: 0.05, d: 0.055, yaw,
+    mat: 'plasticMatte', surface: SURFACE.METAL, collide: false });
+  // ドレンホース
+  b.cylinder({ x: cx2, y: y - 0.02, z: cz2, radius: 0.011, height: 0.22, segments: 6,
+    mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+
+  // 防振ゴムを噛ませた脚
+  for (const sx of [-1, 1]) {
+    const [lx2, lz2] = at(sx * (w / 2 - 0.07), 0);
+    b.box({ x: lx2, y: y - 0.020, z: lz2, w: 0.06, h: 0.040, d: d * 0.9, yaw,
+      mat: 'rubber', surface: SURFACE.RUBBER, collide: false });
+  }
+
   b.physics.addBox(x, y + h / 2, z, w / 2, h / 2, d / 2, yaw, { surface: SURFACE.METAL, penetration: 0.5 });
   return b;
 }
@@ -344,16 +563,63 @@ export function clothesline(b, o) {
 }
 
 /** 瓦礫・砕けたコンクリート */
+/**
+ * 瓦礫。
+ *
+ * 立方体をばら撒くと、色違いのサイコロが転がっているようにしか見えない。
+ * 壊れたコンクリートは
+ *   ・板が割れるので、厚みに対して面が広い破片になる
+ *   ・鉄筋が折れずに残って飛び出す
+ *   ・細かい粉と小片が下に溜まる
+ * この 3 つを入れると「壊れた物」に見え始める。
+ */
 export function rubble(b, o) {
   const { x, y = 0, z, radius = 1.6, count = 14 } = o;
+  const MATS = ['concreteRaw', 'concrete', 'rock', 'brickOld'];
+
   for (let i = 0; i < count; i++) {
     const a = R(0, Math.PI * 2);
     const r = Math.sqrt(Math.random()) * radius;
-    const s = R(0.10, 0.34);
+    const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
+    const m = PICK(MATS);
+    // 板状の破片。厚みは幅の 1/3 以下
+    const w = R(0.16, 0.44), d = w * R(0.55, 1.1), h = w * R(0.14, 0.30);
+    const tilt = R(-0.5, 0.5);
     b.box({
-      x: x + Math.cos(a) * r, y: y + s * 0.35, z: z + Math.sin(a) * r,
-      w: s, h: s * R(0.4, 0.8), d: s * R(0.7, 1.3), yaw: R(0, 3.14),
-      mat: PICK(['concrete', 'rock', 'brick']), surface: SURFACE.CONCRETE, collide: false,
+      x: px, y: y + h * 0.5 + Math.abs(tilt) * w * 0.2, z: pz,
+      w, h, d, yaw: R(0, 3.14), rz: tilt, rx: R(-0.3, 0.3),
+      mat: m, surface: SURFACE.CONCRETE, collide: false,
+    });
+    // 折れた破片が重なる
+    if (Math.random() < 0.45) {
+      b.box({
+        x: px + R(-0.10, 0.10), y: y + h * 1.3, z: pz + R(-0.10, 0.10),
+        w: w * R(0.4, 0.7), h: h * R(0.6, 1.0), d: d * R(0.4, 0.8),
+        yaw: R(0, 3.14), rz: R(-0.7, 0.7),
+        mat: m, surface: SURFACE.CONCRETE, collide: false,
+      });
+    }
+    // 露出した鉄筋（コンクリート片の 3 割ほどから出る）
+    if (m !== 'rock' && Math.random() < 0.32) {
+      const ra = R(0, Math.PI * 2);
+      b.cylinder({
+        x: px + Math.cos(ra) * w * 0.3, y: y + h, z: pz + Math.sin(ra) * w * 0.3,
+        radius: 0.009, height: R(0.18, 0.44), segments: 5,
+        mat: 'rustedMetal', surface: SURFACE.METAL, collide: false,
+      });
+    }
+  }
+
+  // 細かい小片と粉（山の足元を埋めて「積もった」感じを出す）
+  const fines = count * 3;
+  for (let i = 0; i < fines; i++) {
+    const a = R(0, Math.PI * 2);
+    const r = Math.sqrt(Math.random()) * radius * 1.15;
+    const s = R(0.030, 0.085);
+    b.box({
+      x: x + Math.cos(a) * r, y: y + s * 0.2, z: z + Math.sin(a) * r,
+      w: s, h: s * R(0.3, 0.6), d: s * R(0.6, 1.2), yaw: R(0, 3.14),
+      mat: PICK(['concreteRaw', 'rock']), surface: SURFACE.GRAVEL, collide: false,
     });
   }
   return b;
@@ -383,9 +649,29 @@ export function streetLight(b, o) {
     x: x + Math.sin(yaw) * armLen / 2, y: y + height - 0.06, z: z + Math.cos(yaw) * armLen / 2,
     w: 0.07, h: 0.07, d: armLen, yaw, mat: 'galvanized', surface: SURFACE.METAL, collide: false,
   });
-  // 灯体
+  /*
+   * 灯体。
+   *
+   * 箱を 1 個吊るだけだと、棒の先に何か付いている以上には見えない。
+   * 道路灯は
+   *   ・後ろが厚く前が薄い、涙滴形のケース
+   *   ・下面に嵌まった乳白のカバー
+   *   ・アームとの取り合いの座
+   * この 3 つで灯具の形になる。
+   */
   const lx = x + Math.sin(yaw) * armLen, lz = z + Math.cos(yaw) * armLen;
-  b.box({ x: lx, y: y + height - 0.14, z: lz, w: 0.28, h: 0.14, d: 0.52, yaw, mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+  // 取り合いの座
+  b.box({ x: x + Math.sin(yaw) * (armLen - 0.28), y: y + height - 0.09, z: z + Math.cos(yaw) * (armLen - 0.28),
+    w: 0.13, h: 0.13, d: 0.16, yaw, mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+  // ケース（後ろ厚 → 前薄の 3 段）
+  const caseSeg = [[-0.16, 0.19, 0.20], [0.02, 0.155, 0.24], [0.19, 0.115, 0.20]];
+  for (const [off, hh, dd] of caseSeg) {
+    b.box({ x: lx + Math.sin(yaw) * off, y: y + height - 0.09 - (0.19 - hh) / 2, z: lz + Math.cos(yaw) * off,
+      w: 0.30, h: hh, d: dd, yaw, mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+  }
+  // 下面のカバー
+  b.box({ x: lx, y: y + height - 0.205, z: lz, w: 0.255, h: 0.030, d: 0.46, yaw,
+    mat: 'acrylic', surface: SURFACE.METAL, collide: false });
   if (withLight) {
     const lampGeo = new THREE.BoxGeometry(0.22, 0.03, 0.44);
     const lamp = new THREE.Mesh(lampGeo, b.mats.emissive(0xffe0a8, 6));
@@ -398,22 +684,147 @@ export function streetLight(b, o) {
 }
 
 /** 電柱 + 電線 */
+/**
+ * 電柱（コンクリート柱）。
+ *
+ * 以前は wood を貼っていたため、明るいタンの地に暗い輪が並び、
+ * どう見ても竹だった。日本の電柱はほぼコンクリート柱で、
+ * 灰色・上細りのテーパー・足元の根巻きが特徴。
+ *
+ * @param {number} o.arms   腕木の段数
+ * @param {boolean} o.trans 変圧器を載せるか
+ */
 export function utilityPole(b, o) {
-  const { x, y = 0, z, yaw = 0, height = 6.2 } = o;
-  b.cylinder({ x, y, z, radius: 0.13, height, segments: 8, mat: 'wood', surface: SURFACE.WOOD });
-  // 腕木
-  for (const hy of [height - 0.5, height - 1.15]) {
-    b.box({ x, y: y + hy, z, w: 1.7, h: 0.09, d: 0.09, yaw, mat: 'wood', surface: SURFACE.WOOD, collide: false });
-    // 碍子
-    for (const lx of [-0.72, -0.24, 0.24, 0.72]) {
-      b.cylinder({
-        x: x + Math.cos(yaw) * lx, y: y + hy + 0.05, z: z - Math.sin(yaw) * lx,
-        radius: 0.035, height: 0.10, segments: 8, mat: 'tile', surface: SURFACE.CONCRETE, collide: false,
-      });
+  const { x, y = 0, z, yaw = 0, height = 11.0, arms = 2, trans = true } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz = 0) => [x + c * lx + s * lz, z - s * lx + c * lz];
+
+  /*
+   * 柱。上へ細る（末口 19cm / 元口 30cm 相当）。
+   * 円柱を 3 段に分けて近似する。1 本の円柱だと寸胴に見える。
+   */
+  const segs = [[0.00, 0.34, 0.150], [0.34, 0.70, 0.128], [0.70, 1.00, 0.104]];
+  for (const [t0, t1, r] of segs) {
+    b.cylinder({ x, y: y + height * t0, z, radius: r, height: height * (t1 - t0),
+      segments: 10, mat: 'concreteRaw', surface: SURFACE.CONCRETE, collide: false });
+  }
+  // 根巻き（地際のコンクリート）
+  b.cylinder({ x, y, z, radius: 0.215, height: 0.28, segments: 10,
+    mat: 'concrete', surface: SURFACE.CONCRETE, collide: false });
+  // 昇柱用の足場ボルト（互い違いに出る。これがあるだけで一気に電柱になる）
+  for (let i = 0; i < 9; i++) {
+    const sx = i % 2 ? 1 : -1;
+    const [px, pz] = at(sx * 0.16);
+    b.cylinder({ x: px, y: y + 2.4 + i * 0.45, z: pz, radius: 0.014, height: 0.17,
+      segments: 5, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  }
+  b.physics.addCylinder(x, y + height / 2, z, 0.15, height / 2, { surface: SURFACE.CONCRETE });
+
+  /* ---- 腕金と碍子 ---- */
+  for (let a = 0; a < arms; a++) {
+    const hy = height - 0.45 - a * 0.95;
+    const halfW = 0.85 - a * 0.06;
+    // 腕金（山形鋼）
+    b.box({ x, y: y + hy, z, w: halfW * 2, h: 0.065, d: 0.075, yaw,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    b.box({ x, y: y + hy - 0.032, z, w: halfW * 2, h: 0.075, d: 0.012, yaw,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    // 振れ止めの腕金バンド
+    for (const sx of [-1, 1]) {
+      const [px, pz] = at(sx * halfW * 0.55);
+      b.box({ x: px, y: y + hy - 0.20, z: pz, w: halfW * 0.62, h: 0.030, d: 0.030, yaw, rz: sx * 0.62,
+        mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    }
+    /*
+     * 碍子。
+     * 単なる円柱ではなく、笠が 2〜3 段重なった形。
+     * 遠目にも「白くてくびれた粒」に見えることが大事。
+     */
+    for (const lx of [-halfW * 0.82, -halfW * 0.30, halfW * 0.30, halfW * 0.82]) {
+      const [px, pz] = at(lx);
+      b.cylinder({ x: px, y: y + hy + 0.033, z: pz, radius: 0.016, height: 0.055,
+        segments: 6, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+      for (let k = 0; k < 3; k++) {
+        b.cylinder({ x: px, y: y + hy + 0.085 + k * 0.052, z: pz,
+          radius: 0.048 - k * 0.006, height: 0.024, segments: 10,
+          mat: 'porcelain', surface: SURFACE.CONCRETE, collide: false });
+        b.cylinder({ x: px, y: y + hy + 0.109 + k * 0.052, z: pz,
+          radius: 0.026, height: 0.030, segments: 8,
+          mat: 'porcelain', surface: SURFACE.CONCRETE, collide: false });
+      }
     }
   }
-  // 変圧器
-  b.cylinder({ x: x + 0.28, y: y + height - 2.3, z, radius: 0.22, height: 0.62, segments: 12, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+
+  /* ---- 変圧器（柱上トランス）と、そこへ下りる引き下げ線 ---- */
+  if (trans) {
+    const ty = y + height - 2.9;
+    const [px, pz] = at(0.36);
+    b.cylinder({ x: px, y: ty, z: pz, radius: 0.235, height: 0.72, segments: 14,
+      mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+    b.cylinder({ x: px, y: ty + 0.72, z: pz, radius: 0.255, height: 0.055, segments: 14,
+      mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+    // 吊り金具
+    for (const sy of [0.10, 0.60]) {
+      b.box({ x: px, y: ty + sy, z: pz, w: 0.42, h: 0.050, d: 0.050, yaw,
+        mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    }
+    // ブッシング 2 本
+    for (const sx of [-1, 1]) {
+      const [bx2, bz2] = at(0.36, sx * 0.12);
+      b.cylinder({ x: bx2, y: ty + 0.775, z: bz2, radius: 0.038, height: 0.12, segments: 8,
+        mat: 'porcelain', surface: SURFACE.CONCRETE, collide: false });
+    }
+  }
+
+  // 上部の架線を支える先端キャップ
+  b.cylinder({ x, y: y + height, z, radius: 0.108, height: 0.05, segments: 10,
+    mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  return b;
+}
+
+/**
+ * 電線。
+ *
+ * 電柱を並べても、線が張られていないと「腕木の付いた棒」でしかない。
+ * 街の空をいちばん強く特徴づけるのは、たわんで連なるこの線。
+ *
+ * @param {Array<[number,number]>} o.poles 電柱の位置（順に結ぶ）
+ * @param {number[]} o.heights   線を張る高さ（複数本）
+ * @param {number} o.sag         中央のたるみ (m)
+ */
+export function powerLine(b, o) {
+  const { poles, heights = [10.5, 10.05, 7.6], sag = 0.55, spread = 0.8, mat = 'gunMetal' } = o;
+  if (!poles || poles.length < 2) return b;
+
+  for (let i = 0; i < poles.length - 1; i++) {
+    const [x1, z1] = poles[i], [x2, z2] = poles[i + 1];
+    const span = Math.hypot(x2 - x1, z2 - z1);
+    if (span < 0.5) continue;
+    // 径間に直交する向き（腕金の左右へ振り分けるため）
+    const nx = -(z2 - z1) / span, nz = (x2 - x1) / span;
+    // たるみは径間の長さに比例する
+    const dip = sag * (span / 30);
+    // 1 径間を 6 本の直線で折る（放物線の近似）
+    const STEP = 6;
+    for (const hy of heights) {
+      // 同じ高さに左右へ振り分けて 2 本ずつ
+      for (const off of [-spread / 2, spread / 2]) {
+        for (let k = 0; k < STEP; k++) {
+          const t0 = k / STEP, t1 = (k + 1) / STEP;
+          const p0 = { x: x1 + (x2 - x1) * t0, z: z1 + (z2 - z1) * t0, y: hy - dip * 4 * t0 * (1 - t0) };
+          const p1 = { x: x1 + (x2 - x1) * t1, z: z1 + (z2 - z1) * t1, y: hy - dip * 4 * t1 * (1 - t1) };
+          const dx = p1.x - p0.x, dy = p1.y - p0.y, dz = p1.z - p0.z;
+          const len = Math.hypot(dx, dy, dz);
+          b.box({
+            x: (p0.x + p1.x) / 2 + nx * off, y: (p0.y + p1.y) / 2, z: (p0.z + p1.z) / 2 + nz * off,
+            w: 0.022, h: 0.022, d: len,
+            yaw: Math.atan2(dx, dz), rx: -Math.asin(dy / len),
+            mat, surface: SURFACE.METAL, collide: false, blocksBullets: false,
+          });
+        }
+      }
+    }
+  }
   return b;
 }
 
@@ -423,76 +834,201 @@ export function vehicle(b, o) {
   const isTruck = type === 'truck';
   const L = isTruck ? 5.1 : 4.3, W = 1.92, H = isTruck ? 0.92 : 0.78;
   const wheelR = 0.36;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  /*
+   * ローカル座標。
+   *   lx = 右（+ が運転席から見て右）
+   *   lz = 前（+ が車の前方）
+   */
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  const TRIM = 'gunMetal';
 
   // シャシー
   b.box({ x, y: y + wheelR + H / 2, z, w: W, h: H, d: L, yaw, mat, surface: SURFACE.METAL, collide: false });
   // キャビン
-  const cabZ = isTruck ? -L * 0.10 : 0;
-  b.box({
-    x: x + Math.sin(yaw) * cabZ, y: y + wheelR + H + 0.34, z: z + Math.cos(yaw) * cabZ,
-    w: W * 0.92, h: 0.68, d: isTruck ? L * 0.34 : L * 0.46, yaw, mat, surface: SURFACE.METAL, collide: false,
-  });
+  const cabZ = isTruck ? L * 0.10 : 0;
+  const cabD = isTruck ? L * 0.34 : L * 0.46;
+  const [cx, cz] = at(0, cabZ);
+  b.box({ x: cx, y: y + wheelR + H + 0.34, z: cz,
+    w: W * 0.92, h: 0.68, d: cabD, yaw, mat, surface: SURFACE.METAL, collide: false });
   // 窓（ガラス）
-  const glassGeo = new THREE.BoxGeometry(W * 0.86, 0.44, (isTruck ? L * 0.34 : L * 0.46) * 0.96);
+  const glassGeo = new THREE.BoxGeometry(W * 0.86, 0.44, cabD * 0.96);
   const glass = new THREE.Mesh(glassGeo, b.mats.glass({ opacity: 0.55, transmission: 0.7 }));
-  glass.position.set(x + Math.sin(yaw) * cabZ, y + wheelR + H + 0.46, z + Math.cos(yaw) * cabZ);
+  glass.position.set(cx, y + wheelR + H + 0.46, cz);
   glass.rotation.y = yaw;
   b.addExtra(glass);
 
+  /*
+   * 窓枠（ピラー）。
+   * ガラスの箱をそのまま置くと「水槽を載せた箱」になる。
+   * A/B/C ピラーを立てて窓を割ると、一気に車の顔になる。
+   */
+  for (const sx of [-1, 1]) {
+    for (const lz of [cabD / 2 - 0.045, -cabD / 2 + 0.045, 0]) {
+      if (lz === 0 && !isTruck) continue;
+      const [px, pz] = at(sx * W * 0.455, cabZ + lz);
+      b.box({ x: px, y: y + wheelR + H + 0.46, z: pz, w: 0.055, h: 0.46, d: 0.075, yaw,
+        mat, surface: SURFACE.METAL, collide: false });
+    }
+    // 窓下の見切り
+    const [px, pz] = at(sx * W * 0.462, cabZ);
+    b.box({ x: px, y: y + wheelR + H + 0.225, z: pz, w: 0.030, h: 0.045, d: cabD * 0.94, yaw,
+      mat: TRIM, surface: SURFACE.METAL, collide: false });
+  }
+  // ルーフの縁
+  b.box({ x: cx, y: y + wheelR + H + 0.685, z: cz, w: W * 0.94, h: 0.035, d: cabD * 1.01, yaw,
+    mat, surface: SURFACE.METAL, collide: false });
+
+  // ドアの合わせ目とハンドル
+  for (const sx of [-1, 1]) {
+    const doors = isTruck ? [cabZ] : [cabZ + L * 0.10, cabZ - L * 0.10];
+    for (const dz of doors) {
+      const [px, pz] = at(sx * (W / 2 + 0.004), dz + 0.42);
+      b.box({ x: px, y: y + wheelR + H * 0.55, z: pz, w: 0.010, h: H * 0.86, d: 0.014, yaw,
+        mat: TRIM, surface: SURFACE.METAL, collide: false });
+      const [hx, hz] = at(sx * (W / 2 + 0.014), dz);
+      b.box({ x: hx, y: y + wheelR + H * 0.80, z: hz, w: 0.022, h: 0.038, d: 0.135, yaw,
+        mat: TRIM, surface: SURFACE.METAL, collide: false });
+    }
+  }
+
+  // ドアミラー
+  for (const sx of [-1, 1]) {
+    const [ax, az] = at(sx * (W / 2 + 0.055), cabZ + cabD / 2 - 0.02);
+    b.box({ x: ax, y: y + wheelR + H + 0.34, z: az, w: 0.11, h: 0.028, d: 0.028, yaw,
+      mat: TRIM, surface: SURFACE.METAL, collide: false });
+    const [mx, mz] = at(sx * (W / 2 + 0.115), cabZ + cabD / 2 - 0.02);
+    b.box({ x: mx, y: y + wheelR + H + 0.345, z: mz, w: 0.045, h: 0.135, d: 0.095, yaw, rz: sx * 0.12,
+      mat: TRIM, surface: SURFACE.METAL, collide: false });
+  }
+
   // 荷台（トラックのみ）
   if (isTruck) {
-    const bedZ = L * 0.26;
-    for (const s of [-1, 1]) {
-      b.box({
-        x: x + Math.sin(yaw) * bedZ + Math.cos(yaw) * (W / 2 - 0.06) * s,
-        y: y + wheelR + H + 0.20, z: z + Math.cos(yaw) * bedZ - Math.sin(yaw) * (W / 2 - 0.06) * s,
-        w: 0.10, h: 0.40, d: L * 0.44, yaw, mat, surface: SURFACE.METAL, collide: false,
-      });
+    const bedZ = -L * 0.26;
+    for (const sx of [-1, 1]) {
+      const [px, pz] = at(sx * (W / 2 - 0.06), bedZ);
+      b.box({ x: px, y: y + wheelR + H + 0.20, z: pz,
+        w: 0.10, h: 0.40, d: L * 0.44, yaw, mat, surface: SURFACE.METAL, collide: false });
+      // あおりの上端（丸い縁）
+      b.box({ x: px, y: y + wheelR + H + 0.415, z: pz,
+        w: 0.135, h: 0.045, d: L * 0.44, yaw, mat, surface: SURFACE.METAL, collide: false });
     }
-    b.box({
-      x: x + Math.sin(yaw) * (L * 0.48), y: y + wheelR + H + 0.20, z: z + Math.cos(yaw) * (L * 0.48),
-      w: W * 0.94, h: 0.40, d: 0.09, yaw, mat, surface: SURFACE.METAL, collide: false,
-    });
+    const [tx, tz] = at(0, -L * 0.48);
+    b.box({ x: tx, y: y + wheelR + H + 0.20, z: tz,
+      w: W * 0.94, h: 0.40, d: 0.09, yaw, mat, surface: SURFACE.METAL, collide: false });
+    // 荷台の床（波板）
+    b.box({ x: at(0, bedZ)[0], y: y + wheelR + H + 0.015, z: at(0, bedZ)[1],
+      w: W * 0.88, h: 0.03, d: L * 0.44, yaw, mat: 'corrugated', surface: SURFACE.METAL, collide: false });
     // 荷台のあおりは見えている以上、身を隠せるようにしておく（薄いので貫通はする）
-    for (const s of [-1, 1]) {
-      b.physics.addBox(
-        x + Math.sin(yaw) * bedZ + Math.cos(yaw) * (W / 2 - 0.06) * s,
-        y + wheelR + H + 0.20,
-        z + Math.cos(yaw) * bedZ - Math.sin(yaw) * (W / 2 - 0.06) * s,
-        0.05, 0.20, L * 0.22, yaw, { surface: SURFACE.METAL, penetration: 0.8 }
-      );
+    for (const sx of [-1, 1]) {
+      const [px, pz] = at(sx * (W / 2 - 0.06), bedZ);
+      b.physics.addBox(px, y + wheelR + H + 0.20, pz,
+        0.05, 0.20, L * 0.22, yaw, { surface: SURFACE.METAL, penetration: 0.8 });
     }
   }
 
-  // タイヤ 4 本
+  /* ---- ホイールアーチとタイヤ ---- */
   const wz = L * 0.32;
   for (const sz of [-1, 1]) for (const sx of [-1, 1]) {
-    const lx = (W / 2 - 0.06) * sx, lz = wz * sz;
-    const wx = x + Math.cos(yaw) * lx + Math.sin(yaw) * lz;
-    const wzz = z - Math.sin(yaw) * lx + Math.cos(yaw) * lz;
-    const geo = new THREE.CylinderGeometry(wheelR, wheelR, 0.24, 16);
+    const [wx, wzz] = at((W / 2 - 0.06) * sx, wz * sz);
+
+    /*
+     * ホイールアーチ。
+     * これが無いと、車体の平らな側面にタイヤが貼り付いているだけに見える。
+     * 半円を 5 枚の板で近似して、タイヤの上に回す。
+     */
+    for (let k = 0; k < 5; k++) {
+      const a = Math.PI * (0.10 + k * 0.20);
+      const [ax, az] = at((W / 2 - 0.02) * sx, wz * sz + Math.cos(a) * wheelR * 1.24);
+      b.box({ x: ax, y: y + Math.sin(a) * wheelR * 1.24, z: az,
+        w: 0.075, h: 0.10, d: wheelR * 0.82, yaw, rx: a - Math.PI / 2,
+        mat, surface: SURFACE.METAL, collide: false });
+    }
+
+    // タイヤ
+    const geo = new THREE.CylinderGeometry(wheelR, wheelR, 0.24, 18);
     geo.rotateZ(Math.PI / 2);
     b.mesh('tireTread', geo, { x: wx, y: y + wheelR, z: wzz, ry: yaw });
-    // ホイール
-    const hub = new THREE.CylinderGeometry(wheelR * 0.55, wheelR * 0.55, 0.26, 12);
+    // 側面（トレッドと別材質にして、丸い黒の塊に見せない）
+    const wall = new THREE.CylinderGeometry(wheelR * 0.99, wheelR * 0.99, 0.245, 18);
+    wall.rotateZ(Math.PI / 2);
+    b.mesh('rubber', wall, { x: wx, y: y + wheelR, z: wzz, ry: yaw });
+    // リム
+    const hub = new THREE.CylinderGeometry(wheelR * 0.60, wheelR * 0.60, 0.255, 14);
     hub.rotateZ(Math.PI / 2);
     b.mesh('brushedMetal', hub, { x: wx, y: y + wheelR, z: wzz, ry: yaw });
+    // ハブとボルト
+    const [hx2] = at((W / 2 + 0.055) * sx, wz * sz);
+    const [, hz2] = at((W / 2 + 0.055) * sx, wz * sz);
+    const cap = new THREE.CylinderGeometry(wheelR * 0.22, wheelR * 0.22, 0.03, 10);
+    cap.rotateZ(Math.PI / 2);
+    b.mesh('gunMetal', cap, { x: hx2, y: y + wheelR, z: hz2, ry: yaw });
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2;
+      const [bx3, bz3] = at((W / 2 + 0.052) * sx, wz * sz + Math.sin(a) * wheelR * 0.38);
+      b.box({ x: bx3, y: y + wheelR + Math.cos(a) * wheelR * 0.38, z: bz3,
+        w: 0.018, h: 0.030, d: 0.030, yaw, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+    }
   }
 
-  // バンパー・ライト
-  for (const sz of [-1, 1]) {
-    b.box({
-      x: x + Math.sin(yaw) * (L / 2 - 0.05) * sz, y: y + wheelR + 0.18, z: z + Math.cos(yaw) * (L / 2 - 0.05) * sz,
-      w: W * 1.02, h: 0.16, d: 0.12, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false,
-    });
+  /* ---- 前後の顔 ---- */
+  const noseZ = L / 2, tailZ = -L / 2;
+  // バンパー（上下 2 段にして厚みを出す）
+  for (const [lz, bmat] of [[noseZ - 0.045, TRIM], [tailZ + 0.045, TRIM]]) {
+    const [px, pz] = at(0, lz);
+    b.box({ x: px, y: y + wheelR + 0.10, z: pz, w: W * 1.02, h: 0.20, d: 0.13, yaw,
+      mat: bmat, surface: SURFACE.METAL, collide: false });
+    b.box({ x: px, y: y + wheelR - 0.06, z: pz, w: W * 0.86, h: 0.10, d: 0.10, yaw,
+      mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
   }
-  const headGeo = new THREE.BoxGeometry(0.26, 0.14, 0.05);
+
+  // グリル（横桟 4 本＋外枠）
+  {
+    const [gx, gz] = at(0, noseZ - 0.005);
+    b.box({ x: gx, y: y + wheelR + H * 0.62, z: gz, w: W * 0.62, h: 0.26, d: 0.05, yaw,
+      mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+    for (let k = 0; k < 4; k++) {
+      b.box({ x: gx, y: y + wheelR + H * 0.62 - 0.09 + k * 0.06, z: gz,
+        w: W * 0.60, h: 0.022, d: 0.062, yaw, mat: TRIM, surface: SURFACE.METAL, collide: false });
+    }
+  }
+
+  // ヘッドライト（ケース＋レンズ）とウインカー
   for (const sx of [-1, 1]) {
-    const lx = (W * 0.32) * sx, lz = -L / 2;
-    const hl = new THREE.Mesh(headGeo, b.mats.emissive(0xfff2d0, 0.6));
-    hl.position.set(x + Math.cos(yaw) * lx + Math.sin(yaw) * lz, y + wheelR + H * 0.75, z - Math.sin(yaw) * lx + Math.cos(yaw) * lz);
+    const [lx2, lz2] = at(W * 0.34 * sx, noseZ - 0.02);
+    b.box({ x: lx2, y: y + wheelR + H * 0.66, z: lz2, w: 0.30, h: 0.19, d: 0.07, yaw,
+      mat: TRIM, surface: SURFACE.METAL, collide: false });
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.255, 0.145, 0.035),
+      b.mats.glass({ opacity: 0.5, transmission: 0.75 }));
+    const [gx2, gz2] = at(W * 0.34 * sx, noseZ + 0.012);
+    hl.position.set(gx2, y + wheelR + H * 0.66, gz2);
     hl.rotation.y = yaw;
     b.addExtra(hl);
+    // ウインカー（琥珀）
+    const [ax2, az2] = at(W * 0.34 * sx, noseZ + 0.010);
+    const ind = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.045, 0.025), b.mats.emissive(0xc47a20, 0.25));
+    ind.position.set(ax2, y + wheelR + H * 0.66 - 0.115, az2);
+    ind.rotation.y = yaw;
+    b.addExtra(ind);
+  }
+
+  // テールランプ
+  for (const sx of [-1, 1]) {
+    const [tx2, tz2] = at(W * 0.36 * sx, tailZ + 0.012);
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.26, 0.03), b.mats.emissive(0x8c1f18, 0.22));
+    tl.position.set(tx2, y + wheelR + H * 0.72, tz2);
+    tl.rotation.y = yaw;
+    b.addExtra(tl);
+  }
+
+  // ナンバープレートと排気管
+  {
+    const [nx, nz] = at(0, tailZ + 0.012);
+    b.box({ x: nx, y: y + wheelR + 0.24, z: nz, w: 0.33, h: 0.16, d: 0.012, yaw,
+      mat: 'paperPrint', surface: SURFACE.METAL, collide: false });
+    const [ex, ez] = at(W * 0.30, tailZ + 0.06);
+    b.cylinder({ x: ex, y: y + wheelR - 0.12, z: ez, radius: 0.032, height: 0.14, segments: 8,
+      mat: 'rustedMetal', surface: SURFACE.METAL, collide: false });
   }
 
   /*
@@ -504,82 +1040,382 @@ export function vehicle(b, o) {
   b.physics.addBox(x, y + (wheelR + H) / 2, z, W / 2, (wheelR + H) / 2, L / 2, yaw,
     { surface: SURFACE.METAL, penetration: 0.25 });
   // キャビン上部も乗れるように
-  b.physics.addBox(x + Math.sin(yaw) * cabZ, y + wheelR + H + 0.34, z + Math.cos(yaw) * cabZ,
-    W * 0.46, 0.34, (isTruck ? L * 0.17 : L * 0.23), yaw, { surface: SURFACE.METAL, penetration: 0.3 });
+  b.physics.addBox(cx, y + wheelR + H + 0.34, cz,
+    W * 0.46, 0.34, cabD / 2, yaw, { surface: SURFACE.METAL, penetration: 0.3 });
   return b;
 }
 
 /** 看板 */
+/**
+ * 看板。
+ *
+ * 以前は色板 1 枚だけで、文字も枠も取り付けも無かった。
+ * 「板が浮いている」以上には決して見えない。
+ *
+ * @param {string} o.text  入れる文字（省略すると無地のまま）
+ * @param {number} o.posts 支柱の本数（0 で壁付け）
+ */
 export function sign(b, o) {
-  const { x, y, z, yaw = 0, w = 1.5, h = 0.6, mat = 'hazardStripe' } = o;
-  b.box({ x, y, z, w, h, d: 0.04, yaw, mat, surface: SURFACE.METAL, collide: false });
-  b.box({ x, y, z, w: w * 1.04, h: 0.035, d: 0.05, yaw, mat: 'rustedMetal', surface: SURFACE.METAL, collide: false });
+  const {
+    x, y, z, yaw = 0, w = 1.5, h = 0.6, mat = 'hazardStripe',
+    text = '', sub = '', accent = '#d97757', posts = 0, ground = 0,
+  } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz = 0) => [x + c * lx + s * lz, z - s * lx + c * lz];
+
+  // 板
+  b.box({ x, y, z, w, h, d: 0.035, yaw, mat, surface: SURFACE.METAL, collide: false });
+  // 枠（四周に回すアングル）
+  for (const sy of [-1, 1]) {
+    b.box({ x, y: y + sy * (h / 2 + 0.018), z, w: w + 0.072, h: 0.036, d: 0.055, yaw,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  }
+  for (const sx of [-1, 1]) {
+    const [px, pz] = at(sx * (w / 2 + 0.018));
+    b.box({ x: px, y, z: pz, w: 0.036, h: h + 0.072, d: 0.055, yaw,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  }
+
+  // 文字（両面。裏から来ても読めるようにする）
+  if (text) {
+    const geo = new THREE.PlaneGeometry(w * 0.94, h * 0.86);
+    for (const f of [1, -1]) {
+      const fy = f > 0 ? yaw : yaw + Math.PI;
+      const m = new THREE.Mesh(geo, b.mats.label(text, { sub, accent }));
+      m.position.set(x + Math.sin(fy) * 0.024, y, z + Math.cos(fy) * 0.024);
+      m.rotation.y = fy;
+      m.userData.signText = text;
+      m.userData.signKind = 'label';
+      b.addExtra(m);
+    }
+  }
+
+  // 支柱（地面まで下ろす）
+  if (posts > 0 && y - h / 2 > ground + 0.2) {
+    for (let i = 0; i < posts; i++) {
+      const lx = posts === 1 ? 0 : (-0.5 + i / (posts - 1)) * (w - 0.3);
+      const [px, pz] = at(lx);
+      b.cylinder({ x: px, y: ground, z: pz, radius: 0.042, height: y - h / 2 - ground,
+        segments: 8, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+      b.cylinder({ x: px, y: ground, z: pz, radius: 0.095, height: 0.10,
+        segments: 8, mat: 'concreteRaw', surface: SURFACE.CONCRETE, collide: false });
+    }
+  }
   return b;
 }
 
 /** 給水タンク（屋上） */
+/**
+ * 屋上の貯水タンク。
+ *
+ * 以前は天面に木目のフタが載っていて、樽のように見えていた。
+ * 実際の高置水槽は
+ *   ・鋼板をボルトで継いだパネル構造（升目の継ぎ目）
+ *   ・天端の点検マンホール
+ *   ・脇を上下する給水管とオーバーフロー管
+ *   ・架台に載って浮いている
+ * これらが揃って初めて「水を溜める設備」に見える。
+ */
 export function waterTank(b, o) {
-  const { x, y, z, radius = 0.95, height = 1.5 } = o;
-  b.cylinder({ x, y, z, radius, height, segments: 16, mat: 'corrugated', surface: SURFACE.METAL, collide: false });
-  b.cylinder({ x, y: y + height, z, radius: radius * 1.04, height: 0.08, segments: 16, mat: 'rustedMetal', surface: SURFACE.METAL, collide: false });
-  // 脚
+  const { x, y, z, radius = 0.95, height = 1.5, mat = 'galvanized', legs = 0.52 } = o;
+  b.cylinder({ x, y, z, radius, height, segments: 18, mat, surface: SURFACE.METAL, collide: false });
+  // パネルの継ぎ目（横 2 段・縦 8 本）
+  for (const ly of [height * 0.34, height * 0.68]) {
+    b.cylinder({ x, y: y + ly - 0.018, z, radius: radius * 1.015, height: 0.036, segments: 18,
+      mat, surface: SURFACE.METAL, collide: false });
+  }
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    b.box({ x: x + Math.cos(a) * radius, y: y + height / 2, z: z + Math.sin(a) * radius,
+      w: 0.030, h: height * 0.96, d: 0.030, yaw: -a, mat, surface: SURFACE.METAL, collide: false });
+  }
+  // 天板（わずかに勾配を持つ鋼板）と点検口
+  b.cylinder({ x, y: y + height, z, radius: radius * 1.03, height: 0.05, segments: 18,
+    mat, surface: SURFACE.METAL, collide: false });
+  b.cylinder({ x: x + radius * 0.34, y: y + height + 0.05, z, radius: 0.20, height: 0.055, segments: 12,
+    mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+  b.box({ x: x + radius * 0.34, y: y + height + 0.10, z: z + 0.20, w: 0.10, h: 0.030, d: 0.055,
+    mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  // 通気筒
+  b.cylinder({ x: x - radius * 0.40, y: y + height + 0.05, z, radius: 0.045, height: 0.24, segments: 8,
+    mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  b.cylinder({ x: x - radius * 0.40, y: y + height + 0.27, z, radius: 0.075, height: 0.045, segments: 8,
+    mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+
+  // 給水管とオーバーフロー管（タンクの脇を通って下へ）
+  for (const [ang, r] of [[0.5, 0.038], [2.4, 0.028]]) {
+    const px = x + Math.cos(ang) * radius * 1.10, pz = z + Math.sin(ang) * radius * 1.10;
+    b.cylinder({ x: px, y: y - legs, z: pz, radius: r, height: height + legs * 0.9, segments: 8,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    // タンクへ入る取り合い
+    b.box({ x: (px + x) / 2, y: y + height * 0.82, z: (pz + z) / 2,
+      w: r * 2.4, h: r * 2.4, d: radius * 0.30, yaw: -ang + Math.PI / 2,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  }
+
+  // 架台（脚と、脚をつなぐ振れ止め）
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + 0.78;
-    b.cylinder({
-      x: x + Math.cos(a) * radius * 0.75, y: y - 0.5, z: z + Math.sin(a) * radius * 0.75,
-      radius: 0.05, height: 0.52, segments: 6, mat: 'rustedMetal', surface: SURFACE.METAL, collide: false,
-    });
+    const px = x + Math.cos(a) * radius * 0.75, pz = z + Math.sin(a) * radius * 0.75;
+    b.box({ x: px, y: y - legs / 2, z: pz, w: 0.075, h: legs, d: 0.075, yaw: -a,
+      mat: 'rustedMetal', surface: SURFACE.METAL, collide: false });
+    b.box({ x: px, y: y - legs - 0.015, z: pz, w: 0.17, h: 0.030, d: 0.17, yaw: -a,
+      mat: 'rustedMetal', surface: SURFACE.METAL, collide: false });
   }
+  for (let i = 0; i < 4; i++) {
+    const a0 = (i / 4) * Math.PI * 2 + 0.78, a1 = ((i + 1) / 4) * Math.PI * 2 + 0.78;
+    const x0 = x + Math.cos(a0) * radius * 0.75, z0 = z + Math.sin(a0) * radius * 0.75;
+    const x1 = x + Math.cos(a1) * radius * 0.75, z1 = z + Math.sin(a1) * radius * 0.75;
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    b.box({ x: (x0 + x1) / 2, y: y - legs * 0.35, z: (z0 + z1) / 2,
+      w: 0.035, h: 0.035, d: len, yaw: Math.atan2(x1 - x0, z1 - z0),
+      mat: 'rustedMetal', surface: SURFACE.METAL, collide: false });
+  }
+
   b.physics.addCylinder(x, y + height / 2, z, radius, height / 2, { surface: SURFACE.METAL, penetration: 0.4 });
   return b;
 }
 
 /** アンテナ / 衛星皿（屋上の情報量を上げる） */
+/**
+ * 屋上のごちゃごちゃ。
+ *
+ * 屋上を屋上らしく見せているのは、大きな 1 個の機器ではなく
+ * 「用途の違う小さな物が雑然と並んでいること」。
+ * 皿・アンテナ・架台・配管・ダクト・室外機を寄せて置く。
+ */
 export function rooftopClutter(b, o) {
   const { x, y, z, yaw = 0 } = o;
-  // パラボラ
-  const dish = new THREE.SphereGeometry(0.42, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.42);
-  b.mesh('plaster', dish, { x, y: y + 0.62, z, rx: -0.9, ry: yaw });
-  b.cylinder({ x, y, z, radius: 0.045, height: 0.62, segments: 8, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
-  // アンテナポール
-  b.cylinder({ x: x + 0.7, y, z: z + 0.3, radius: 0.022, height: 1.9, segments: 6, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
-  for (let i = 0; i < 4; i++) {
-    b.box({
-      x: x + 0.7, y: y + 0.9 + i * 0.24, z: z + 0.3,
-      w: 0.5 - i * 0.08, h: 0.012, d: 0.012, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false,
-    });
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+
+  /* --- 衛星放送のパラボラ（架台に載って傾く） --- */
+  {
+    const [px, pz] = at(-0.15, 0);
+    b.cylinder({ x: px, y, z: pz, radius: 0.055, height: 0.72, segments: 8,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    // 基礎ブロック（屋上は穴を開けないので置き基礎になる）
+    b.box({ x: px, y: y + 0.045, z: pz, w: 0.42, h: 0.09, d: 0.42, yaw,
+      mat: 'concreteRaw', surface: SURFACE.CONCRETE, collide: false });
+    const dish = new THREE.SphereGeometry(0.42, 18, 11, 0, Math.PI * 2, 0, Math.PI * 0.40);
+    b.mesh('applianceWhite', dish, { x: px, y: y + 0.80, z: pz, rx: -1.05, ry: yaw });
+    // リムと、皿の焦点に伸びる支持腕・コンバータ
+    b.mesh('applianceWhite', new THREE.TorusGeometry(0.415, 0.016, 5, 22),
+      { x: px, y: y + 0.80, z: pz, rx: -1.05 + Math.PI / 2, ry: yaw });
+    const [fx, fz] = at(-0.15 + Math.sin(yaw) * 0, 0.34);
+    b.box({ x: fx, y: y + 0.95, z: fz, w: 0.028, h: 0.028, d: 0.36, yaw, rx: 0.5,
+      mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+    b.cylinder({ x: fx, y: y + 1.06, z: fz, radius: 0.038, height: 0.10, segments: 8,
+      mat: 'plasticMatte', surface: SURFACE.METAL, collide: false });
+  }
+
+  /* --- 八木アンテナ（素子が並んだ棒） --- */
+  {
+    const [px, pz] = at(0.78, 0.30);
+    b.cylinder({ x: px, y, z: pz, radius: 0.026, height: 2.3, segments: 6,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    // 支線（3 方向）
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const gx = px + Math.cos(a) * 0.62, gz = pz + Math.sin(a) * 0.62;
+      const len = Math.hypot(0.62, 1.5);
+      b.box({ x: (px + gx) / 2, y: y + 1.55 / 2 + 0.35, z: (pz + gz) / 2,
+        w: 0.010, h: 0.010, d: len, yaw: Math.atan2(gx - px, gz - pz), rx: -Math.atan2(1.5, 0.62),
+        mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+    }
+    // 素子（前に行くほど短い）
+    b.box({ x: px, y: y + 2.0, z: pz, w: 0.020, h: 0.020, d: 1.05, yaw,
+      mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+    for (let i = 0; i < 7; i++) {
+      const [ex, ez] = at(0.78, 0.30 - 0.48 + i * 0.155);
+      b.box({ x: ex, y: y + 2.0, z: ez, w: 0.60 - i * 0.055, h: 0.011, d: 0.011, yaw,
+        mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+    }
+  }
+
+  /* --- 換気ダクトとフード --- */
+  {
+    const [px, pz] = at(-0.95, -0.55);
+    b.box({ x: px, y: y + 0.30, z: pz, w: 0.40, h: 0.60, d: 0.40, yaw,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    // ガラリ（羽根 4 枚）
+    for (let i = 0; i < 4; i++) {
+      const [gx, gz] = at(-0.95, -0.55 + 0.205);
+      b.box({ x: gx, y: y + 0.16 + i * 0.10, z: gz, w: 0.34, h: 0.035, d: 0.045, yaw, rx: 0.5,
+        mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    }
+    // ベントキャップ
+    b.cylinder({ x: px, y: y + 0.60, z: pz, radius: 0.13, height: 0.22, segments: 10,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    b.cylinder({ x: px, y: y + 0.80, z: pz, radius: 0.21, height: 0.045, segments: 10,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  }
+
+  /* --- 這わせた配管（架台の上を通る） --- */
+  {
+    for (let i = 0; i < 3; i++) {
+      const [sx2, sz2] = at(-1.3 + i * 1.2, -1.15);
+      b.box({ x: sx2, y: y + 0.09, z: sz2, w: 0.30, h: 0.18, d: 0.10, yaw,
+        mat: 'concreteRaw', surface: SURFACE.CONCRETE, collide: false });
+    }
+    const [rx2, rz2] = at(0, -1.15);
+    for (const off of [-0.06, 0.06]) {
+      b.box({ x: rx2 + c * 0, y: y + 0.22 + off * 0.6, z: rz2 - s * 0,
+        w: 2.9, h: 0.055, d: 0.055, yaw, mat: 'plasticMatte', surface: SURFACE.METAL, collide: false });
+    }
   }
   return b;
 }
 
 /** ジェリカン */
+/**
+ * 携行缶（20L の NATO 缶）。
+ *
+ * 実寸は 470 × 345 × 165mm。
+ * この缶を一目で「携行缶」と判らせているのは
+ *   ・両面の X 字プレス
+ *   ・並んだ 3 本の提げ手
+ *   ・肩から斜めに出る注ぎ口
+ *   ・上下の巻き締め（半割の缶を溶接した継ぎ目）
+ * の 4 つで、どれが欠けても金属の板になる。
+ */
 export function jerryCan(b, o) {
-  const { x, y = 0, z, yaw = 0 } = o;
-  b.box({ x, y: y + 0.235, z, w: 0.17, h: 0.47, d: 0.34, yaw, mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
-  // 特徴的な X の凹み
-  for (const a of [0.72, -0.72]) {
-    b.box({ x: x + Math.cos(yaw) * 0.088, y: y + 0.24, z: z - Math.sin(yaw) * 0.088, w: 0.012, h: 0.30, d: 0.03, yaw, rz: a, mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+  const { x, y = 0, z, yaw = 0, mat = 'paintedMetal' } = o;
+  const W = 0.165, H = 0.470, D = 0.345;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  /** ローカル (厚み方向, 幅方向) → ワールド */
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+
+  // 胴。上へわずかに絞る
+  b.box({ x, y: y + H * 0.48, z, w: W, h: H * 0.90, d: D, yaw, mat, surface: SURFACE.METAL, collide: false });
+  b.box({ x, y: y + H * 0.945, z, w: W * 0.92, h: H * 0.10, d: D * 0.94, yaw, mat, surface: SURFACE.METAL, collide: false });
+
+  // 中央の溶接継ぎ目（半割の缶を合わせた線）
+  b.box({ x, y: y + H * 0.48, z, w: W * 1.03, h: H * 0.90, d: 0.010, yaw,
+    mat, surface: SURFACE.METAL, collide: false });
+
+  // 両面の X 字プレス。缶がへこまないための補強
+  for (const sx of [-1, 1]) {
+    for (const a of [0.86, -0.86]) {
+      const [px, pz] = at(sx * (W / 2 + 0.004), 0);
+      b.box({ x: px, y: y + H * 0.50, z: pz, w: 0.010, h: 0.030, d: D * 0.86, yaw, rz: 0, rx: a,
+        mat, surface: SURFACE.METAL, collide: false });
+    }
+    // 縁の立ち上がり（X の外側を四角く囲む）
+    for (const sz of [-1, 1]) {
+      const [px, pz] = at(sx * (W / 2 + 0.003), sz * D * 0.42);
+      b.box({ x: px, y: y + H * 0.50, z: pz, w: 0.008, h: H * 0.70, d: 0.022, yaw,
+        mat, surface: SURFACE.METAL, collide: false });
+    }
   }
-  // ハンドル
-  b.box({ x, y: y + 0.49, z, w: 0.16, h: 0.035, d: 0.05, yaw, mat: 'rustedMetal', surface: SURFACE.METAL, collide: false });
-  b.physics.addBox(x, y + 0.235, z, 0.09, 0.235, 0.17, yaw, { surface: SURFACE.METAL, penetration: 0.6 });
+
+  // 上下の巻き締め
+  for (const ly of [0.030, H * 0.90]) {
+    b.box({ x, y: y + ly, z, w: W * 1.05, h: 0.020, d: D * 1.02, yaw, mat, surface: SURFACE.METAL, collide: false });
+  }
+
+  /*
+   * 提げ手 3 本。
+   * 真ん中を持てば 1 人で、両端を持てば 2 人で運べる。
+   * この 3 本並びが缶の顔になる。
+   */
+  for (const lz of [-D * 0.30, 0, D * 0.30]) {
+    const [hx, hz] = at(0, lz);
+    b.box({ x: hx, y: y + H + 0.020, z: hz, w: W * 0.62, h: 0.026, d: 0.052, yaw,
+      mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  }
+  // 提げ手を載せる梁
+  b.box({ x, y: y + H + 0.006, z, w: W * 0.72, h: 0.016, d: D * 0.80, yaw,
+    mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+
+  // 注ぎ口（肩から斜めに出る）とキャップ、通気
+  const [sx2, sz2] = at(0, D * 0.34);
+  b.cylinder({ x: sx2, y: y + H * 0.93, z: sz2, radius: 0.030, height: 0.055, segments: 10,
+    mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  b.cylinder({ x: sx2, y: y + H * 0.955, z: sz2, radius: 0.038, height: 0.028, segments: 10,
+    mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  const [bx2, bz2] = at(0, -D * 0.32);
+  b.cylinder({ x: bx2, y: y + H * 0.95, z: bz2, radius: 0.011, height: 0.020, segments: 8,
+    mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+
+  // 底の脚（4 隅がわずかに出る）
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const [px, pz] = at(sx * W * 0.36, sz * D * 0.42);
+      b.box({ x: px, y: y + 0.006, z: pz, w: W * 0.26, h: 0.012, d: 0.030, yaw,
+        mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+    }
+  }
+
+  b.physics.addBox(x, y + H / 2, z, W / 2 + 0.01, H / 2, D / 2, yaw, { surface: SURFACE.METAL, penetration: 0.6 });
   return b;
 }
 
 /** 散らばった小物（薬莢・紙・小石）を一括配置して密度を上げる */
+/**
+ * 散らばった小物。
+ *
+ * 以前は厚さ 4mm の板を撒いていたため、真上から見ないと存在が判らず、
+ * 一覧で撮ると「何も無い」写真になっていた。
+ * 実際に地面を汚しているのは、潰れた缶・ペットボトル・
+ * ちぎれた袋・落ち葉・砂利といった「立体」なので、
+ * 高さのある形にして、寄り集まるように撒く。
+ */
 export function litter(b, o) {
-  const { x, z, radius = 3.0, count = 22, y = 0.012 } = o;
+  const { x, z, radius = 3.0, count = 22, y = 0.0 } = o;
+  /*
+   * 一様に撒くと均等に見えて不自然。
+   * 風で吹き寄せられるので、いくつかの溜まりへ偏らせる。
+   */
+  const pockets = Math.max(1, Math.round(count / 6));
+  const centres = [];
+  for (let i = 0; i < pockets; i++) {
+    const a = R(0, Math.PI * 2), r = Math.sqrt(Math.random()) * radius * 0.8;
+    centres.push([x + Math.cos(a) * r, z + Math.sin(a) * r]);
+  }
+
   for (let i = 0; i < count; i++) {
+    const [cx2, cz2] = PICK(centres);
     const a = R(0, Math.PI * 2);
-    const r = Math.sqrt(Math.random()) * radius;
+    const r = Math.abs(R(-1, 1)) * radius * 0.45;
+    const px = cx2 + Math.cos(a) * r, pz = cz2 + Math.sin(a) * r;
     const kind = Math.random();
-    const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
-    if (kind < 0.45) {
-      b.box({ x: px, y, z: pz, w: R(0.06, 0.16), h: 0.004, d: R(0.06, 0.14), yaw: R(0, 3.14), mat: 'cardboard', surface: SURFACE.CONCRETE, collide: false });
-    } else if (kind < 0.75) {
-      b.box({ x: px, y, z: pz, w: R(0.04, 0.10), h: R(0.02, 0.05), d: R(0.04, 0.10), yaw: R(0, 3.14), mat: 'rock', surface: SURFACE.GRAVEL, collide: false });
+    const yaw = R(0, 3.14);
+
+    if (kind < 0.20) {
+      // 潰れた空き缶（横倒しの短い円柱）
+      const g = new THREE.CylinderGeometry(0.033, 0.031, R(0.09, 0.12), 9);
+      g.rotateZ(Math.PI / 2);
+      b.mesh(PICK(['brushedMetal', 'paintedMetal']), g,
+        { ry: yaw, rz: R(-0.15, 0.15), x: px, y: y + 0.032, z: pz });
+    } else if (kind < 0.36) {
+      // ペットボトル（胴・肩・キャップ）
+      const h = R(0.16, 0.21);
+      const g = new THREE.CylinderGeometry(0.034, 0.034, h, 9);
+      g.rotateZ(Math.PI / 2);
+      b.mesh('acrylic', g, { ry: yaw, x: px, y: y + 0.034, z: pz });
+      b.cylinder({ x: px + Math.sin(yaw) * (h / 2 + 0.012), y: y + 0.022, z: pz + Math.cos(yaw) * (h / 2 + 0.012),
+        radius: 0.017, height: 0.024, segments: 8, mat: 'plasticGlossRed', surface: SURFACE.CONCRETE, collide: false });
+    } else if (kind < 0.52) {
+      // ちぎれた袋・紙（くしゃっと折れた 2 枚）
+      for (let k = 0; k < 2; k++) {
+        b.box({ x: px + R(-0.04, 0.04), y: y + 0.008 + k * 0.010, z: pz + R(-0.04, 0.04),
+          w: R(0.07, 0.15), h: 0.006, d: R(0.06, 0.13), yaw: R(0, 3.14), rz: R(-0.4, 0.4), rx: R(-0.4, 0.4),
+          mat: PICK(['paperPrint', 'cardboard', 'plasticMatte']), surface: SURFACE.CONCRETE, collide: false });
+      }
+    } else if (kind < 0.72) {
+      // 落ち葉
+      b.box({ x: px, y: y + 0.006, z: pz, w: R(0.05, 0.10), h: 0.004, d: R(0.03, 0.07),
+        yaw, rz: R(-0.25, 0.25), mat: 'leafCardDry', surface: SURFACE.CONCRETE, collide: false });
+    } else if (kind < 0.90) {
+      // 小石
+      b.box({ x: px, y: y + 0.018, z: pz, w: R(0.04, 0.09), h: R(0.025, 0.05), d: R(0.04, 0.09),
+        yaw, rz: R(-0.3, 0.3), mat: PICK(['rock', 'concreteRaw']), surface: SURFACE.GRAVEL, collide: false });
     } else {
-      b.box({ x: px, y: y + 0.004, z: pz, w: 0.010, h: 0.010, d: 0.038, yaw: R(0, 3.14), mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+      // 薬莢
+      const g = new THREE.CylinderGeometry(0.0055, 0.0050, 0.039, 7);
+      g.rotateZ(Math.PI / 2);
+      b.mesh('brassPolished', g, { ry: yaw, x: px, y: y + 0.0055, z: pz });
     }
   }
   return b;
@@ -648,12 +1484,49 @@ export function scaffold(b, o) {
   const tz = (lx, lz) => z - s * lx + c * lz;
   const bays = Math.max(1, Math.round(length / 1.8));
 
+  const topY = levels * levelH + 1.1;
   for (let i = 0; i <= bays; i++) {
     const lz = -length / 2 + (length / bays) * i;
     for (const lx of [-depth / 2, depth / 2]) {
       b.cylinder({
         x: tx(lx, lz), y, z: tz(lx, lz),
-        radius: 0.024, height: levels * levelH + 1.1, segments: 8,
+        radius: 0.024, height: topY, segments: 8,
+        mat: 'galvanized', surface: SURFACE.METAL, collide: false,
+      });
+      // ジャッキベース（支柱が地面に刺さって見えるのを防ぐ）
+      b.box({ x: tx(lx, lz), y: y + 0.012, z: tz(lx, lz), w: 0.14, h: 0.024, d: 0.14, yaw,
+        mat: 'rustedMetal', surface: SURFACE.METAL, collide: false });
+      // クランプ（各段で横材をくわえる金具）
+      for (let L = 1; L <= levels; L++) {
+        b.cylinder({ x: tx(lx, lz), y: y + L * levelH - 0.05, z: tz(lx, lz),
+          radius: 0.042, height: 0.10, segments: 8,
+          mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+      }
+    }
+    // 妻側のつなぎ（前後の支柱を結ぶ）
+    for (let L = 1; L <= levels; L++) {
+      b.box({ x: tx(0, lz), y: y + L * levelH - 0.05, z: tz(0, lz),
+        w: depth, h: 0.048, d: 0.048, yaw, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    }
+  }
+
+  /*
+   * 筋交い。
+   * これが無い足場は、風で倒れる格子でしかなく、
+   * 見た目にも「組んである」感じが出ない。
+   * 一つ飛ばしのスパンに、外側だけ斜材を入れる。
+   */
+  for (let i = 0; i < bays; i += 2) {
+    const z0 = -length / 2 + (length / bays) * i;
+    const z1 = -length / 2 + (length / bays) * (i + 1);
+    const span = z1 - z0;
+    for (let L = 0; L < levels; L++) {
+      const y0 = y + L * levelH + 0.1, y1 = y + (L + 1) * levelH - 0.1;
+      const dy = y1 - y0;
+      const len = Math.hypot(span, dy);
+      b.box({
+        x: tx(depth / 2 + 0.03, (z0 + z1) / 2), y: (y0 + y1) / 2, z: tz(depth / 2 + 0.03, (z0 + z1) / 2),
+        w: 0.038, h: 0.038, d: len, yaw, rx: -Math.atan2(dy, span),
         mat: 'galvanized', surface: SURFACE.METAL, collide: false,
       });
     }
@@ -661,10 +1534,25 @@ export function scaffold(b, o) {
 
   for (let L = 1; L <= levels; L++) {
     const ly = y + L * levelH;
-    b.box({
-      x: tx(0, 0), y: ly, z: tz(0, 0),
-      w: depth, h: 0.05, d: length, yaw, mat: 'scaffoldPlank', surface: SURFACE.WOOD,
-    });
+    /*
+     * 踏板。
+     * 1 枚の板で表すと、のっぺりした床になってしまう。
+     * 実際は幅 24cm の足場板を並べたもので、
+     * 板と板の隙間から下が見えるのが特徴。
+     */
+    const PW = 0.24;
+    const planks = Math.max(1, Math.floor(depth / (PW + 0.02)));
+    for (let k = 0; k < planks; k++) {
+      const lx = -depth / 2 + (depth / planks) * (k + 0.5);
+      b.box({
+        x: tx(lx, 0), y: ly, z: tz(lx, 0),
+        w: PW, h: 0.045, d: length * 0.995, yaw,
+        mat: 'scaffoldPlank', surface: SURFACE.WOOD, collide: false,
+      });
+    }
+    // 乗れる床としての判定は 1 枚でまとめる
+    b.physics.addBox(tx(0, 0), ly, tz(0, 0), depth / 2, 0.025, length / 2, yaw,
+      { surface: SURFACE.WOOD, penetration: 0.5 });
     for (const hy of [0.5, 1.0]) {
       b.box({
         x: tx(depth / 2, 0), y: ly + hy, z: tz(depth / 2, 0),
@@ -750,18 +1638,56 @@ export function blockPallet(b, o) {
 /** 砂・砕石の山（登れる） */
 export function aggregatePile(b, o) {
   const { x, y = 0, z, radius = 2.2, height = 1.3, mat = 'gravel' } = o;
-  const geo = new THREE.ConeGeometry(radius, height, 14, 1);
+  /*
+   * 円錐をわずかに揺らしただけでは、砂利の山ではなく
+   * 「灰色のコーン」にしかならない（実際そう見えていた）。
+   *
+   * 山らしさは 3 つで決まる。
+   *   ・安息角までしか積めないので、裾が広く頂が丸い
+   *   ・重機で足された跡が筋になって残る
+   *   ・裾に粒が転げ落ちて散らばる
+   * 面数を増やして輪郭を崩し、裾に実際の石を置く。
+   */
+  const RS = 26, HS = 7;
+  const geo = new THREE.ConeGeometry(radius, height, RS, HS);
   const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
-    const px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i);
-    if (py < height / 2 - 0.01) {
-      pos.setX(i, px * R(0.92, 1.08));
-      pos.setZ(i, pz * R(0.92, 1.08));
+    v.fromBufferAttribute(pos, i);
+    // 0 = 頂点, 1 = 裾
+    const t = 0.5 - v.y / height;
+    if (t > 0.02) {
+      const a = Math.atan2(v.z, v.x);
+      // 大きなうねり（積んだ跡）＋ 中くらいの凹凸 ＋ 粒
+      const lump = Math.sin(a * 3.1 + t * 5.2) * 0.055
+                 + Math.sin(a * 5.7 - t * 3.1) * 0.035
+                 + Math.sin(a * 11.3 + t * 9.4) * 0.018;
+      // 頂は丸く、裾は広く（安息角のカーブ）
+      const shape = Math.pow(t, 0.78);
+      const r = radius * shape * (1 + lump);
+      pos.setX(i, Math.cos(a) * r);
+      pos.setZ(i, Math.sin(a) * r);
+      pos.setY(i, v.y + Math.sin(a * 7.3 + t * 13) * height * 0.022);
+    } else {
+      // 頂点は 1 点に尖らせない
+      pos.setY(i, v.y - height * 0.06);
     }
-    pos.setY(i, py + R(-0.04, 0.04));
   }
   geo.computeVertexNormals();
   b.mesh(mat, geo, { x, y: y + height / 2, z });
+
+  // 裾に転げ落ちた粒
+  const stones = Math.round(radius * 9);
+  for (let i = 0; i < stones; i++) {
+    const a = R(0, Math.PI * 2);
+    const r = radius * R(0.88, 1.28);
+    const s = R(0.035, 0.10) * (radius / 2.2);
+    b.box({
+      x: x + Math.cos(a) * r, y: y + s * 0.35, z: z + Math.sin(a) * r,
+      w: s, h: s * R(0.5, 0.9), d: s * R(0.7, 1.2), yaw: R(0, 3.14), rz: R(-0.4, 0.4),
+      mat, surface: SURFACE.GRAVEL, collide: false,
+    });
+  }
   /*
    * 山なので登れる。段状の判定で近似する。
    *
@@ -894,7 +1820,7 @@ export function desk(b, o) {
 
 /** 事務椅子（座面・背もたれ・ガスシリンダ・5 本脚とキャスタ） */
 export function officeChair(b, o) {
-  const { x, y = 0, z, yaw = 0, mat = 'fabric' } = o;
+  const { x, y = 0, z, yaw = 0, mat = 'upholsteryBlue' } = o;
   const seatY = y + 0.45;
   // 座面（前縁を落として、板ではなくクッションに見せる）
   b.box({ x, y: seatY, z, w: 0.46, h: 0.07, d: 0.44, yaw, mat, surface: SURFACE.FABRIC, collide: false });
@@ -989,7 +1915,7 @@ export function lockerBank(b, o) {
 
 /** ソファ（座面・背・肘掛け・脚。クッションの割れ目まで） */
 export function sofa(b, o) {
-  const { x, y = 0, z, yaw = 0, seats = 3, mat = 'fabric' } = o;
+  const { x, y = 0, z, yaw = 0, seats = 3, mat = 'upholstery' } = o;
   const sw = 0.62, w = sw * seats + 0.3, d = 0.86;
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
@@ -1026,7 +1952,7 @@ export function sofa(b, o) {
 
 /** 食卓（天板・幕板・4 本脚） */
 export function diningTable(b, o) {
-  const { x, y = 0, z, yaw = 0, w = 1.5, d = 0.85, h = 0.72, mat = 'woodFloorDark' } = o;
+  const { x, y = 0, z, yaw = 0, w = 1.5, d = 0.85, h = 0.72, mat = 'woodFineDark' } = o;
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
   b.box({ x, y: y + h - 0.02, z, w, h: 0.04, d, yaw, mat, surface: SURFACE.WOOD, collide: false });
@@ -1043,7 +1969,7 @@ export function diningTable(b, o) {
 
 /** 木の椅子（座面・背もたれの桟・4 本脚・貫） */
 export function woodChair(b, o) {
-  const { x, y = 0, z, yaw = 0, mat = 'wood' } = o;
+  const { x, y = 0, z, yaw = 0, mat = 'woodFine' } = o;
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
   const sh = 0.45;
@@ -1074,7 +2000,7 @@ export function woodChair(b, o) {
 
 /** ベッド（フレーム・マットレス・掛け布団・枕） */
 export function bed(b, o) {
-  const { x, y = 0, z, yaw = 0, w = 1.0, d = 2.0, mat = 'fabric' } = o;
+  const { x, y = 0, z, yaw = 0, w = 1.0, d = 2.0, mat = 'bedding' } = o;
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
   // フレーム
@@ -1098,7 +2024,7 @@ export function bed(b, o) {
 
 /** 洋服だんす／収納棚（両開きの扉・取っ手・台輪） */
 export function wardrobe(b, o) {
-  const { x, y = 0, z, yaw = 0, w = 1.1, d = 0.58, h = 1.9, mat = 'woodFloor' } = o;
+  const { x, y = 0, z, yaw = 0, w = 1.1, d = 0.58, h = 1.9, mat = 'melamine' } = o;
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
   b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat, surface: SURFACE.WOOD, collide: false });
@@ -1118,7 +2044,7 @@ export function wardrobe(b, o) {
 
 /** 冷蔵庫（本体・上下の扉・ハンドル・放熱の隙間） */
 export function fridge(b, o) {
-  const { x, y = 0, z, yaw = 0, w = 0.6, d = 0.65, h = 1.75, mat = 'stainless' } = o;
+  const { x, y = 0, z, yaw = 0, w = 0.6, d = 0.65, h = 1.75, mat = 'applianceWhite' } = o;
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
   b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat, surface: SURFACE.METAL, collide: false });
@@ -1140,13 +2066,48 @@ export function kitchenUnit(b, o) {
   const { x, y = 0, z, yaw = 0, w = 1.8, d = 0.62, h = 0.85 } = o;
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
-  b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat: 'plasticMatte', surface: SURFACE.WOOD, collide: false });
+  b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat: 'melaminePale', surface: SURFACE.WOOD, collide: false });
   // ステンレスの天板
-  b.box({ x, y: y + h + 0.02, z, w: w + 0.03, h: 0.04, d: d + 0.03, yaw, mat: 'stainless', surface: SURFACE.METAL, collide: false });
-  // シンク（縁を残して窪ませる）
+  // 天板はシンクの右側だけ（左半分は下のシンク回りで作る）
+  b.box({ x: at(w / 4, 0)[0], y: y + h + 0.02, z: at(w / 4, 0)[1],
+    w: w / 2 + 0.015, h: 0.04, d: d + 0.03, yaw, mat: 'stainless', surface: SURFACE.METAL, collide: false });
+  // 立ち上がり（壁との取り合い）
+  b.box({ x: at(0, -d / 2 - 0.005)[0], y: y + h + 0.075, z: at(0, -d / 2 - 0.005)[1],
+    w: w + 0.03, h: 0.11, d: 0.025, yaw, mat: 'stainless', surface: SURFACE.METAL, collide: false });
+  /*
+   * シンク。
+   *
+   * 以前は天板の上に箱を 2 つ載せていたため、
+   * 窪みではなく「天板に置かれた台」になっていた。
+   * 槽は天板より下に無ければならない。
+   * 天板を槽のまわりの 4 枚に分けて、真ん中を開ける。
+   */
   const [sx2, sz2] = at(-w / 4, 0);
-  b.box({ x: sx2, y: y + h - 0.10, z: sz2, w: 0.46, h: 0.2, d: 0.38, yaw, mat: 'stainless', surface: SURFACE.METAL, collide: false });
-  b.box({ x: sx2, y: y + h - 0.02, z: sz2, w: 0.40, h: 0.05, d: 0.32, yaw, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  const BW = 0.46, BD = 0.38, BH = 0.19;
+  // 槽の内壁 4 枚と底
+  for (const sgn of [-1, 1]) {
+    const [wx2, wz2] = at(-w / 4 + sgn * (BW / 2 - 0.012), 0);
+    b.box({ x: wx2, y: y + h - BH / 2, z: wz2, w: 0.024, h: BH, d: BD, yaw,
+      mat: 'stainless', surface: SURFACE.METAL, collide: false });
+    const [dx2, dz2] = at(-w / 4, sgn * (BD / 2 - 0.012));
+    b.box({ x: dx2, y: y + h - BH / 2, z: dz2, w: BW, h: BH, d: 0.024, yaw,
+      mat: 'stainless', surface: SURFACE.METAL, collide: false });
+  }
+  b.box({ x: sx2, y: y + h - BH, z: sz2, w: BW, h: 0.024, d: BD, yaw,
+    mat: 'stainless', surface: SURFACE.METAL, collide: false });
+  // 排水口
+  b.cylinder({ x: sx2, y: y + h - BH + 0.012, z: sz2, radius: 0.055, height: 0.012, segments: 12,
+    mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  // 槽のまわりだけ天板を残す（中央は開ける）
+  const railW = (w - BW) / 2;
+  for (const sgn of [-1, 1]) {
+    const [tx2, tz2] = at(-w / 4 + sgn * (BW / 2 + railW / 2), 0);
+    b.box({ x: tx2, y: y + h + 0.02, z: tz2, w: railW, h: 0.04, d: d + 0.03, yaw,
+      mat: 'stainless', surface: SURFACE.METAL, collide: false });
+    const [ty2, tz3] = at(-w / 4, sgn * (BD / 2 + (d - BD) / 4));
+    b.box({ x: ty2, y: y + h + 0.02, z: tz3, w: BW, h: 0.04, d: (d + 0.03 - BD) / 2, yaw,
+      mat: 'stainless', surface: SURFACE.METAL, collide: false });
+  }
   // 水栓
   const [tx, tz] = at(-w / 4, -d / 2 + 0.10);
   b.cylinder({ x: tx, y: y + h + 0.04, z: tz, radius: 0.022, height: 0.26, segments: 10, mat: 'chrome', surface: SURFACE.METAL, collide: false });
@@ -1155,7 +2116,7 @@ export function kitchenUnit(b, o) {
   for (let i = 0; i < 3; i++) {
     const lx = -w / 2 + w / 3 * (i + 0.5);
     const [dx, dz] = at(lx, d / 2 + 0.012);
-    b.box({ x: dx, y: y + h * 0.48, z: dz, w: w / 3 - 0.03, h: h - 0.18, d: 0.02, yaw, mat: 'plasticMatte', surface: SURFACE.WOOD, collide: false });
+    b.box({ x: dx, y: y + h * 0.48, z: dz, w: w / 3 - 0.03, h: h - 0.18, d: 0.02, yaw, mat: 'melaminePale', surface: SURFACE.WOOD, collide: false });
     const [gx, gz] = at(lx, d / 2 + 0.03);
     b.box({ x: gx, y: y + h - 0.16, z: gz, w: w / 3 * 0.5, h: 0.02, d: 0.025, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
   }
@@ -1169,8 +2130,8 @@ export function tvSet(b, o) {
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
   // 台
-  b.box({ x, y: y + 0.22, z, w, h: 0.44, d: 0.40, yaw, mat: 'woodFloorDark', surface: SURFACE.WOOD, collide: false });
-  b.box({ x, y: y + 0.45, z, w: w + 0.04, h: 0.03, d: 0.44, yaw, mat: 'woodFloorDark', surface: SURFACE.WOOD, collide: false });
+  b.box({ x, y: y + 0.22, z, w, h: 0.44, d: 0.40, yaw, mat: 'melamineDark', surface: SURFACE.WOOD, collide: false });
+  b.box({ x, y: y + 0.45, z, w: w + 0.04, h: 0.03, d: 0.44, yaw, mat: 'melamineDark', surface: SURFACE.WOOD, collide: false });
   // スタンド
   b.box({ x, y: y + 0.51, z, w: 0.3, h: 0.09, d: 0.16, yaw, mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
   // 画面（枠 + 黒い面）
@@ -1183,7 +2144,7 @@ export function tvSet(b, o) {
 
 /** 本棚（側板・棚板・並んだ本） */
 export function bookshelf(b, o) {
-  const { x, y = 0, z, yaw = 0, w = 0.9, d = 0.30, h = 1.85, tiers = 5, mat = 'woodFloor' } = o;
+  const { x, y = 0, z, yaw = 0, w = 0.9, d = 0.30, h = 1.85, tiers = 5, mat = 'melaminePale' } = o;
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
   for (const sx of [-1, 1]) {
@@ -1246,13 +2207,13 @@ export function bench(b, o) {
 
 /** 受付・売店のカウンター */
 export function counter(b, o) {
-  const { x, y = 0, z, yaw = 0, w = 2.4, d = 0.7, h = 1.05, mat = 'woodFloorDark' } = o;
+  const { x, y = 0, z, yaw = 0, w = 2.4, d = 0.7, h = 1.05, mat = 'melamineDark', top = 'laminateGrey' } = o;
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
   b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat, surface: SURFACE.WOOD });
   // 天板（前へ張り出す）
   const [tx, tz] = at(0, 0.06);
-  b.box({ x: tx, y: y + h + 0.02, z: tz, w: w + 0.1, h: 0.05, d: d + 0.16, yaw, mat: 'marbleDark', surface: SURFACE.CONCRETE, collide: false });
+  b.box({ x: tx, y: y + h + 0.02, z: tz, w: w + 0.1, h: 0.05, d: d + 0.16, yaw, mat: top, surface: SURFACE.CONCRETE, collide: false });
   // 幕板の見切り
   const [ax, az] = at(0, d / 2 + 0.012);
   b.box({ x: ax, y: y + h - 0.14, z: az, w: w - 0.06, h: 0.03, d: 0.02, yaw, mat: 'brassPolished', surface: SURFACE.METAL, collide: false });
@@ -1266,31 +2227,112 @@ export function potPlant(b, o) {
   b.cylinder({ x, y, z, radius: 0.20, height: 0.30, segments: 12, mat: 'ceramicTile', surface: SURFACE.CONCRETE, collide: false });
   b.cylinder({ x, y: y + 0.30, z, radius: 0.215, height: 0.04, segments: 12, mat: 'ceramicTile', surface: SURFACE.CONCRETE, collide: false });
   b.cylinder({ x, y: y + 0.28, z, radius: 0.18, height: 0.04, segments: 12, mat: 'mud', surface: SURFACE.DIRT, collide: false });
-  // 幹
-  b.cylinder({ x, y: y + 0.30, z, radius: 0.028, height: height * 0.45, segments: 6, mat: 'bark', surface: SURFACE.WOOD, collide: false });
-  // 葉（板を放射状に）
-  const n = 9;
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + R(-0.2, 0.2);
-    const r = R(0.16, 0.34);
-    const ly = y + 0.30 + height * R(0.35, 0.95);
+  /*
+   * 幹。
+   * 1 本の棒だと造花に見えるので、根元から数本に分かれさせる。
+   */
+  b.cylinder({ x, y: y + 0.28, z, radius: 0.030, height: height * 0.34, segments: 6,
+    mat: 'bark', surface: SURFACE.WOOD, collide: false });
+  const stems = 3;
+  for (let i = 0; i < stems; i++) {
+    const a = (i / stems) * Math.PI * 2 + R(-0.3, 0.3);
+    const lean = R(0.10, 0.24);
     b.box({
-      x: x + Math.cos(a) * r * 0.5, y: ly, z: z + Math.sin(a) * r * 0.5,
-      w: r * 1.5, h: 0.012, d: 0.16, yaw: a, rz: R(-0.5, -0.15),
-      mat: 'foliage', surface: SURFACE.FABRIC, collide: false,
+      x: x + Math.cos(a) * height * lean * 0.5, y: y + 0.28 + height * 0.52,
+      z: z + Math.sin(a) * height * lean * 0.5,
+      w: 0.022, h: height * 0.46, d: 0.022,
+      yaw: -a, rz: lean * 1.6, mat: 'bark', surface: SURFACE.WOOD, collide: false,
     });
+  }
+
+  /*
+   * 葉。
+   *
+   * 以前は緑色の薄い箱を放射状に並べていて、
+   * 「割れた緑のガラス」にしか見えなかった。
+   * 抜きのある葉テクスチャを、交差させた 2 枚の板に貼る。
+   * 板の交差は、どの角度から見ても厚みが感じられる古典的な手で、
+   * 1 房あたり 4 面しか使わない。
+   */
+  const leafGeo = new THREE.PlaneGeometry(1, 1);
+  const clusters = 7;
+  for (let i = 0; i < clusters; i++) {
+    const a = (i / clusters) * Math.PI * 2 + R(-0.25, 0.25);
+    const r = R(0.10, 0.26) * (height / 1.1);
+    const ly = y + 0.30 + height * (0.30 + (i / clusters) * 0.62) + R(-0.06, 0.06);
+    const size = R(0.34, 0.52) * (height / 1.1);
+    for (let k = 0; k < 2; k++) {
+      const m = new THREE.Mesh(leafGeo, b.mats.get('leafCard', { repeat: [1, 1] }));
+      m.position.set(x + Math.cos(a) * r, ly, z + Math.sin(a) * r);
+      m.rotation.set(R(-0.35, 0.35), a + k * Math.PI / 2, R(-0.3, 0.3));
+      m.scale.set(size, size, 1);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      b.addExtra(m);
+    }
   }
   b.physics.addCylinder(x, y + 0.16, z, 0.21, 0.16, { surface: SURFACE.CONCRETE, penetration: 0.6 });
   return b;
 }
 
 /** ごみ箱（屋内用） */
+/**
+ * 街路のごみ箱。
+ *
+ * 円筒に平らなフタを載せただけでは紙コップにしか見えない。
+ * 実際に置かれているのは、脚のある枠に丸い受けが載り、
+ * 上に投入口の空いたフタが付いた形。
+ */
 export function trashBin(b, o) {
-  const { x, y = 0, z, mat = 'brushedMetal', height = 0.62 } = o;
-  b.cylinder({ x, y, z, radius: 0.17, height, segments: 14, mat, surface: SURFACE.METAL, collide: false });
-  b.cylinder({ x, y: y + height, z, radius: 0.185, height: 0.03, segments: 14, mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
-  b.cylinder({ x, y: y + height - 0.02, z, radius: 0.145, height: 0.02, segments: 14, mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
-  b.physics.addCylinder(x, y + height / 2, z, 0.18, height / 2, { surface: SURFACE.METAL, penetration: 0.7 });
+  const { x, y = 0, z, yaw = 0, mat = 'galvanized', height = 0.78 } = o;
+  const R0 = 0.185;
+  const legs = 0.10;
+  const bodyH = height - legs - 0.10;
+
+  // 胴（下すぼまり）
+  b.cylinder({ x, y: y + legs, z, radius: R0 * 0.86, height: bodyH * 0.30, segments: 16,
+    mat, surface: SURFACE.METAL, collide: false });
+  b.cylinder({ x, y: y + legs + bodyH * 0.28, z, radius: R0, height: bodyH * 0.74, segments: 16,
+    mat, surface: SURFACE.METAL, collide: false });
+  // 縦のリブ（凹凸が無いと寸胴の筒になる）
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    b.box({ x: x + Math.cos(a) * R0, y: y + legs + bodyH * 0.60, z: z + Math.sin(a) * R0,
+      w: 0.016, h: bodyH * 0.66, d: 0.016, yaw: -a, mat, surface: SURFACE.METAL, collide: false });
+  }
+  // 補強のたが
+  for (const t of [0.30, 0.92]) {
+    b.cylinder({ x, y: y + legs + bodyH * t, z, radius: R0 * 1.035, height: 0.026, segments: 16,
+      mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  }
+
+  // フタ（投入口が開いた笠）
+  const lidY = y + legs + bodyH;
+  b.cylinder({ x, y: lidY, z, radius: R0 * 1.10, height: 0.035, segments: 16,
+    mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  b.cylinder({ x, y: lidY + 0.035, z, radius: R0 * 0.95, height: 0.045, segments: 16,
+    mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  // 投入口（フタの手前を欠いた形。板 3 枚で囲う）
+  for (let i = 0; i < 3; i++) {
+    const a = yaw + Math.PI + (i - 1) * 0.95;
+    b.box({ x: x + Math.sin(a) * R0 * 0.72, y: lidY + 0.075, z: z + Math.cos(a) * R0 * 0.72,
+      w: R0 * 0.95, h: 0.055, d: 0.024, yaw: a, mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  }
+
+  // 中の袋の口が縁からのぞく
+  b.cylinder({ x, y: lidY - 0.055, z, radius: R0 * 0.93, height: 0.06, segments: 14,
+    mat: 'plasticMatte', surface: SURFACE.FABRIC, collide: false });
+
+  // 脚（3 本）と接地の輪
+  for (let i = 0; i < 3; i++) {
+    const a = yaw + (i / 3) * Math.PI * 2;
+    b.box({ x: x + Math.cos(a) * R0 * 0.78, y: y + legs / 2, z: z + Math.sin(a) * R0 * 0.78,
+      w: 0.028, h: legs, d: 0.028, yaw: -a, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  }
+  b.cylinder({ x, y, z, radius: R0 * 0.90, height: 0.020, segments: 14,
+    mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+
+  b.physics.addCylinder(x, y + height / 2, z, R0 + 0.02, height / 2, { surface: SURFACE.METAL, penetration: 0.7 });
   return b;
 }
 

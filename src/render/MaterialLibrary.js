@@ -67,6 +67,34 @@ const PRESETS = {
   ceilingPanel:    { tex: 'ceilingPanel', repeat: 0.42, params: { roughness: 1, metalness: 1 } },
   velvet:          { tex: 'velvet',       repeat: 2.0,  params: { roughness: 1, metalness: 1 } },
   brassPolished:   { tex: 'brassPolished', repeat: 2.5, params: { roughness: 1, metalness: 1 } },
+  /*
+   * 家具まわり。
+   *
+   * これらが無かったため、ソファも寝具も事務椅子も fabric（麻袋・テント地）で、
+   * たんすは woodFloor（無垢のフローリング）で作られていた。
+   * 麻袋の目をした座面、段ボール色のたんす、丸太を組んだ椅子は
+   * いずれも「材質の割り当てを間違えた」のではなく、
+   * 割り当てるべき材質が存在しなかったのが原因。
+   *
+   * woodFine は細い木部（椅子の脚・桟・家具の枠）用。
+   * wood の repeat 0.85 は 1 タイル ≒ 1.18m で床や壁にはちょうどよいが、
+   * 3cm の脚に貼ると木目が 40 倍に引き伸ばされて樹皮の丸太に見える。
+   * 部材の太さに合う密度を別に用意する。
+   */
+  woodFine:        { tex: 'wood',         repeat: 4.2,  params: { roughness: 1, metalness: 1 } },
+  woodFineDark:    { tex: 'wood',         repeat: 4.2,  params: { roughness: 1, metalness: 1, color: 0x8a6a4c }, seed: 909 },
+  upholstery:      { tex: 'upholstery',   repeat: 1.4,  params: { roughness: 1, metalness: 1 } },
+  upholsteryBlue:  { tex: 'upholstery',   repeat: 1.4,  params: { roughness: 1, metalness: 1, color: 0x6f7f96 }, seed: 512 },
+  upholsteryOlive: { tex: 'upholstery',   repeat: 1.4,  params: { roughness: 1, metalness: 1, color: 0x7c7a5e }, seed: 828 },
+  bedding:         { tex: 'bedding',      repeat: 0.75, params: { roughness: 1, metalness: 1 } },
+  beddingBlue:     { tex: 'bedding',      repeat: 0.75, params: { roughness: 1, metalness: 1, color: 0x9aa8bc }, seed: 344 },
+  melamine:        { tex: 'melamine',     repeat: 0.7,  params: { roughness: 1, metalness: 1 } },
+  melaminePale:    { tex: 'melamine',     repeat: 0.7,  params: { roughness: 1, metalness: 1, color: 0xd8cdbc }, seed: 611 },
+  melamineDark:    { tex: 'melamine',     repeat: 0.7,  params: { roughness: 1, metalness: 1, color: 0x7a6450 }, seed: 277 },
+  laminate:        { tex: 'laminate',     repeat: 1.1,  params: { roughness: 1, metalness: 1 } },
+  laminateGrey:    { tex: 'laminate',     repeat: 1.1,  params: { roughness: 1, metalness: 1, color: 0x9ea3a6 }, seed: 155 },
+  applianceWhite:  { tex: 'applianceWhite', repeat: 0.9, params: { roughness: 1, metalness: 1 } },
+  applianceGrey:   { tex: 'applianceWhite', repeat: 0.9, params: { roughness: 1, metalness: 1, color: 0xb8bcc0 }, seed: 733 },
 
   /* ---- 街路・鉄道 ---- */
   // 区画線は下地とは別の板として置く。線幅 15cm に対し 1 タイル 33cm
@@ -144,7 +172,10 @@ const PRESETS = {
   chippedPaint:    { tex: 'chippedPaint', repeat: 1.4,  params: { roughness: 1, metalness: 1 } },
   chippedPaintRed: { tex: 'chippedPaint', repeat: 1.4,  params: { roughness: 1, metalness: 1, color: 0xc2705c }, seed: 686 },
   perforatedMetal: { tex: 'perforatedMetal', repeat: 4.5, params: { roughness: 1, metalness: 1 } },
-  chainlink:       { tex: 'chainlink',    repeat: 1.8,  params: { roughness: 1, metalness: 1 } },
+  // 抜けのある材質。alphaTest で切り抜く（hasAlpha を見て自動で有効になる）
+  chainlink:       { tex: 'chainlink',    repeat: 1.8,  params: { roughness: 1, metalness: 1 }, alphaTest: 0.42 },
+  leafCard:        { tex: 'leafCard',     repeat: 0.9,  params: { roughness: 1, metalness: 1 }, alphaTest: 0.5 },
+  leafCardDry:     { tex: 'leafCard',     repeat: 0.9,  params: { roughness: 1, metalness: 1, color: 0xa89a62 }, seed: 921, alphaTest: 0.5 },
   expandedMetal:   { tex: 'expandedMetal', repeat: 2.4, params: { roughness: 1, metalness: 1 } },
   copperPatina:    { tex: 'copperPatina', repeat: 1.0,  params: { roughness: 1, metalness: 1 } },
   anodized:        { tex: 'anodized',     repeat: 2.0,  params: { roughness: 1, metalness: 1 } },
@@ -471,6 +502,23 @@ export class MaterialLibrary {
       ...p.params,
       ...rest,
     });
+    /*
+     * 抜けのある材質（金網・葉・すだれ）。
+     *
+     * 半透明ではなく alphaTest で切り抜く。
+     * 半透明にすると描画順の並べ替えが必要になり、
+     * 重なった葉や、金網ごしに見える金網が正しく描けない。
+     * 切り抜きなら深度に書き込めるので、その問題が起きない。
+     *
+     * 裏からも見えなければならないので両面にする。法線は
+     * three が背面で自動的に反転してくれる。
+     */
+    if (set.hasAlpha) {
+      mat.alphaTest = p.alphaTest ?? 0.5;
+      mat.side = THREE.DoubleSide;
+      mat.shadowSide = THREE.DoubleSide;
+    }
+
     mat.userData.worldRepeat = p.repeat;
     mat.userData.avgRough = set.avgRough;
     mat.userData.avgMetal = set.avgMetal;

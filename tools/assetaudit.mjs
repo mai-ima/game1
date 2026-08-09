@@ -52,7 +52,7 @@ const ASSETS = [
   ['貯水タンク', 'p', 'waterTank', { y: 0.55 }],
   ['室外機', 'p', 'acUnit', {}],
   ['屋上機器', 'p', 'rooftopClutter', {}],
-  ['看板', 'p', 'sign', { y: 2.2, w: 2.0, h: 0.7, mat: 'plasticGlossRed' }],
+  ['看板', 'p', 'sign', { y: 2.2, w: 2.0, h: 0.7, mat: 'plasticGlossRed', text: '関係者以外立入禁止', sub: 'NO ENTRY', posts: 2 }],
   ['金網フェンス', 'p', 'chainFence', { x1: -3, z1: 0, x2: 3, z2: 0, h: 2.1 }],
   ['手すり', 'p', 'railing', { x1: -3, z1: 0, x2: 3, z2: 0, height: 1.1 }],
   ['配管', 'p', 'pipeRun', { x1: -3, z1: 0, x2: 3, z2: 0, y: 2.4 }],
