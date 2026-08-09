@@ -47,13 +47,15 @@ const info = await page.evaluate(`(() => {
   const bot = g.bots.find((b) => b.alive) || g.bots[0];
   if (!bot) return JSON.stringify({ err: 'ボットがいない' });
   // 撮影しやすい平地へ移す
-  const p = new THREE.Vector3(0, 0.02, 0);
+  // 試作場の空き地（中央広場の塔に隠れない場所）
+  const p = new THREE.Vector3(-50, 0.02, 64);
   bot.char.position.copy(p);
   bot.alive = true; bot.char.alive = true; bot.char.model.visible = true;
   bot.char.setFarLod(false);
   bot.char.yaw = bot.aimYaw = Math.PI;      // カメラ（+Z 側）を向く
   bot.char.pitch = 0;
   window.__AUDIT = { bot };
+  window.__STAGE = { x: p.x, z: p.z };
   // 何を持っているか
   const names = [];
   bot.char.model.traverse((o) => { if (o.isMesh) names.push(o.name || '(無名)'); });
@@ -77,8 +79,8 @@ const camAt = (x, y, z, tx, ty, tz, fov = 42) => `
   const d = window.__DEV, THREE = d.THREE, cam = d.engine.camera;
   d.game.paused = true; d.hud.hide();
   cam.fov = ${fov}; cam.updateProjectionMatrix();
-  cam.position.set(${x},${y},${z});
-  cam.lookAt(new THREE.Vector3(${tx},${ty},${tz}));
+  cam.position.set(${x} + (window.__STAGE?.x ?? 0), ${y}, ${z} + (window.__STAGE?.z ?? 0));
+  cam.lookAt(new THREE.Vector3(${tx} + (window.__STAGE?.x ?? 0), ${ty}, ${tz} + (window.__STAGE?.z ?? 0)));
   cam.updateMatrixWorld();
   d.engine.lightPool.snap(cam.position);
   for (const c of d.engine.viewScene.children) c.visible = false;

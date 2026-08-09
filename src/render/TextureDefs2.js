@@ -790,8 +790,13 @@ export const DEFS2 = {
     o.r = r; o.g = g; o.b = b;
     // 針金の丸みと編みの前後を法線に出す
     o.h = round * 0.6 + over * 0.4;
-    o.rough = clamp01(0.34 + rust * 0.5 + micro * 0.08);
-    o.metal = clamp01(1 - rust * 0.5);
+    /*
+     * 亜鉛メッキの針金は、磨いた金属ではなく白く曇った金属。
+     * 金属度を 1 にしていたため、遠目には鏡の板になり、
+     * 視界を横切る水面のような帯が出ていた。
+     */
+    o.rough = clamp01(0.62 + rust * 0.28 + micro * 0.08);
+    o.metal = clamp01(0.45 - rust * 0.30);
     o.ao = clamp01(0.55 + round * 0.45);
     o.a = wire;
   },

@@ -173,7 +173,13 @@ const PRESETS = {
   chippedPaintRed: { tex: 'chippedPaint', repeat: 1.4,  params: { roughness: 1, metalness: 1, color: 0xc2705c }, seed: 686 },
   perforatedMetal: { tex: 'perforatedMetal', repeat: 4.5, params: { roughness: 1, metalness: 1 } },
   // 抜けのある材質。alphaTest で切り抜く（hasAlpha を見て自動で有効になる）
-  chainlink:       { tex: 'chainlink',    repeat: 1.8,  params: { roughness: 1, metalness: 1 }, alphaTest: 0.42 },
+  /*
+   * 金網の alphaTest は低めに置く。
+   * 斜めから見ると 1 画素に何本もの線が入り、ミップの平均 α が
+   * 0.5 のあたりで暴れて虹色にちらつく。閾値を下げると
+   * 「遠くの網はうっすら詰まって見える」側に倒れて落ち着く。
+   */
+  chainlink:       { tex: 'chainlink',    repeat: 1.8,  params: { roughness: 1, metalness: 1 }, alphaTest: 0.50 },
   leafCard:        { tex: 'leafCard',     repeat: 0.9,  params: { roughness: 1, metalness: 1 }, alphaTest: 0.5 },
   leafCardDry:     { tex: 'leafCard',     repeat: 0.9,  params: { roughness: 1, metalness: 1, color: 0xa89a62 }, seed: 921, alphaTest: 0.5 },
   expandedMetal:   { tex: 'expandedMetal', repeat: 2.4, params: { roughness: 1, metalness: 1 } },
@@ -517,6 +523,15 @@ export class MaterialLibrary {
       mat.alphaTest = p.alphaTest ?? 0.5;
       mat.side = THREE.DoubleSide;
       mat.shadowSide = THREE.DoubleSide;
+      /*
+       * 異方性フィルタは既定のまま残す。
+       *
+       * 一度 2 まで落としてみたが、これは失敗だった。
+       * 斜めから見た金網の法線が均されて 1 枚の平滑な金属板になり、
+       * 視界を横切る水面のような帯が出てしまった。
+       * ちらつきは「線が細かすぎること」ではなく
+       * 「金属度が高いこと」が主因だったので、そちらを下げてある。
+       */
     }
 
     mat.userData.worldRepeat = p.repeat;

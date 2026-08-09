@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { roundedBox as roundedBoxHi } from '../player/weapons/GunParts.js';
+import { MODEL_BUILDERS } from '../player/weapons/Models.js';
 
 /*
  * 人物向けの分割数。
@@ -49,11 +50,47 @@ function mergeParts(list) {
 }
 
 /**
+ * 三人称の武器。
+ *
+ * ビューモデルの銃をそのまま流用する。
+ * 別に作ると「自分が持っている銃」と「敵が持っている銃」が
+ * 違う形になり、何で撃たれたのかが読めなくなる。
+ * ただしこの距離では光学サイトの中まで見えないので、
+ * 付属品は付けず、影を落とす設定だけ入れ替える。
+ *
+ * @param {object} mats MaterialLibrary
+ * @param {string} model WEAPONS[].model のキー
+ */
+export function buildWorldWeapon(mats, model) {
+  const builder = MODEL_BUILDERS[model] || MODEL_BUILDERS.m4a1;
+  const M = {
+    metal: mats.get('gunMetal', { repeat: [1, 1] }),
+    darkMetal: mats.solid('darkSteel', { color: 0x15171a, roughness: 0.38, metalness: 1.0 }),
+    polymer: mats.get('polymer', { repeat: [1, 1] }),
+    wood: mats.get('woodDark', { repeat: [1, 1] }),
+    accent: mats.solid('brass'),
+    optic: mats.solid('darkSteel', { color: 0x101215, roughness: 0.30, metalness: 0.9 }),
+    lens: mats.solid('darkSteel', { color: 0x1a2a3a, roughness: 0.10, metalness: 0.6 }),
+    default: mats.solid('darkSteel'),
+  };
+  const root = builder().build(M);
+  root.name = 'weapon';
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    o.userData.keepShadow = true;
+  });
+  return root;
+}
+
+/**
  * 兵士モデルを構築する。
  * @param {object} mats {uniform, gear, skin, boot, metal}
  * @param {number} teamColor 陣営色（アクセント）
+ * @param {object} opt {weapon: THREE.Group} 右手に持たせる銃
  */
-export function buildSoldier(mats, teamColor = 0x2f6fb8) {
+export function buildSoldier(mats, teamColor = 0x2f6fb8, opt = {}) {
   const root = new THREE.Group();
   root.name = 'soldier';
 
@@ -397,13 +434,67 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
     // ブーツ
     translated(roundedBox(0.105, 0.095, 0.275, 0.03, 0.012), 0.105, 0.048, 0.035),
     translated(roundedBox(0.105, 0.095, 0.275, 0.03, 0.012), -0.105, 0.048, 0.035),
+    /*
+     * 遠景でも「武装しているか」は判らなければならない。
+     * 詳細モデルの銃は前腕にぶら下がっていて、簡易モデルに
+     * 切り替えた瞬間に消えてしまうので、輪郭だけの銃を持たせる。
+     * 形は問わない。横に張り出した棒があれば、人は銃だと読む。
+     */
+    translated(roundedBox(0.055, 0.075, 0.60, 0.014, 0.006), -0.16, 1.16, 0.16),
+    translated(roundedBox(0.045, 0.13, 0.10, 0.012, 0.005), -0.16, 1.09, 0.31),
   ]), M.gear);
   lod.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.userData.keepShadow = true; } });
   body.add(lod);                       // 詳細モデルと同じ向きの層に置く
   root.userData.lod = lod;
   root.userData.detail = hips;
 
-  root.userData.bones = { hips, spine, chest, neck, head, armL, armR, foreL, foreR, legL, legR, shinL, shinR };
+  /*
+   * 銃。
+   *
+   * これが無かったので、敵は全員が手ぶらのまま撃ってきていた。
+   * FPS では「相手が何を持っているか」が、距離を詰めるか下がるかを
+   * 決める第一の情報なので、これが画面に無いのは成立していない。
+   *
+   * 右の前腕にぶら下げる。前腕は肘から下へ伸びているので、
+   * その先端（手の位置）へ銃の握りが来るように置き、
+   * 銃口が体の前を向くよう倒す。
+   */
+  /*
+   * 銃を吊る座。
+   *
+   * 手にぶら下げるのではなく、胸に付ける。
+   *
+   * 前腕の先へ銃を付けると、腕を動かすたびに銃が振り回され、
+   * 構えたときに銃口が明後日を向く。逆関節を解く仕組み（IK）が
+   * 無いので、腕の角度から銃の位置を決めるのは無理がある。
+   *
+   * 実際、肩付けで構えているあいだ、銃は上半身に対してほぼ固定で、
+   * 動いているのは腕のほう。だから「銃を胸に据えて、腕をそこへ
+   * 添える」と考えたほうが、実物の動きにも近く、破綻もしない。
+   *
+   * 座は YXZ 順にしてある。まず向き（Y）を決め、そのあと
+   * 上下（X）を足す、という順で書けるようにするため。
+   */
+  if (opt.weapon) {
+    const mount = new THREE.Group();
+    mount.name = 'weaponMount';
+    mount.rotation.order = 'YXZ';
+    chest.add(mount);
+    const w = opt.weapon;
+    /*
+     * 銃のローカルは「銃口が -Z、上が +Y」。
+     * 兵士のローカルは正面が +Z なので、座を Y 軸に 180 度回すと
+     * 銃口が正面を向く。以降の姿勢は Character.update が決める。
+     */
+    mount.add(w);
+    root.userData.weapon = w;
+    root.userData.weaponMount = mount;
+  }
+
+  root.userData.bones = {
+    hips, spine, chest, neck, head, armL, armR, foreL, foreR, legL, legR, shinL, shinR,
+    weaponMount: root.userData.weaponMount || null,
+  };
   root.traverse((o) => {
     if (!o.isMesh) return;
     o.castShadow = true;
@@ -500,7 +591,12 @@ export class Character {
     this._aimT = 0;
     this._fireKick = 0;
     this._hitFlash = 0;
+    this._hitFwd = 0;         // 被弾方向（体の前後成分）
+    this._hitSide = 0;        // 同じく左右成分
+    this._hitZone = HIT_ZONE.BODY;
     this._deathT = 0;
+    this._deathKind = 0;      // 倒れ方の種類
+    this._deathFwd = -1;      // 前のめりか仰向けか
     this._breath = Math.random() * 6.28;
 
     // 部位判定用のカプセル（ローカル座標・立ち姿勢基準）
@@ -587,11 +683,46 @@ export class Character {
     return best;
   }
 
-  /** 被弾演出 */
-  onHit() { this._hitFlash = 1; }
+  /**
+   * 被弾演出。
+   *
+   * これまで _hitFlash は代入して減衰させるだけで、どこからも
+   * 参照されていなかった。つまり撃っても敵は何も反応せず、
+   * 手応えが一切無かった。
+   *
+   * 大げさに仰け反らせると、連射のたびに痙攣して滑稽になる。
+   * 撃たれた向きへ上体をわずかに送り、頭を振らせる程度に留める。
+   *
+   * @param {number} dirX  弾が飛んできた向き（ワールド、正規化不要）
+   * @param {number} dirZ
+   * @param {string} zone  当たった部位
+   */
+  onHit(dirX = 0, dirZ = 0, zone = HIT_ZONE.BODY) {
+    this._hitFlash = 1;
+    this._hitZone = zone;
+    // 体の向きに直して「前後」「左右」に分解する
+    const c = Math.cos(this.yaw), s = Math.sin(this.yaw);
+    const len = Math.hypot(dirX, dirZ) || 1;
+    const fx = dirX / len, fz = dirZ / len;
+    this._hitFwd = -(fx * s + fz * c);      // 正 = 前から受けた
+    this._hitSide = fx * c - fz * s;
+  }
 
   /** 発砲演出 */
   onFire() { this._fireKick = 1; }
+
+  /**
+   * 倒れる。
+   * 最後に受けた被弾の向きと部位から、倒れ方を決める。
+   */
+  die() {
+    if (!this.alive) return;
+    this.alive = false;
+    this._deathT = 0;
+    // 前から撃たれれば仰向け、後ろからなら前のめり
+    this._deathFwd = this._hitFwd > 0 ? -1 : 1;
+    this._deathKind = this._hitZone === HIT_ZONE.HEAD ? 1 : 0;
+  }
 
   /**
    * 姿勢アニメーション。
@@ -606,15 +737,66 @@ export class Character {
 
     if (!this.alive) {
       this._deathT += dt;
-      const t = Math.min(1, this._deathT / 0.85);
+      /*
+       * 倒れ方。
+       *
+       * 以前は「前へ 1.42rad 回して終わり」の一種類しか無く、
+       * どこから撃たれても同じ向きへ、同じ速さで、同じ形に倒れていた。
+       * しかも脚を伸ばしたまま回すので、最後は仰向けで手足が
+       * 突っ張った姿になっていた。
+       *
+       * ラグドールは入れられないが、
+       *   ・撃たれた向きへ倒れる
+       *   ・頭を撃たれたら膝から崩れる
+       *   ・腰・胸・首がそれぞれ違う速さで遅れて追従する
+       * の 3 つを入れるだけで「倒れた」に見える。
+       */
+      const t = Math.min(1, this._deathT / 1.05);
       const e = 1 - Math.pow(1 - t, 3);
-      // 崩れ落ちる
-      this.model.rotation.x = e * 1.42;
-      this.model.position.y = this.position.y + Math.sin(t * Math.PI) * 0.12;
-      B.chest.rotation.x = e * 0.5;
-      B.head.rotation.x = e * 0.6;
-      B.armL.rotation.x = e * -1.1; B.armR.rotation.x = e * -0.9;
-      B.legL.rotation.x = e * 0.35; B.legR.rotation.x = e * 0.15;
+      // 各部位が時間差で追いつく
+      const lag = (d) => 1 - Math.pow(1 - Math.min(1, Math.max(0, (t - d) / (1 - d))), 3);
+      const fwd = this._deathFwd;          // +1 = 前のめり / -1 = 仰向け
+      const kind = this._deathKind;
+
+      if (kind === 1) {
+        /* 頭部被弾。力が抜けて、その場で膝から落ちる */
+        const drop = e;
+        this.model.rotation.x = fwd * drop * 0.95;
+        this.model.rotation.z = this._hitSide * drop * 0.35;
+        this.model.position.y = this.position.y - drop * 0.12;
+        B.hips.position.y = (this.stance ? 0.62 : 0.95) - drop * 0.42;
+        B.legL.rotation.x = drop * 1.5; B.shinL.rotation.x = -drop * 1.9;
+        B.legR.rotation.x = drop * 1.3; B.shinR.rotation.x = -drop * 1.7;
+        B.chest.rotation.x = lag(0.15) * fwd * 0.55;
+        B.head.rotation.x = lag(0.05) * fwd * 0.8;
+        B.armL.rotation.set(lag(0.2) * -0.5, 0, 0.5);
+        B.armR.rotation.set(lag(0.25) * -0.4, 0, -0.5);
+      } else {
+        /* 通常。撃たれた向きへ体ごと倒れる */
+        this.model.rotation.x = fwd * e * 1.48;
+        this.model.rotation.z = this._hitSide * e * 0.55;
+        // 倒れる途中で一度浮いて、着地でわずかに沈む
+        this.model.position.y = this.position.y
+          + Math.sin(t * Math.PI) * 0.10 - Math.max(0, t - 0.85) * 0.20;
+        B.hips.position.y = (this.stance ? 0.62 : 0.95) - e * 0.10;
+        B.chest.rotation.x = lag(0.10) * fwd * -0.45;
+        B.head.rotation.x = lag(0.20) * fwd * -0.55;
+        // 腕は体より遅れて振られる
+        B.armL.rotation.set(lag(0.12) * (fwd > 0 ? -1.25 : 0.75), 0, 0.35 + lag(0.3) * 0.4);
+        B.armR.rotation.set(lag(0.18) * (fwd > 0 ? -1.05 : 0.60), 0, -0.35 - lag(0.3) * 0.4);
+        B.foreL.rotation.set(lag(0.25) * -0.9, 0, 0);
+        B.foreR.rotation.set(lag(0.30) * -0.7, 0, 0);
+        // 脚は畳まれる（伸ばしたままだと棒が転がっているように見える）
+        B.legL.rotation.x = lag(0.05) * (fwd > 0 ? -0.55 : 0.85);
+        B.legR.rotation.x = lag(0.15) * (fwd > 0 ? -0.30 : 0.55);
+        B.shinL.rotation.x = lag(0.2) * (fwd > 0 ? 1.1 : -0.9);
+        B.shinR.rotation.x = lag(0.3) * (fwd > 0 ? 0.8 : -0.7);
+      }
+      // 銃は手から離れる直前まで下がっていく
+      if (B.weaponMount) {
+        B.weaponMount.position.set(-0.205, -0.075 - e * 0.08, 0.135 - e * 0.05);
+        B.weaponMount.rotation.set(0.62 + e * 0.7, Math.PI + 0.42, 0.30 + e * 0.5);
+      }
       return;
     }
 
@@ -644,18 +826,80 @@ export class Character {
     B.chest.rotation.y = swing * 0.05 * runK;
     B.chest.rotation.x = this.stance ? 0.30 : (0.06 + runK * 0.16 - this._aimT * 0.04);
 
-    // 腕：構えると武器を保持する姿勢へ
+    /*
+     * 腕と銃。
+     *
+     * 銃は胸に据えてあるので、まず銃の位置を決め、
+     * 腕はそこへ添える形で角度を作る。
+     *
+     *   下げ（aim=0） … 銃口を斜め下へ。右手だけで提げ、左手は空く
+     *   構え（aim=1） … 右肩に付けて水平。左手をハンドガードへ
+     */
     const aim = this._aimT;
     const armSwing = moving ? -swing * 0.5 * amp * (1 - aim * 0.85) : 0;
-    B.armR.rotation.set(-1.28 * aim + armSwing, 0, -0.20 - 0.16 * aim);
-    B.armL.rotation.set(-1.34 * aim + (-armSwing), 0, 0.20 + 0.42 * aim);
-    B.foreR.rotation.set(-0.30 - 0.32 * aim, 0, 0);
-    B.foreL.rotation.set(-0.30 - 0.85 * aim, 0.42 * aim, 0);
-
-    // 発砲の反動
     const kick = this._fireKick;
+    const lerp = (a, c, t) => a + (c - a) * t;
+
+    if (B.weaponMount) {
+      const m = B.weaponMount;
+      // 右肩の前（モデルのローカルでは -X が右）
+      m.position.set(
+        lerp(-0.205, -0.115, aim),
+        lerp(-0.075, 0.070, aim),
+        lerp(0.135, 0.235, aim)
+      );
+      m.rotation.set(
+        // 構えると視線のピッチに乗る。下げているときは銃口が斜め下
+        lerp(0.62, 0, aim) - this.pitch * (0.35 + 0.55 * aim) + kick * 0.16,
+        Math.PI + lerp(0.42, 0.05, aim),
+        lerp(0.30, 0.02, aim)
+      );
+      // 反動で銃が後ろへ逃げる
+      m.position.z -= kick * 0.045 * (0.4 + aim * 0.6);
+    }
+
+    /*
+     * 腕。
+     * 右は握りへ、左はハンドガードへ届く角度を実測で詰めてある。
+     * 逆関節を解いていないので、値そのものに意味は無い。
+     * 変えるときは必ず画面で確かめること。
+     */
+    /*
+     * 肘は「上腕を X で倒し、前腕をさらに X で折る」だけで作る。
+     * 上腕・前腕とも既定では真下（-Y）を向いているので、
+     * X 回転 t のあとの向きは (0, -cos t, -sin t)。
+     * 握りは胸から見て前 0.23m・上 0.07m あたりに来るので、
+     * 前腕は深く折り込む（合計で -2.4rad 前後）ことになる。
+     */
+    B.armR.rotation.set(lerp(-0.14, -0.34, aim) + armSwing, lerp(0, -0.16, aim), lerp(-0.16, -0.30, aim));
+    B.foreR.rotation.set(lerp(-0.24, -2.05, aim), lerp(0, 0.25, aim), 0);
+    // 支え手は体を横切ってハンドガードへ。ほぼ伸びきる
+    B.armL.rotation.set(lerp(-0.12, -1.28, aim) + (-armSwing), lerp(0, -0.80, aim), lerp(0.16, 0.22, aim));
+    B.foreL.rotation.set(lerp(-0.26, -0.34, aim), lerp(0, -0.25, aim), 0);
+
+    // 発砲の反動（上半身が押し戻される）
     B.chest.rotation.x -= kick * 0.10;
     B.armR.rotation.x += kick * 0.16;
+
+    /*
+     * 被弾の身じろぎ。
+     *
+     * 撃たれた向きへ上体が送られ、頭が振れる。
+     * 大きくすると連射のたびに痙攣して滑稽になるので、
+     * 「当たったことが判る」ぎりぎりまで小さくしてある。
+     * 頭は胴より大きく振れる（首のほうが軽い）。
+     */
+    const hit = this._hitFlash;
+    if (hit > 0.01) {
+      const h = hit * (this._hitZone === HIT_ZONE.HEAD ? 1.6 : 1.0);
+      B.chest.rotation.x += this._hitFwd * h * 0.16;
+      B.chest.rotation.z += this._hitSide * h * 0.12;
+      B.spine.rotation.z += this._hitSide * h * 0.07;
+      B.head.rotation.x += this._hitFwd * h * 0.30;
+      B.head.rotation.y += this._hitSide * h * 0.22;
+      // 銃口が跳ね上がる
+      if (B.weaponMount) B.weaponMount.rotation.x -= h * 0.10;
+    }
 
     // 頭は視線方向へ（ピッチを上半身と頭で配分）
     B.chest.rotation.x += this.pitch * 0.22;

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Character, buildSoldier, soldierMaterials, HIT_ZONE } from './Character.js';
+import { Character, buildSoldier, buildWorldWeapon, soldierMaterials, HIT_ZONE } from './Character.js';
 import { WEAPONS, damageAt, fireInterval } from '../player/weapons/WeaponDefs.js';
 
 /**
@@ -95,7 +95,9 @@ export class Bot {
     this.weapon = WEAPONS[this.weaponId];
 
     const teamColor = this.team === 'A' ? 0x2f6fb8 : 0xb84a2f;
-    const model = buildSoldier(soldierMaterials(ctx.mats, this.id % 3), teamColor);
+    const model = buildSoldier(soldierMaterials(ctx.mats, this.id % 3), teamColor, {
+      weapon: buildWorldWeapon(ctx.mats, this.weapon?.model || 'm4a1'),
+    });
     ctx.scene.add(model);
     this.char = new Character(model);
     // 被弾解決がこのボット本体へ辿り着けるようにする
@@ -218,7 +220,16 @@ export class Bot {
   damage(amount, from, zone = HIT_ZONE.BODY) {
     if (!this.alive) return false;
     this.hp -= amount;
-    this.char.onHit();
+    /*
+     * 撃たれた向きを渡す。
+     * これが無いと、どこから撃たれても同じ方向へ同じ形に倒れる。
+     */
+    const src = from?.position ?? from?.char?.position ?? null;
+    if (src) {
+      this.char.onHit(this.char.position.x - src.x, this.char.position.z - src.z, zone);
+    } else {
+      this.char.onHit(0, 0, zone);
+    }
 
     // 撃たれたら反撃対象にする（背後からでも気づく）
     if (from && !this.targetEnemy) {
@@ -240,8 +251,8 @@ export class Bot {
     this.hp = 0;
     this.deaths++;
     this.state = BOT_STATE.DEAD;
-    this.char.alive = false;
-    this.char._deathT = 0;
+    // 倒れ方の決定は Character 側（被弾の向きと部位を見る）
+    this.char.die();
     this.velocity.set(0, 0, 0);
     this.respawnTimer = 0;
   }

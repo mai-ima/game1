@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { WEAPONS, ATTACHMENTS, FIRE_MODE, fireInterval, damageAt } from './weapons/WeaponDefs.js';
 import { MODEL_BUILDERS, ATTACHMENT_BUILDERS } from './weapons/Models.js';
+import { buildHand, handMaterials, HAND_POSE } from './weapons/Hands.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -130,6 +131,12 @@ export class WeaponSystem {
     return this._mats;
   }
 
+  /** 手袋・袖のマテリアル一式 */
+  _handMaterials() {
+    if (!this._handMats) this._handMats = handMaterials(this.mats);
+    return this._handMats;
+  }
+
   /** 指定武器のビューモデルを生成（キャッシュ） */
   _getModel(weaponId) {
     if (this.models.has(weaponId)) return this.models.get(weaponId);
@@ -162,10 +169,42 @@ export class WeaponSystem {
       root.add(attRoot);
     }
 
+    /*
+     * 手を付ける。
+     *
+     * 以前はビューモデルが銃だけで、画面の中で武器が宙に浮いていた。
+     * 一人称視点で常時 3 割を占める要素なので、腕が無いと
+     * リロードも構えも「浮いた物体の平行移動」にしか見えない。
+     *
+     * 手は銃の子にする。こうしておけば、反動・構え・持ち替えの
+     * どの動きも銃と手が必ず一緒に動き、ずれようがない。
+     * 銃と別に動かす必要があるのはリロードの左手だけで、
+     * それは _reloadPose が握り位置を上書きして表現する。
+     */
+    const pose = HAND_POSE[def.model];
+    if (pose) {
+      const hm = this._handMaterials();
+      const hands = {};
+      for (const [key, side, grip] of [['grip', 1, 'pistol'], ['support', -1, 'support']]) {
+        const p = pose[key];
+        const rot = pose[key === 'grip' ? 'gripRot' : 'supportRot'] || [0, 0, 0];
+        const h = buildHand(hm, side, {
+          grip: key === 'support' ? (pose.supportGrip || grip) : grip,
+        });
+        h.position.set(p[0], p[1], p[2]);
+        h.rotation.set(rot[0], rot[1], rot[2]);
+        root.add(h);
+        hands[key] = h;
+      }
+      root.userData.hands = hands;
+      // 支え手の定位置。リロードで動かしたあと、ここへ戻す
+      root.userData.supportHome = new THREE.Vector3(...pose.support);
+    }
+
     // ビューモデルは影を落とさない（自己遮蔽で汚くなるため）
     root.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false; } });
 
-    const entry = { root, anchors, attachments: attList };
+    const entry = { root, anchors, attachments: attList, hands: root.userData.hands || null };
     this.models.set(weaponId, entry);
     return entry;
   }
