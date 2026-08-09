@@ -575,13 +575,29 @@ class MapView extends BaseMode {
   }
 }
 
+/*
+ * 規定得点は、実際の試合を早回しして測った数字から決めてある。
+ *
+ * 以前はチームデスマッチが 75 点だった。10 分の試合を何度も回すと
+ * 合計の撃破は 30〜40、多いほうのチームで 15〜26 点にしかならず、
+ * 規定得点に届くことは一度も無い。つまり必ず時間切れで終わり、
+ * 「先に到達したほうが勝ち」というルール説明が嘘になっていた。
+ *
+ * 押しているチームなら終盤に届き、拮抗すれば時間切れになる、
+ * という水準に置き直した。実測は下の通り。
+ *
+ *   チームデスマッチ 10 分  A22-B9 / A26-B17 / A15-B8 / A3-B3
+ *
+ * ボットの練度や人数を変えれば当然ずれるので、
+ * ここを触るときは tools/simulate.mjs で測り直すこと。
+ */
 export const GAME_MODES = {
   tdm: {
     id: 'tdm',
     name: 'TEAM DEATHMATCH',
     nameJa: 'チームデスマッチ',
     desc: '2チームに分かれて撃ち合う基本ルール。先に規定キル数へ到達したチームの勝利。',
-    cfg: { scoreLimit: 75, timeLimit: 600 },
+    cfg: { scoreLimit: 40, timeLimit: 600 },
     create(game) { return new TeamDeathmatch(game, { ...this.cfg, nameJa: this.nameJa }); },
   },
   ffa: {
@@ -589,7 +605,7 @@ export const GAME_MODES = {
     name: 'FREE FOR ALL',
     nameJa: 'フリーフォーオール',
     desc: '全員が敵。個人技が全て。規定キル数に最初に到達した者が勝つ。',
-    cfg: { scoreLimit: 30, timeLimit: 480 },
+    cfg: { scoreLimit: 18, timeLimit: 480 },
     create(game) { return new FreeForAll(game, { ...this.cfg, nameJa: this.nameJa }); },
   },
   dom: {
@@ -605,7 +621,7 @@ export const GAME_MODES = {
     name: 'KILL CONFIRMED',
     nameJa: 'キルコンファームド',
     desc: '倒しただけでは加点されない。落ちたドッグタグを回収して初めてキルが確定する。',
-    cfg: { scoreLimit: 50, timeLimit: 600 },
+    cfg: { scoreLimit: 30, timeLimit: 600 },
     create(game) { return new KillConfirmed(game, { ...this.cfg, nameJa: this.nameJa }); },
   },
   snd: {

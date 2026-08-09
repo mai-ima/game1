@@ -118,7 +118,7 @@ const out = await page.evaluate(`(async () => {
   const wall = (performance.now() - t0) / 1000;
 
   for (const b of g.bots) S.killsBy[b.name] = b.kills;
-  const sc = g.mode?.snapshot ? g.mode.snapshot() : null;
+  const sc = g.mode?.getScores ? g.mode.getScores() : null;
   return JSON.stringify({
     シミュレート秒: +(S.steps * DT).toFixed(1),
     実時間秒: +wall.toFixed(1),
@@ -132,7 +132,7 @@ const out = await page.evaluate(`(async () => {
     被撃破数: g.bots.reduce((s, b) => s + b.deaths, 0),
     'ボット別 撃破': S.killsBy,
     プレイヤー: g.playerStats ? { 撃破: g.playerStats.kills, 被撃破: g.playerStats.deaths, 体力: Math.round(g.playerStats.hp) } : null,
-    得点: sc?.scores ?? null,
+    得点: sc, 決着: !!g.mode?.over, 勝者: g.mode?.winner ?? null,
     場外: S.offMap,
     推移: S.buckets.map((b2) => b2 && ({
       分: b2.分, 累計撃破: b2.撃破, 累計発射: b2.発射,
