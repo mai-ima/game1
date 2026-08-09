@@ -468,6 +468,91 @@ export function warehouse(b, o) {
       b.box({ x: px, y: y + 0.3 + h / 2, z: pz, w: 0.18, h, d: 0.22, yaw, mat: 'galvanized', surface: SURFACE.METAL });
     }
   }
+
+  /*
+   * ここまでだと、遠目には「青灰色の箱に緩い屋根が載っただけ」で、
+   * 実際そう見えていた。倉庫を倉庫らしくしているのは
+   *   ・外壁を縦に走る胴縁の陰
+   *   ・軒先の樋と、隅を下りる竪樋
+   *   ・妻面の換気ガラリ
+   *   ・搬入口の庇と車止め
+   *   ・基礎の立ち上がり
+   * といった、外側に付いている物の方。
+   */
+
+  // 胴縁（1.2m ごとの縦の見切り）
+  const RIBS = Math.max(2, Math.round(d / 1.2));
+  for (const sx of [-1, 1]) {
+    for (let i = 0; i < RIBS; i++) {
+      const [px, pz] = at(sx * (hw + 0.115), -hd + d * (i + 0.5) / RIBS);
+      b.box({ x: px, y: y + 0.3 + h / 2, z: pz, w: 0.030, h: h - 0.2, d: 0.10, yaw,
+        mat, surface: SURFACE.METAL, collide: false });
+    }
+  }
+
+  // 軒樋（両側）と竪樋（4 隅）
+  for (const sx of [-1, 1]) {
+    const [gx, gz] = at(sx * (hw + 0.22), 0);
+    b.box({ x: gx, y: y + 0.3 + h + 0.06, z: gz, w: 0.14, h: 0.14, d: d + 0.4, yaw,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    for (const sz of [-1, 1]) {
+      const [dx2, dz2] = at(sx * (hw + 0.20), sz * (hd - 0.3));
+      b.cylinder({ x: dx2, y, z: dz2, radius: 0.055, height: h + 0.3, segments: 8,
+        mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+      // 呼び樋の曲がり
+      b.box({ x: dx2, y: y + 0.20, z: dz2, w: 0.11, h: 0.11, d: 0.28, yaw,
+        mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    }
+  }
+
+  // 妻面の換気ガラリ（高い位置に 2 台）
+  for (const sz of [-1, 1]) {
+    for (const lx of [-w * 0.28, w * 0.28]) {
+      const [vx, vz] = at(lx, sz * (hd + 0.12));
+      b.box({ x: vx, y: y + 0.3 + h - 0.75, z: vz, w: 1.0, h: 0.70, d: 0.10, yaw,
+        mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+      for (let i = 0; i < 5; i++) {
+        b.box({ x: vx, y: y + 0.3 + h - 1.02 + i * 0.13, z: vz, w: 0.94, h: 0.045, d: 0.14, yaw, rx: 0.5,
+          mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+      }
+    }
+  }
+
+  // 搬入口の庇と車止め
+  {
+    const [cx2, cz2] = at(0, hd + 0.75);
+    b.box({ x: cx2, y: y + 0.3 + 4.75, z: cz2, w: 6.0, h: 0.14, d: 1.6, yaw, rx: 0.09,
+      mat: 'metalRoof', surface: SURFACE.METAL, collide: false });
+    for (const sx of [-1, 1]) {
+      const [bx2, bz2] = at(sx * 2.7, hd + 1.35);
+      const len = Math.hypot(1.35, 1.1);
+      b.box({ x: bx2, y: y + 0.3 + 4.20, z: bz2, w: 0.075, h: 0.075, d: len, yaw,
+        rx: -Math.atan2(1.1, 1.35), mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    }
+    // 車止め（縁に打った鉄パイプ）
+    for (const sx of [-1, 1]) {
+      const [px, pz] = at(sx * 3.1, hd + 0.35);
+      b.cylinder({ x: px, y, z: pz, radius: 0.065, height: 0.72, segments: 8,
+        mat: 'hazardStripe', surface: SURFACE.METAL, collide: false });
+      b.cylinder({ x: px, y: y + 0.72, z: pz, radius: 0.065, height: 0.055, segments: 8,
+        mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+    }
+    // 荷捌きの床（水勾配のついた土間）
+    b.box({ x: cx2, y: y + 0.015, z: cz2, w: 6.6, h: 0.03, d: 2.2, yaw,
+      mat: 'concreteRaw', surface: SURFACE.CONCRETE, collide: false });
+  }
+
+  // 外壁の下端（基礎の立ち上がりと水切り）
+  for (const sx of [-1, 1]) {
+    const [px, pz] = at(sx * (hw + 0.06), 0);
+    b.box({ x: px, y: y + 0.42, z: pz, w: 0.14, h: 0.24, d: d + 0.3, yaw,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  }
+  for (const sz of [-1, 1]) {
+    const [px, pz] = at(0, sz * (hd + 0.06));
+    b.box({ x: px, y: y + 0.42, z: pz, w: w + 0.3, h: 0.24, d: 0.14, yaw,
+      mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  }
   return b;
 }
 
@@ -521,30 +606,141 @@ export function vendingMachine(b, o) {
   const c = Math.cos(yaw), s = Math.sin(yaw);
   const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
 
-  b.box({ x, y: y + h / 2, z, w, h, d, yaw, mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
-  // 正面のパネル（商品見本の帯）
+  /*
+   * 筐体。
+   *
+   * 前面をそのまま塞ぐと、陳列を作っても本体の面に隠れて見えない。
+   * 実物どおり、正面に奥行き 16cm の窪みを彫る形で組む。
+   * 胴は後ろ寄りに置き、その手前に左右の柱と天板だけを立てる。
+   */
+  const CAVE = 0.17;                       // 窪みの深さ
+  b.box({ x: at(0, -CAVE / 2)[0], y: y + h / 2, z: at(0, -CAVE / 2)[1],
+    w, h, d: d - CAVE, yaw, mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+  // 窪みの左右の柱と、上下の見切り
+  for (const sx of [-1, 1]) {
+    const [px, pz] = at(sx * (w / 2 - 0.035), d / 2 - CAVE / 2);
+    b.box({ x: px, y: y + h / 2, z: pz, w: 0.070, h, d: CAVE, yaw,
+      mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+  }
+  for (const [ly, lh] of [[h - 0.12, 0.24], [0.44, 0.88]]) {
+    const [px, pz] = at(0, d / 2 - CAVE / 2);
+    b.box({ x: px, y: y + ly, z: pz, w, h: lh, d: CAVE, yaw,
+      mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+  }
+
+  /*
+   * 商品見本の窓。
+   *
+   * ここが自販機の顔で、無いと「前面に紙を貼った冷蔵庫」にしかならない。
+   * 実際に見えているのは
+   *   ・上端の光る社名帯
+   *   ・その下の、ガラス越しに並ぶ商品見本
+   *   ・見本を載せる棚板と、値段の札
+   * の 3 層。
+   */
   const [fx, fz] = at(0, d / 2 + 0.012);
-  const panel = b.mats.signboard(name || '飲料', {
-    bg: color, fg: '#ffffff', w: 320, h: 512, vertical: !!name, worn: 0.10,
+
+  // 上端の光る帯
+  const bannerH = 0.24;
+  const banner = b.mats.signboard(name || '飲料', {
+    bg: color, fg: '#ffffff', w: 512, h: 120, worn: 0.08,
   });
-  const geo = new THREE.BoxGeometry(w - 0.06, h * 0.55, 0.02);
-  geo.rotateY(yaw);
-  geo.translate(fx, y + h * 0.66, fz);
-  b.addExtra(new THREE.Mesh(geo, panel));
-  // 取り出し口
-  const [gx, gz] = at(0, d / 2 + 0.02);
-  b.box({ x: gx, y: y + 0.30, z: gz, w: w - 0.22, h: 0.26, d: 0.03, yaw, mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
-  b.box({ x: gx, y: y + 0.46, z: gz, w: w - 0.22, h: 0.05, d: 0.04, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
-  // ボタンの列
+  {
+    const g = new THREE.BoxGeometry(w - 0.05, bannerH, 0.022);
+    g.rotateY(yaw);
+    g.translate(fx, y + h - 0.16, fz);
+    const m = new THREE.Mesh(g, banner);
+    m.userData.signText = name || '飲料';
+    m.userData.signKind = 'label';
+    b.addExtra(m);
+  }
+
+  /* ---- 見本の陳列（棚 2 段 × 5 本） ---- */
+  const winY0 = y + 0.86, winH = h - 0.36 - 0.86;
+  // 奥の内壁（暗い）
+  const [wx, wz] = at(0, d / 2 - CAVE + 0.02);
+  b.box({ x: wx, y: winY0 + winH / 2, z: wz, w: w - 0.10, h: winH, d: 0.03, yaw,
+    mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
   for (let r = 0; r < 2; r++) {
-    for (let i = 0; i < 4; i++) {
-      const [bx, bz] = at(-w / 2 + 0.18 + i * 0.24, d / 2 + 0.025);
-      b.box({ x: bx, y: y + 0.62 + r * 0.11, z: bz, w: 0.16, h: 0.06, d: 0.02, yaw,
-        mat: r ? 'plasticGloss' : 'plasticGlossRed', surface: SURFACE.METAL, collide: false });
+    const sy = winY0 + 0.045 + r * (winH / 2);
+    // 棚板
+    const [shx, shz] = at(0, d / 2 - CAVE * 0.55);
+    b.box({ x: shx, y: sy, z: shz, w: w - 0.12, h: 0.018, d: 0.13, yaw,
+      mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+    // 缶とペットボトルを並べる
+    for (let i = 0; i < 5; i++) {
+      const lx = -w / 2 + 0.14 + i * ((w - 0.28) / 4);
+      const [bx2, bz2] = at(lx, d / 2 - CAVE * 0.55);
+      const tall = (i + r) % 3 === 0;
+      b.cylinder({ x: bx2, y: sy + 0.018, z: bz2,
+        radius: tall ? 0.032 : 0.033, height: tall ? 0.185 : 0.125, segments: 9,
+        mat: tall ? 'acrylic' : (i % 2 ? 'plasticGlossRed' : 'brushedMetal'),
+        surface: SURFACE.METAL, collide: false });
+      // 値段の札
+      b.box({ x: bx2, y: sy - 0.022, z: bz2, w: 0.070, h: 0.028, d: 0.008, yaw,
+        mat: 'paperPrint', surface: SURFACE.METAL, collide: false });
     }
   }
-  // 台輪
-  b.box({ x, y: y + 0.04, z, w: w - 0.06, h: 0.08, d: d - 0.05, yaw, mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  // ガラス（陳列の手前）
+  {
+    const g = new THREE.BoxGeometry(w - 0.10, winH, 0.014);
+    g.rotateY(yaw);
+    g.translate(fx, winY0 + winH / 2, fz);
+    b.addExtra(new THREE.Mesh(g, b.mats.glass({ opacity: 0.30, transmission: 0.9 })));
+  }
+  // 窓の枠
+  for (const sy of [-1, 1]) {
+    b.box({ x: fx, y: winY0 + winH / 2 + sy * (winH / 2 + 0.020), z: fz,
+      w: w - 0.05, h: 0.040, d: 0.030, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+  }
+
+  /* ---- 操作まわり ---- */
+  // ボタンの列（見本の下、それぞれの商品の真下に来るよう 5 個）
+  for (let i = 0; i < 5; i++) {
+    const lx = -w / 2 + 0.14 + i * ((w - 0.28) / 4);
+    const [bx2, bz2] = at(lx, d / 2 + 0.022);
+    b.box({ x: bx2, y: y + 0.80, z: bz2, w: 0.115, h: 0.048, d: 0.024, yaw,
+      mat: i % 2 ? 'plasticGlossRed' : 'plasticGloss', surface: SURFACE.METAL, collide: false });
+  }
+  // 硬貨投入口・紙幣挿入口・返却レバー・釣銭受け
+  const [cx2, cz2] = at(w / 2 - 0.16, d / 2 + 0.020);
+  b.box({ x: cx2, y: y + 0.70, z: cz2, w: 0.055, h: 0.020, d: 0.020, yaw,
+    mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  b.box({ x: cx2, y: y + 0.62, z: cz2, w: 0.100, h: 0.030, d: 0.018, yaw,
+    mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  b.box({ x: cx2, y: y + 0.53, z: cz2, w: 0.035, h: 0.055, d: 0.030, yaw,
+    mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  // 金額表示
+  const [dx2, dz2] = at(-w / 2 + 0.20, d / 2 + 0.020);
+  b.box({ x: dx2, y: y + 0.70, z: dz2, w: 0.150, h: 0.060, d: 0.016, yaw,
+    mat: 'screenPanel', surface: SURFACE.METAL, collide: false });
+
+  // 取り出し口（奥まった箱＋跳ね上げ扉）
+  const [gx, gz] = at(0, d / 2 - 0.02);
+  b.box({ x: gx, y: y + 0.28, z: gz, w: w - 0.24, h: 0.26, d: 0.10, yaw,
+    mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  const [fgx, fgz] = at(0, d / 2 + 0.012);
+  b.box({ x: fgx, y: y + 0.34, z: fgz, w: w - 0.26, h: 0.17, d: 0.020, yaw, rx: -0.32,
+    mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  b.box({ x: fgx, y: y + 0.44, z: fgz, w: w - 0.22, h: 0.035, d: 0.045, yaw,
+    mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+
+  // 台輪とアジャスタ
+  b.box({ x, y: y + 0.05, z, w: w - 0.04, h: 0.10, d: d - 0.04, yaw,
+    mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  for (const sx of [-1, 1]) {
+    const [lx2, lz2] = at(sx * (w / 2 - 0.09), 0);
+    b.cylinder({ x: lx2, y, z: lz2, radius: 0.022, height: 0.035, segments: 6,
+      mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+  }
+  // 側面の通気口
+  for (const sx of [-1, 1]) {
+    const [vx, vz] = at(sx * (w / 2 + 0.004), -d * 0.22);
+    for (let i = 0; i < 5; i++) {
+      b.box({ x: vx, y: y + 0.30 + i * 0.045, z: vz, w: 0.014, h: 0.020, d: 0.22, yaw,
+        mat: 'gunMetal', surface: SURFACE.METAL, collide: false });
+    }
+  }
   b.physics.addBox(x, y + h / 2, z, w / 2, h / 2, d / 2, yaw, { surface: SURFACE.METAL, penetration: 0.25 });
   return b;
 }

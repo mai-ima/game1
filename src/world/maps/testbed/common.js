@@ -161,7 +161,15 @@ export function apron(b, o) {
  */
 export function displayRow(b, items, o) {
   const { x0, z, pitch = 2.6, accent = '#c8783c', yaw = FACE_N, depth = 1.7, height = 0.52 } = o;
-  const front = Math.cos(yaw) < 0 ? 1 : -1;
+  /*
+   * 銘板は「展示物が向いている側」に貼る。そこに見る人が立つ。
+   *
+   * 板の法線も、箱のローカル +Z も、yaw を与えると
+   * (sin yaw, 0, cos yaw) を向く。つまり yaw=0 なら +Z が正面。
+   * 以前はここを逆に取っていたため、資材置き場では
+   * 展示物が通路に背を向け、銘板だけが通路側に貼られていた。
+   */
+  const front = Math.cos(yaw) >= 0 ? 1 : -1;
   for (let i = 0; i < items.length; i++) {
     const [name, place, sub] = items[i];
     const x = x0 + i * pitch;

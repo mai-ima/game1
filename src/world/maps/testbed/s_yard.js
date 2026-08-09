@@ -24,26 +24,26 @@ export function sectionYard(b, cx, cz) {
 
   /* ---- 手前: 整列した見本（台に載せる） ---- */
   displayRow(b, [
-    ['木箱', (x, z, y) => P.woodCrate(b, { x, y, z, yaw: FACE_S + 0.3 })],
-    ['弾薬箱', (x, z, y) => P.ammoCrate(b, { x, y, z, yaw: FACE_S - 0.2 })],
+    ['木箱', (x, z, y) => P.woodCrate(b, { x, y, z, yaw: FACE_N + 0.3 })],
+    ['弾薬箱', (x, z, y) => P.ammoCrate(b, { x, y, z, yaw: FACE_N - 0.2 })],
     ['ドラム缶', (x, z, y) => P.barrel(b, { x, y, z })],
-    ['土嚢', (x, z, y) => P.sandbagStack(b, { x, y, z, yaw: FACE_S, rows: 3, perRow: 4, length: 1.5 })],
-    ['パレット', (x, z, y) => P.pallet(b, { x, y, z, yaw: FACE_S + 0.15 })],
+    ['土嚢', (x, z, y) => P.sandbagStack(b, { x, y, z, yaw: FACE_N, rows: 3, perRow: 4, length: 1.5 })],
+    ['パレット', (x, z, y) => P.pallet(b, { x, y, z, yaw: FACE_N + 0.15 })],
     ['タイヤ', (x, z, y) => P.tireStack(b, { x, y, z, count: 3 })],
     ['段ボール', (x, z, y) => P.cardboardStack(b, { x, y, z, count: 3 })],
-    ['携行缶', (x, z, y) => P.jerryCan(b, { x, y, z, yaw: FACE_S + 0.4 })],
-  ], { x0: cx - 22, z: cz - 11.5, pitch: 2.7, accent: HUE.yard, yaw: FACE_S });
+    ['携行缶', (x, z, y) => P.jerryCan(b, { x, y, z, yaw: FACE_N + 0.4 })],
+  ], { x0: cx - 22, z: cz - 11.5, pitch: 2.7, accent: HUE.yard, yaw: FACE_N });
 
   displayRow(b, [
-    ['鉄筋束', (x, z, y) => P.rebarBundle(b, { x, y, z, yaw: FACE_S + 0.2, count: 10, length: 2.4 })],
-    ['型枠合板', (x, z, y) => P.formworkStack(b, { x, y, z, yaw: FACE_S + 0.1, count: 7 })],
-    ['ブロック', (x, z, y) => P.blockPallet(b, { x, y, z, yaw: FACE_S, rows: 3 })],
+    ['鉄筋束', (x, z, y) => P.rebarBundle(b, { x, y, z, yaw: FACE_N + 0.2, count: 10, length: 2.4 })],
+    ['型枠合板', (x, z, y) => P.formworkStack(b, { x, y, z, yaw: FACE_N + 0.1, count: 7 })],
+    ['ブロック', (x, z, y) => P.blockPallet(b, { x, y, z, yaw: FACE_N, rows: 3 })],
     ['骨材の山', (x, z, y) => P.aggregatePile(b, { x, y, z, radius: 1.1, height: 0.8, mat: 'gravel' })],
     ['砂の山', (x, z, y) => P.aggregatePile(b, { x, y, z, radius: 1.1, height: 0.7, mat: 'sand' })],
     ['瓦礫', (x, z, y) => P.rubble(b, { x, y, z, radius: 1.2, count: 12 })],
     ['足場板', (x, z, y) => {
       for (let k = 0; k < 3; k++) {
-        b.box({ x, y: y + 0.03 + k * 0.06, z, w: 1.5, h: 0.05, d: 0.5, yaw: FACE_S + k * 0.04,
+        b.box({ x, y: y + 0.03 + k * 0.06, z, w: 1.5, h: 0.05, d: 0.5, yaw: FACE_N + k * 0.04,
           mat: 'scaffoldPlank', surface: SURFACE.WOOD, collide: false });
       }
     }],
@@ -53,17 +53,17 @@ export function sectionYard(b, cx, cz) {
           segments: 8, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
       }
     }],
-  ], { x0: cx - 22, z: cz - 7.0, pitch: 2.7, accent: HUE.yard, yaw: FACE_S });
+  ], { x0: cx - 22, z: cz - 7.0, pitch: 2.7, accent: HUE.yard, yaw: FACE_N });
 
   /* ---- 中ほど: 街の設備（実寸で床置き） ---- */
   const util = [
-    ['街灯', (x, z) => P.streetLight(b, { x, y: 0, z, yaw: FACE_S })],
+    ['街灯', (x, z) => P.streetLight(b, { x, y: 0, z, yaw: FACE_N })],
     ['電柱', (x, z) => P.utilityPole(b, { x, y: 0, z })],
     ['貯水タンク', (x, z) => P.waterTank(b, { x, y: 0.55, z })],
-    ['室外機', (x, z) => P.acUnit(b, { x, y: 0, z, yaw: FACE_S })],
-    ['看板', (x, z) => P.sign(b, { x, y: 2.2, z, yaw: FACE_S, w: 2.0, h: 0.7, mat: 'plasticGlossRed' })],
-    ['屋上機器', (x, z) => P.rooftopClutter(b, { x, y: 0, z, yaw: FACE_S })],
-    ['自販機', (x, z) => B.vendingMachine(b, { x, y: 0, z, yaw: FACE_S, name: 'つめたい' })],
+    ['室外機', (x, z) => P.acUnit(b, { x, y: 0, z, yaw: FACE_N })],
+    ['看板', (x, z) => P.sign(b, { x, y: 2.2, z, yaw: FACE_N, w: 2.0, h: 0.7, mat: 'plasticGlossRed', text: '関係者以外立入禁止', sub: 'NO ENTRY', posts: 2 })],
+    ['屋上機器', (x, z) => P.rooftopClutter(b, { x, y: 0, z, yaw: FACE_N })],
+    ['自販機', (x, z) => B.vendingMachine(b, { x, y: 0, z, yaw: FACE_N, name: 'つめたい' })],
     ['ごみ箱', (x, z) => P.trashBin(b, { x, y: 0, z })],
   ];
   for (let i = 0; i < util.length; i++) {
@@ -87,18 +87,18 @@ export function sectionYard(b, cx, cz) {
 
   /* ---- 奥: 大物と雑多な山 ---- */
   const zB = cz + 7.0;
-  P.container(b, { x: cx - 20, y: 0, z: zB, yaw: FACE_S });
-  P.container(b, { x: cx - 20, y: 2.59, z: zB, yaw: FACE_S, mat: 'paintedMetalTan' });
-  P.container(b, { x: cx - 13, y: 0, z: zB, yaw: FACE_S + 0.08, mat: 'rustedMetal' });
+  P.container(b, { x: cx - 20, y: 0, z: zB, yaw: FACE_N });
+  P.container(b, { x: cx - 20, y: 2.59, z: zB, yaw: FACE_N, mat: 'paintedMetalTan' });
+  P.container(b, { x: cx - 13, y: 0, z: zB, yaw: FACE_N + 0.08, mat: 'rustedMetal' });
   floorPlate(b, { x: cx - 16.5, z: zB - 2.2, text: 'コンテナ 20ft', sub: '6.06 × 2.44 × 2.59', accent: HUE.yard, w: 3.6 });
 
   P.vehicle(b, { x: cx - 5, y: 0, z: zB, yaw: FACE_S + Math.PI / 2, type: 'truck' });
   P.vehicle(b, { x: cx + 1.5, y: 0, z: zB, yaw: FACE_S + Math.PI / 2, type: 'car', mat: 'rustedMetal' });
   floorPlate(b, { x: cx - 2, z: zB - 2.6, text: '車両', accent: HUE.yard, w: 2.4 });
 
-  P.scaffold(b, { x: cx + 9, y: 0, z: zB + 1.0, yaw: FACE_S, length: 8.0, levels: 3, levelH: 2.2, depth: 1.3 });
+  P.scaffold(b, { x: cx + 9, y: 0, z: zB + 1.0, yaw: FACE_N, length: 8.0, levels: 3, levelH: 2.2, depth: 1.3 });
   floorPlate(b, { x: cx + 9, z: zB - 2.2, text: '足場 3 層', accent: HUE.yard, w: 2.8 });
-  P.siteOffice(b, { x: cx + 18, y: 0, z: zB + 1.0, yaw: FACE_S });
+  P.siteOffice(b, { x: cx + 18, y: 0, z: zB + 1.0, yaw: FACE_N });
   floorPlate(b, { x: cx + 18, z: zB - 2.4, text: '現場事務所', accent: HUE.yard, w: 3.0 });
 
   /* ---- いちばん奥: 新しい物の置き枠 ---- */
