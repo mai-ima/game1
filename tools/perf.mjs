@@ -5,8 +5,9 @@ const browser = await chromium.launch({ executablePath: execPath,
   args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist']});
 const page = await browser.newPage({ viewport:{width:900,height:520} });
 page.on('pageerror', e=>console.log('[err]', e.message));
-await page.goto('http://localhost:4173/', {waitUntil:'domcontentloaded'});
-await page.waitForFunction('!!window.__DEV', {timeout:300000});
+const url = process.argv[2] || 'http://127.0.0.1:4173/';
+await page.goto(url, {waitUntil:'domcontentloaded'});
+await page.waitForFunction('!!window.__DEV', null, {timeout:300000});
 
 // 計測フックを仕込む
 await page.evaluate(`
@@ -39,7 +40,7 @@ const sample = async (label) => {
 };
 
 await page.evaluate('window.__DEV.startMatch()');
-await page.waitForFunction('window.__DEV.game.running===true',{timeout:300000}).catch(()=>{});
+await page.waitForFunction('window.__DEV.game.running===true', null, {timeout:300000}).catch(()=>{});
 await page.waitForTimeout(9000);
 await sample('開始直後  ');
 await page.waitForTimeout(15000);

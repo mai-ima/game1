@@ -65,9 +65,38 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
     metal: mats.metal,
     accent: new THREE.MeshStandardMaterial({ color: teamColor, roughness: 0.55, metalness: 0.1 }),
   };
+  // setTeamColor がこの印を頼りに陣営色だけを塗り替える
+  M.accent.userData.isAccent = true;
+
+  /*
+   * 向きを合わせるための中間層。
+   *
+   * この兵士は「胸のプレートとポーチが +Z、背嚢が −Z」で組んである。
+   * つまりモデルのローカル正面は +Z。
+   * 一方、射撃・視線・索敵はどれも
+   *     前方 = (-sin yaw, 0, -cos yaw)
+   * を使う。これは yaw=0 のとき −Z で、モデルの正面とちょうど真逆になる。
+   *
+   * Character.update() は model.rotation.y へ yaw をそのまま入れるので、
+   * 以前はこのずれがそのまま画面に出ていた。実戦 30 秒で測ると
+   * 「進行方向とモデル正面の内積 = −0.687（標本 511）」、
+   * つまり全員が後ろ歩きで、背中から発砲していた。
+   *
+   * 直し方は 2 通りある。
+   *   a) 全ジオメトリを rotateY(π) する  → 装備の左右が入れ替わる
+   *   b) 中間の Group を 1 枚挟む         → 部位の座標はそのまま
+   * ここでは b を採る。以後、部位を足すときも従来どおり
+   * 「顔とポーチは +Z」で書けばよい。
+   *
+   * 回帰検査は tools/botfacing.mjs（内積が +0.9 を下回ったら失格）。
+   */
+  const body = new THREE.Group();
+  body.name = 'facing';
+  body.rotation.y = Math.PI;
+  root.add(body);
 
   /* ---------- 骨格（Group 階層） ---------- */
-  const hips = new THREE.Group(); hips.position.y = 0.94; root.add(hips);
+  const hips = new THREE.Group(); hips.position.y = 0.94; body.add(hips);
   const spine = new THREE.Group(); spine.position.y = 0.13; hips.add(spine);
   const chest = new THREE.Group(); chest.position.y = 0.20; spine.add(chest);
   const neck = new THREE.Group(); neck.position.y = 0.25; chest.add(neck);
@@ -370,7 +399,7 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8) {
     translated(roundedBox(0.105, 0.095, 0.275, 0.03, 0.012), -0.105, 0.048, 0.035),
   ]), M.gear);
   lod.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.userData.keepShadow = true; } });
-  root.add(lod);
+  body.add(lod);                       // 詳細モデルと同じ向きの層に置く
   root.userData.lod = lod;
   root.userData.detail = hips;
 

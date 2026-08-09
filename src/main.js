@@ -11,6 +11,8 @@ import { HUD } from './ui/HUD.js';
 import { Menu } from './ui/Menu.js';
 import { MobileControls } from './ui/MobileControls.js';
 import { MAPS, getMap, DEFAULT_MAP } from './world/maps/index.js';
+import * as PROPS from './world/Props.js';
+import * as BUILDINGS from './world/Buildings.js';
 
 /**
  * OPERATION CRIMSON — エントリポイント。
@@ -176,7 +178,13 @@ async function main() {
   requestAnimationFrame(loop);
 
   // --- 開発用フック ---
+  /*
+   * アセット工房をそのまま外へ出す。
+   * テストベッドで「1 点ずつ組んで撮る」ための足掛かりで、
+   * tools/assetaudit.mjs がここから全アセットを走査する。
+   */
   window.__DEV = { engine, mats, game, hud, menu, input, settings, audio, THREE, BOT_GATE,
+    props: PROPS, buildings: BUILDINGS,
     startMatch: (cfg) => menu.onStart(cfg || menu.sel) };
 
   /* ============ ここから下は上のスコープを使うヘルパ ============ */
