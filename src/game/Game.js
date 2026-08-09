@@ -9,6 +9,7 @@ import { HIT_ZONE } from '../ai/Character.js';
 import { damageAt, WEAPONS } from '../player/weapons/WeaponDefs.js';
 import { GAME_MODES } from './GameModes.js';
 import { Awareness } from '../ai/Awareness.js';
+import { NavGraph } from '../ai/NavGraph.js';
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -150,6 +151,12 @@ export class Game {
 
     // 巡回点を生成（スポーン地点 + 目標地点 + グリッド）
     this._buildPatrolPoints();
+    /*
+     * 巡回点をそのまま節点にして航行グラフを組む。
+     * 操舵だけでは建物を回り込めず、壁の向こうの相手へ辿り着けない。
+     */
+    onProgress(0.88, '経路を計算中');
+    this.nav = new NavGraph(this.patrolPoints, this.physics);
     onProgress(0.9, '完了');
   }
 
@@ -311,20 +318,62 @@ export class Game {
   /* ================= スポーン ================= */
 
   /** チームのスポーン地点から、敵から遠いものを選ぶ */
+  /**
+   * 湧き場を選ぶ。
+   *
+   * 以前は「敵からいちばん遠い所」を選んでいた。
+   * 湧き殺しは防げるが、倒されるたびに戦線から最も遠い隅へ飛ばされる。
+   * 前方の湧き場を用意しても絶対に使われず、
+   * 復帰のたびに 20 秒以上の徒歩が挟まって試合が止まっていた。
+   *
+   * 対戦ゲームの湧きは「安全のいちばん奥」ではなく
+   * 「危なくない範囲で、戦線にいちばん近い所」を選ぶ。
+   *
+   *   ・敵が近すぎる（18m 未満）ところは強く避ける
+   *   ・敵の視線が通っているところも避ける
+   *   ・その上で、戦線までの距離が 30〜45m のあたりを最も高く評価する
+   *   ・味方が近くにいるほど良い（一人で放り出されない）
+   */
   pickSpawn(team) {
     const list = this.builder.spawnPoints[team] || this.builder.spawnPoints.FFA;
     if (!list || !list.length) return { pos: new THREE.Vector3(0, 1, 0), yaw: 0 };
+    if (list.length === 1) return list[0];
+
+    // enemiesOf はジェネレータ（生存している者だけを返す）
+    const enemies = [...this.enemiesOf(team)];
+    const mates = this.bots.filter((m) => m.alive && m.team === team);
+    if (this.playerStats.team === team && this.playerStats.alive) mates.push(this._playerAsTarget());
 
     let best = list[0], bestScore = -Infinity;
     for (const s of list) {
-      let minDist = Infinity;
-      for (const e of this.enemiesOf(team)) {
-        if (!e.alive) continue;
+      let danger = Infinity;
+      let seen = false;
+      for (const e of enemies) {
         const ep = e.getEyePosition ? e.getEyePosition(_v) : _v.copy(e.position);
-        minDist = Math.min(minDist, s.pos.distanceTo(ep));
+        const dd = s.pos.distanceTo(ep);
+        if (dd < danger) danger = dd;
+        // 60m 以内で視線が通っている湧き場は、出た瞬間に撃たれる
+        if (!seen && dd < 60) {
+          _v2.set(s.pos.x, s.pos.y + 1.5, s.pos.z);
+          if (!this.physics.losBlocked(_v2, ep)) seen = true;
+        }
       }
-      if (minDist === Infinity) minDist = 999;
-      const score = minDist + Math.random() * 6;
+      if (danger === Infinity) danger = 999;
+
+      let score = 0;
+      if (danger < 18) score -= (18 - danger) * 14;      // 近すぎる
+      if (seen) score -= 55;                              // 見られている
+      // 戦線までの距離。38m あたりが最も良い
+      score -= Math.abs(Math.min(danger, 120) - 38) * 0.55;
+
+      if (mates.length) {
+        let mate = Infinity;
+        for (const m of mates) mate = Math.min(mate, s.pos.distanceTo(m.position));
+        // 味方から 12〜35m を良しとする
+        score -= Math.abs(Math.min(mate, 80) - 22) * 0.28;
+      }
+      score += Math.random() * 9;                         // 同じ所に固まらない
+
       if (score > bestScore) { bestScore = score; best = s; }
     }
     return best;

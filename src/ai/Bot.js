@@ -80,7 +80,36 @@ const _fMuzzle = new THREE.Vector3();
 const _UP = new THREE.Vector3(0, 1, 0);
 
 // 射撃が抑止された理由の計測用（調整ツールから参照する）
-export const BOT_GATE = { pause: 0, state: 0, react: 0, notgt: 0, ammo: 0, los: 0, dot: 0, timer: 0, fire: 0, dotSum: 0, dotN: 0 };
+export const BOT_GATE = { pause: 0, state: 0, react: 0, notgt: 0, ammo: 0, los: 0, dot: 0, timer: 0, fire: 0, far: 0, dotSum: 0, dotN: 0 };
+
+/**
+ * 撃ち始める距離。
+ *
+ * 拡散は角度で決まるので、遠いほど当たらない。
+ * 正規兵の spread 0.0195rad は 20m 先で 1σ ≒ 0.39m（胴に半分は当たる）だが、
+ * 68m では 1.33m になり、命中率は 5% を割る。
+ *
+ * ここを開けっ放しにすると、ボットは見えた瞬間から距離を問わず
+ * 撃ち始め、当たらないまま弾をばら撒く。計測でも、湧き場を前に出して
+ * 交戦が 4 倍に増えたとき、命中率が 14.7% から 2.3% へ落ちた。
+ * 交戦が増えたのに当たらなくなる、という結果の主因がこれ。
+ *
+ * 実際の兵は、当たらない距離では撃たずに距離を詰める。
+ * 射程の外では発砲を止め、_engagePositioning に前進させる。
+ */
+const ENGAGE_RANGE = {
+  サブマシンガン: 30,
+  ショットガン: 16,
+  ハンドガン: 26,
+  アサルトライフル: 48,
+  軽機関銃: 58,
+  スナイパーライフル: 130,
+};
+function engageRange(weapon) {
+  const cls = weapon?.class || '';
+  for (const k in ENGAGE_RANGE) if (cls.includes(k)) return ENGAGE_RANGE[k];
+  return 45;
+}
 
 let _nextId = 1;
 
@@ -139,6 +168,11 @@ export class Bot {
     this.moveSpeed = 4.0;
     this._repathT = 0;
     this._stuckT = 0;
+    /** 航行グラフで求めた通過点の列と、今どこを目指しているか */
+    this._path = null;
+    this._pathI = 0;
+    this._pathGoal = new THREE.Vector3();
+    this._pathT = 0;
     this._lastPos = new THREE.Vector3();
     this._strafeDir = Math.random() < 0.5 ? -1 : 1;
     this._strafeT = 0;
@@ -337,6 +371,67 @@ export class Bot {
     return aw.patrolTarget(this.team, this.char.position, fallback, Math.random());
   }
 
+  /**
+   * 行き先までの道順を引く。
+   *
+   * moveTarget は「最終的に行きたい場所」。そこへ直進できないとき、
+   * 操舵だけでは建物に突き当たって止まってしまう。
+   * 直進で届かないと分かったら航行グラフで道順を求め、
+   * moveTarget を次の通過点に差し替える。
+   *
+   * 最後の数 m は従来どおり操舵に任せる。
+   * 通過点を律儀に踏みに行くと、角で不自然に曲がるため。
+   */
+  _routeTo(dt) {
+    const nav = this.ctx.game?.nav;
+    const goal = this.moveTarget;
+    if (!nav || !goal) { this._path = null; return; }
+
+    const me = this.char.position;
+    const dist = Math.hypot(goal.x - me.x, goal.z - me.z);
+
+    // 近い、または直進できるなら道順は要らない
+    if (dist < 12 || this._canWalkTo(goal)) { this._path = null; return; }
+
+    this._pathT -= dt;
+    const goalMoved = this._pathGoal.distanceToSquared(goal) > 25;
+    if (!this._path || goalMoved || this._pathT <= 0) {
+      this._path = nav.findPath(me, goal);
+      this._pathI = 0;
+      this._pathGoal.copy(goal);
+      this._pathT = 2.5;
+      if (!this._path || !this._path.length) { this._path = null; return; }
+    }
+
+    // 届いた通過点は捨てる。先の点へ直進できるならまとめて飛ばす
+    while (this._pathI < this._path.length) {
+      const w = this._path[this._pathI];
+      if (Math.hypot(w.x - me.x, w.z - me.z) < 2.2) { this._pathI++; continue; }
+      break;
+    }
+    for (let k = this._path.length - 1; k > this._pathI; k--) {
+      if (this._canWalkTo(this._path[k])) { this._pathI = k; break; }
+    }
+    if (this._pathI >= this._path.length) { this._path = null; return; }
+
+    this._routeTarget = this._routeTarget || new THREE.Vector3();
+    this.moveTarget = this._routeTarget.copy(this._path[this._pathI]);
+  }
+
+  /** そこまで歩いて行けるか（腰と胸の高さで見る） */
+  _canWalkTo(p) {
+    const me = this.char.position;
+    for (const h of [0.55, 1.45]) {
+      _v.set(me.x, me.y + h, me.z);
+      _v2.set(p.x - me.x, 0, p.z - me.z);
+      const len = _v2.length();
+      if (len < 0.2) return true;
+      _v2.divideScalar(len);
+      if (this.ctx.physics.raycast(_v, _v2, len - 0.3, { forBullets: false })) return false;
+    }
+    return true;
+  }
+
   /* ================= 更新 ================= */
 
   /**
@@ -392,6 +487,8 @@ export class Bot {
       this._perceive(dt, world);
       this._think(dt, world);
     }
+    // 遠い行き先は、航行グラフで道順に分ける
+    this._routeTo(dt);
     this._move(dt);
     this._aim(dt);
     this._shoot(dt, world);
@@ -463,9 +560,22 @@ export class Bot {
        */
       if (cur > 0.18 && cur > glanceBest) { glanceBest = cur; glanceAt = ep; }
 
-      // 発見済みの相手だけが標的候補。近いほど優先。
+      /*
+       * 発見済みの相手だけが標的候補。近いほど優先。
+       *
+       * 今狙っている相手には下駄を履かせる。
+       * 乱戦になると「いちばん近い相手」が数フレームごとに入れ替わり、
+       * そのたびに反応時間と狙いの収束が入り直して、
+       * いつまでも狙いが定まらないまま撃ち続けることになる。
+       * 実際、湧き場を前に出して交戦が 4 倍に増えたとき、
+       * 命中率が 14.7% から 2.3% まで落ちた。
+       * 撃ち合いが増えたのに当たらなくなる、という妙な結果の原因がこれ。
+       *
+       * 25 点ぶんは、距離にして 25m の差に相当する。
+       * それ以上に近い相手が現れて初めて乗り換える。
+       */
       if (cur >= 1) {
-        const score = 100 - d;
+        const score = 100 - d + (e === this.targetEnemy ? 25 : 0);
         if (score > bestScore) { bestScore = score; best = e; }
       }
     }
@@ -488,8 +598,15 @@ export class Bot {
        * 待ち構えていたかのように撃たれる。
        */
       if (this.targetEnemy !== best || this._sinceTarget > 1.2) {
-        this._reactionT = this.diff.reaction * (0.75 + Math.random() * 0.55);
-        this._settle = 1;                        // 狙いも一から付け直す
+        const known = this.targetEnemy != null && this._sinceTarget < 1.2;
+        /*
+         * すでに撃ち合いの最中で、別の相手へ向き直しただけなら、
+         * 反応も狙いも一からにはしない。銃はもう構えているし、
+         * 交戦中であることも把握している。
+         * ここを毎回 1 に戻すと、乱戦で永久に狙いが定まらない。
+         */
+        this._reactionT = this.diff.reaction * (known ? 0.35 : 0.75 + Math.random() * 0.55);
+        this._settle = known ? Math.max(this._settle, 0.55) : 1;
       }
       this.targetEnemy = best;
       this._sinceTarget = 0;
@@ -630,6 +747,30 @@ export class Bot {
         this._engageMove.copy(this.char.position)
           .addScaledVector(_dir, -5.5)
           .addScaledVector(right, this._strafeDir * 2.0);
+      }
+      this._posHoldT -= dt;
+      this.moveTarget = this._engageMove;
+      return;
+    }
+
+    /*
+     * 撃てない距離なら、止まらずに詰める。
+     *
+     * 据え撃ちは「その場で撃つ」ための動作なので、
+     * そもそも撃てない距離で発動すると、ただ突っ立って
+     * 相手を眺めているだけになる。
+     * 計測では、標的を持ちながら「遠すぎて撃てない」フレームが
+     * 69,664 に達し、その間の発射はわずか 98 発だった。
+     */
+    const tooFar = d > engageRange(this.weapon) * 0.95;
+    if (tooFar) {
+      this._standT = 0;
+      if (this._posHoldT <= 0) {
+        this._posHoldT = 0.7 + Math.random() * 0.5;
+        // まっすぐ突っ込むと的になるので、少し斜めに寄る
+        this._engageMove.copy(this.char.position)
+          .addScaledVector(_dir, Math.min(14, d - engageRange(this.weapon) * 0.6))
+          .addScaledVector(right, this._strafeDir * 2.5);
       }
       this._posHoldT -= dt;
       this.moveTarget = this._engageMove;
@@ -866,6 +1007,14 @@ export class Bot {
 
     // 遮蔽があれば撃たない
     if (this.ctx.physics.losBlocked(me, tp)) { BOT_GATE.los++; return; }
+
+    /*
+     * 当たらない距離では撃たない。
+     * 撃たずに詰めたほうが、結果として早く決着する。
+     * 遠くから撃ってくる敵がいなくなるわけではなく、
+     * スナイパーは 130m まで撃つ。
+     */
+    if (me.distanceTo(tp) > engageRange(this.weapon)) { BOT_GATE.far++; return; }
 
     // 狙いが十分合っているか
     _dir.copy(tp).sub(me).normalize();

@@ -149,6 +149,7 @@ const out = await page.evaluate(`(async () => {
         反応待ち: d.BOT_GATE.react, 標的なし: d.BOT_GATE.notgt,
         弾切れ: d.BOT_GATE.ammo, 遮蔽: d.BOT_GATE.los,
         '照準が向いていない': d.BOT_GATE.dot, 連射間隔: d.BOT_GATE.timer,
+        '遠すぎる': d.BOT_GATE.far,
       },
       '照準の一致（平均）': +(d.BOT_GATE.dotSum / Math.max(1, d.BOT_GATE.dotN)).toFixed(3),
       与ダメージ合計: Math.round(S.fight.dmg),
