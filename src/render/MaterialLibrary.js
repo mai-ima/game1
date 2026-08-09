@@ -163,6 +163,15 @@ const PRESETS = {
   cityRust:        { tex: 'brickOld',     repeat: 0.75, params: { roughness: 1, metalness: 1, color: 0xa8846a }, seed: 9105 },
   citySlate:       { tex: 'plaster',      repeat: 0.6,  params: { roughness: 1, metalness: 1, color: 0x8b8f95 }, seed: 9106 },
   cityBone:        { tex: 'stuccoRough',  repeat: 0.55, params: { roughness: 1, metalness: 1, color: 0xdad3c4 }, seed: 9107 },
+  /*
+   * 窓の奥に入れる面。
+   *
+   * 建物の躯体は中身の詰まった箱なので、ガラスの向こうには
+   * 壁と同じ色が見えてしまい、窓が窓に見えなかった。
+   * 室内に相当する暗い面と、ブラインドを下ろした明るい面の 2 種。
+   */
+  roomDark:        { tex: 'plaster',      repeat: 0.8,  params: { roughness: 1, metalness: 0, color: 0x1d2024 }, seed: 9201 },
+  blindPale:       { tex: 'plaster',      repeat: 1.6,  params: { roughness: 1, metalness: 0, color: 0xb9b3a6 }, seed: 9202 },
   concreteBlock:   { tex: 'concreteBlock', repeat: 1.0, params: { roughness: 1, metalness: 1 } },
   stuccoRough:     { tex: 'stuccoRough',  repeat: 0.9,  params: { roughness: 1, metalness: 1 } },
   stuccoWhite:     { tex: 'stuccoRough',  repeat: 0.9,  params: { roughness: 1, metalness: 1, color: 0xd8d5cd }, seed: 383 },

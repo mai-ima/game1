@@ -4,6 +4,18 @@ import * as THREE from 'three';
  * 最終合成パス用シェーダ。
  * トーンマップ後の LDR 画像に対して以下を一括適用する:
  *  - 色収差 (radial chromatic aberration)
+ *
+ * 色収差の強さについて。
+ *
+ * 以前は 0.00052 だった。ずれ量は c·r²·強さ·12 なので、
+ * 画面の角では UV で 0.00156、1000 画素幅なら 1.6 画素になる。
+ * さらにアンシャープマスクが縁を持ち上げるため、
+ * ブロック塀の目地・窓の桟・トタンの山といった細かい繰り返しが
+ * どれも赤緑の縞に割れていた。実際に切って撮り比べると、
+ * 街並みの絵が別物というほど締まる。
+ *
+ * 実際のレンズの倍率色収差は、画面の大半で 1 画素に遠く及ばない。
+ * 1/5 に落として、隅にわずかな色の縁が残る程度にとどめる。
  *  - ビネット
  *  - フィルムグレイン
  *  - アンシャープマスクによるシャープ化
@@ -16,10 +28,10 @@ export const CompositeShader = {
     tDiffuse:       { value: null },
     uTime:          { value: 0 },
     uResolution:    { value: new THREE.Vector2(1, 1) },
-    uAberration:    { value: 0.00052 },
+    uAberration:    { value: 0.00010 },
     uVignette:      { value: 0.34 },
     uGrain:         { value: 0.016 },
-    uSharpen:       { value: 0.20 },
+    uSharpen:       { value: 0.15 },
     uSaturation:    { value: 1.12 },
     uContrast:      { value: 1.12 },
     uLift:          { value: new THREE.Vector3(0.000, 0.003, 0.012) },
@@ -222,10 +234,10 @@ export const FusedFinalShader = {
     uFxaa:          { value: 1.0 },
     uTime:          { value: 0 },
     uResolution:    { value: new THREE.Vector2(1, 1) },
-    uAberration:    { value: 0.00052 },
+    uAberration:    { value: 0.00010 },
     uVignette:      { value: 0.34 },
     uGrain:         { value: 0.016 },
-    uSharpen:       { value: 0.20 },
+    uSharpen:       { value: 0.15 },
     uSaturation:    { value: 1.12 },
     uContrast:      { value: 1.12 },
     uLift:          { value: new THREE.Vector3(0.000, 0.003, 0.012) },

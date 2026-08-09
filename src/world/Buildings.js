@@ -93,16 +93,27 @@ export function door(b, o) {
   // 戸（開き角を付けられる）
   const hingeX = x + tx * (-w / 2), hingeZ = z + tz * (-w / 2);
   const a = yaw + open;
+  const anx = Math.sin(a), anz = Math.cos(a);
   const cx2 = hingeX + Math.cos(a) * (w / 2), cz2 = hingeZ - Math.sin(a) * (w / 2);
-  b.box({ x: cx2, y: y + h / 2, z: cz2, w, h, d: 0.045, yaw: a, mat, surface: SURFACE.WOOD, collide: false });
-  // 鏡板の見切り
+  const LEAF = 0.045;
+  b.box({ x: cx2, y: y + h / 2, z: cz2, w, h, d: LEAF, yaw: a, mat, surface: SURFACE.WOOD, collide: false });
+  /*
+   * 鏡板の見切り。
+   *
+   * 以前は戸と同じ位置に厚さ 12mm の板を置いていた。
+   * 戸の厚みが 45mm あるので、板はまるごと戸の内側に埋まって
+   * どちらの面からも見えず、扉が「のっぺりした一枚板」に見えていた。
+   * 表側の面から 8mm 持ち出す。
+   */
   for (const py of [h * 0.28, h * 0.72]) {
-    b.box({ x: cx2, y: y + py, z: cz2, w: w - 0.16, h: h * 0.30, d: 0.012, yaw: a,
-      mat, surface: SURFACE.WOOD, collide: false });
+    b.box({
+      x: cx2 + anx * (LEAF / 2 + 0.004), y: y + py, z: cz2 + anz * (LEAF / 2 + 0.004),
+      w: w - 0.16, h: h * 0.30, d: 0.016, yaw: a, mat, surface: SURFACE.WOOD, collide: false,
+    });
   }
-  // レバーハンドル
-  const hx = cx2 + Math.cos(a) * (w / 2 - 0.09) + Math.sin(a) * 0.035;
-  const hz = cz2 - Math.sin(a) * (w / 2 - 0.09) + Math.cos(a) * 0.035;
+  // レバーハンドル（表側へ確実に出す）
+  const hx = cx2 + Math.cos(a) * (w / 2 - 0.09) + anx * (LEAF / 2 + 0.03);
+  const hz = cz2 - Math.sin(a) * (w / 2 - 0.09) + anz * (LEAF / 2 + 0.03);
   b.box({ x: hx, y: y + 1.02, z: hz, w: 0.11, h: 0.022, d: 0.022, yaw: a, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
   b.cylinder({ x: hx, y: y + 0.97, z: hz, radius: 0.028, height: 0.05, segments: 8, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
   // 蝶番
@@ -378,7 +389,12 @@ export function apartment(b, o) {
       b.wallWithGap({ x1: p1x, z1: p1z, x2: p2x, z2: p2z, y: fy, h: FH, thickness: 0.22,
         gapStart: 0.7, gapWidth: 0.95, gapTop: 2.05, mat, surface: SURFACE.CONCRETE });
       const [dx, dz] = at(x0 + 1.18, hd);
-      door(b, { x: dx, y: fy, z: dz, yaw: yaw + Math.PI, w: 0.95, h: 2.05, mat: 'paintedMetal', frame: mat });
+      /*
+       * 廊下側の面の外向きは +z（ローカル）＝ yaw の向き。
+       * ここを yaw+π にしていたため、玄関扉が室内を向いていた。
+       * 取っ手も鏡板も裏に回り、廊下からは真っ平らな板に見えていた。
+       */
+      door(b, { x: dx, y: fy, z: dz, yaw, w: 0.95, h: 2.05, mat: 'paintedMetal', frame: mat });
       const [wx, wz] = at(x0 + 2.6, hd);
       windowUnit(b, { x: wx, y: fy + 1.75, z: wz, yaw, w: 0.7, h: 0.7, bars: 0 });
       // 部屋番号
@@ -745,7 +761,823 @@ export function vendingMachine(b, o) {
   return b;
 }
 
+/* ================================================================= *
+ *  ファサードの付帯物
+ *
+ *  建物が書き割りに見える最大の理由は、壁が「ただの面」で
+ *  終わっていること。実際の建物の壁からは必ず何かが出ている。
+ *  ここはその「出ているもの」を集めた場所。
+ * ================================================================= */
+
+/**
+ * 竪樋（たてどい）。
+ * 壁に沿って落ちる雨樋。上端の呼び樋、途中の控え金物、
+ * 下端の曲がりまで入れる。これ 1 本で壁の縦の間延びが切れる。
+ *
+ * @param {object} o {x, y, z, yaw, height, radius, mat}
+ *   yaw は壁の外向き。樋はその面に張り付く。
+ */
+export function downpipe(b, o) {
+  const { x, y = 0, z, yaw = 0, height = 6, radius = 0.055, mat = 'plasticMatte', head = true } = o;
+  const nx = Math.sin(yaw), nz = Math.cos(yaw);
+  const px = x + nx * (radius + 0.02), pz = z + nz * (radius + 0.02);
+
+  b.cylinder({ x: px, y: y + 0.06, z: pz, radius, height: height - 0.06, segments: 8,
+    mat, surface: SURFACE.METAL, collide: false });
+  // 控え金物。1.5m ごと。これが無いと棒が浮いているように見える
+  for (let hy = 0.9; hy < height - 0.3; hy += 1.5) {
+    b.box({ x: x + nx * (radius * 0.6), y: y + hy, z: z + nz * (radius * 0.6),
+      w: 0.10, h: 0.022, d: radius * 1.6, yaw, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  }
+  // 下端の曲がり（地面へ向けて折れる）
+  b.cylinder({ x: px, y: y + 0.02, z: pz, radius: radius * 1.12, height: 0.16, segments: 8,
+    mat, surface: SURFACE.METAL, collide: false });
+  b.box({ x: px + nx * 0.10, y: y + 0.055, z: pz + nz * 0.10, w: radius * 2.1, h: radius * 2.1, d: 0.22,
+    yaw: yaw + Math.PI / 2, mat, surface: SURFACE.METAL, collide: false });
+  // 上端の集水器
+  if (head) {
+    b.box({ x: px, y: y + height + 0.09, z: pz, w: radius * 3.4, h: 0.20, d: radius * 3.0, yaw,
+      mat, surface: SURFACE.METAL, collide: false });
+  }
+  return b;
+}
+
+/**
+ * 壁付けの室外機。架台に載せて、冷媒管を壁へ引き込む。
+ * 集合住宅やビルの側面が単調になるのを防ぐ。
+ */
+export function wallAc(b, o) {
+  const { x, y, z, yaw = 0 } = o;
+  const nx = Math.sin(yaw), nz = Math.cos(yaw);
+  // 架台（アングル 2 本と方杖）
+  for (const s of [-1, 1]) {
+    const ax = x + Math.cos(yaw) * s * 0.34, az = z - Math.sin(yaw) * s * 0.34;
+    b.box({ x: ax + nx * 0.20, y, z: az + nz * 0.20, w: 0.035, h: 0.035, d: 0.42,
+      yaw: yaw + Math.PI / 2, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+    b.box({ x: ax + nx * 0.12, y: y - 0.16, z: az + nz * 0.12, w: 0.03, h: 0.34, d: 0.03,
+      yaw, rx: 0.62, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  }
+  P.acUnit(b, { x: x + nx * 0.22, y: y + 0.02, z: z + nz * 0.22, yaw });
+  // 冷媒管（テープ巻き）が壁へ入る
+  b.box({ x: x + nx * 0.09, y: y + 0.44, z: z + nz * 0.09, w: 0.075, h: 0.075, d: 0.30,
+    yaw: yaw + Math.PI / 2, mat: 'plasticMatte', surface: SURFACE.METAL, collide: false });
+  b.box({ x: x - Math.cos(yaw) * 0.30 + nx * 0.05, y: y + 0.72, z: z + Math.sin(yaw) * 0.30 + nz * 0.05,
+    w: 0.075, h: 0.62, d: 0.075, yaw, mat: 'plasticMatte', surface: SURFACE.METAL, collide: false });
+  return b;
+}
+
+/**
+ * 引込盤・量水器の類。
+ * 建物の足元に必ず付いていて、視線の高さにあるので効きが大きい。
+ */
+export function meterPanel(b, o) {
+  const { x, y = 0, z, yaw = 0, w = 0.62, h = 0.78, mat = 'paintedMetal' } = o;
+  const nx = Math.sin(yaw), nz = Math.cos(yaw);
+  b.box({ x: x + nx * 0.075, y: y + h / 2, z: z + nz * 0.075, w, h, d: 0.15, yaw,
+    mat, surface: SURFACE.METAL, collide: false });
+  // 扉の縁と丁番
+  b.box({ x: x + nx * 0.155, y: y + h / 2, z: z + nz * 0.155, w: w - 0.06, h: h - 0.06, d: 0.02, yaw,
+    mat, surface: SURFACE.METAL, collide: false });
+  for (const s of [-1, 1]) {
+    b.box({ x: x + nx * 0.15 + Math.cos(yaw) * (w / 2 - 0.03), y: y + h / 2 + s * (h / 2 - 0.12),
+      z: z + nz * 0.15 - Math.sin(yaw) * (w / 2 - 0.03),
+      w: 0.03, h: 0.06, d: 0.04, yaw, mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
+  }
+  // 引込管
+  b.cylinder({ x: x + nx * 0.06 - Math.cos(yaw) * (w / 2 + 0.06), y, z: z + nz * 0.06 + Math.sin(yaw) * (w / 2 + 0.06),
+    radius: 0.03, height: h + 0.5, segments: 6, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  return b;
+}
+
+/**
+ * 外部避難階段。
+ * 中層ビルの側面や背面に付く。踊り場が段になるので、
+ * 遠目でも「階数のある建物」に見える。上れるように当たりも付ける。
+ */
+export function fireEscape(b, o) {
+  const {
+    x, y = 0, z, yaw = 0, floors = 3, fh = 3.4, width = 1.1,
+    mat = 'diamondPlate', rail = 'gunMetal',
+  } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  /** ローカル (壁沿い右, 壁から外) → ワールド */
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+
+  /*
+   * 折り返し階段。
+   *
+   * 最初の版は、どの階も同じ位置から同じ向きに段を出していた。
+   * 段は上り切っても次の踊り場に届かず、宙に浮いた斜めの板が
+   * 何枚も重なるだけになっていた（実際その絵が撮れた）。
+   *
+   * 正しくは、踊り場を階ごとに左右へ振り、
+   * その間を 1 flight で結ぶ。行って戻るので、
+   * 壁沿いに必要な幅は踊り場 2 つぶんで済む。
+   */
+  const HALF = 2.3;                  // 踊り場の中心が中心から離れる距離
+  const OUT = 0.8 + width / 2;       // 壁からの持ち出し
+  const LAND_W = 2.2;
+  const STEPS = 16;
+  const rise = fh / STEPS;
+  const run = (HALF * 2) / STEPS;
+
+  for (let f = 0; f <= floors; f++) {
+    const side = f % 2 === 0 ? -1 : 1;
+    const ly = y + fh * f;
+    const [lx, lz] = at(side * HALF, OUT);
+
+    // 踊り場
+    b.box({ x: lx, y: ly - 0.06, z: lz, w: LAND_W, h: 0.12, d: width + 0.6, yaw,
+      mat, surface: SURFACE.METAL });
+    // 踊り場を壁へ受ける方杖
+    for (const e of [-1, 1]) {
+      const [gx, gz] = at(side * HALF + e * (LAND_W / 2 - 0.15), 0.28);
+      b.box({ x: gx, y: ly - 0.55, z: gz, w: 0.05, h: 0.95, d: 0.05, yaw, rx: 0.72,
+        mat: rail, surface: SURFACE.METAL, collide: false });
+    }
+    // 外側の手すり
+    const [q1x, q1z] = at(side * HALF - LAND_W / 2, OUT + width / 2 + 0.28);
+    const [q2x, q2z] = at(side * HALF + LAND_W / 2, OUT + width / 2 + 0.28);
+    P.railing(b, { x1: q1x, z1: q1z, x2: q2x, z2: q2z, y: ly, height: 1.08, mat: rail });
+
+    if (f === floors) break;
+
+    /*
+     * 上りの段。
+     * side から -side へ渡る。b.stairs は yaw の逆向き
+     * （-sin, -cos）へ登るので、壁沿い右へ登らせたいときは
+     * yaw - π/2 を渡す。
+     */
+    const [sx2, sz2] = at(side * (HALF - LAND_W / 2 + 0.1), OUT);
+    b.stairs({ x: sx2, y: ly, z: sz2, width, rise, run, steps: STEPS,
+      yaw: yaw + side * Math.PI / 2, mat, surface: SURFACE.METAL });
+    // 斜めの手すり（段の外側）
+    const [h1x, h1z] = at(side * (HALF - LAND_W / 2 + 0.1), OUT + width / 2 + 0.06);
+    const [h2x, h2z] = at(-side * (HALF - LAND_W / 2 + 0.1), OUT + width / 2 + 0.06);
+    for (const t of [0.18, 0.5, 0.82]) {
+      const px = h1x + (h2x - h1x) * t, pz = h1z + (h2z - h1z) * t;
+      b.cylinder({ x: px, y: ly + fh * t, z: pz, radius: 0.028, height: 1.0, segments: 6,
+        mat: rail, surface: SURFACE.METAL, collide: false });
+    }
+    // 段の手すり本体（傾いた 1 本）
+    {
+      const dx = h2x - h1x, dz = h2z - h1z;
+      const len = Math.hypot(dx, dz);
+      const slope = Math.atan2(fh, len);
+      b.box({
+        x: (h1x + h2x) / 2, y: ly + fh / 2 + 1.0, z: (h1z + h2z) / 2,
+        w: 0.045, h: 0.045, d: Math.hypot(len, fh),
+        yaw: Math.atan2(dx, dz), rx: -slope,
+        mat: rail, surface: SURFACE.METAL, collide: false,
+      });
+    }
+  }
+
+  // 通し支柱（踊り場の外側の角）
+  for (const side of [-1, 1]) {
+    for (const e of [-1, 1]) {
+      const [px, pz] = at(side * HALF + e * (LAND_W / 2), OUT + width / 2 + 0.28);
+      b.cylinder({ x: px, y, z: pz, radius: 0.05, height: y + fh * floors + 1.1 - y,
+        segments: 8, mat: rail, surface: SURFACE.METAL, collide: false });
+    }
+  }
+  return b;
+}
+
+/**
+ * 中層ビル（3〜9 階の雑居ビル・事務所ビル）。
+ *
+ * 市街地の絵をいちばん多く占めるのはこの型なのに、
+ * 部品が無かったので、遠景では窓の帯を巻いただけの箱を使っていた。
+ * 近づくと嘘が判る。
+ *
+ * 押さえどころは 4 つ。
+ *   ・階の境に水平の見切り（スパンドレル）を入れる
+ *   ・窓は面より奥に引っ込める（額縁の影が階調を作る）
+ *   ・1 階だけ階高を上げて、店舗かエントランスにする
+ *   ・屋上に必ず物を載せる（塔屋・水槽・手すり・ダクト）
+ */
+export function midRise(b, o) {
+  const {
+    x, y = 0, z, yaw = 0, w = 14, d = 11, floors = 5,
+    fh = 3.35, groundH = 4.1, mat = 'concreteRaw', trim = 'concrete',
+    name = '', sub = '', signBg = '#1d2530', signFg = '#eef1f4',
+    escape = true, entrance = true,
+  } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  const hw = w / 2, hd = d / 2;
+  const H = groundH + fh * (floors - 1);
+
+  /* ---- 躯体 ---- */
+  /*
+   * 壁は「殻」として作る。
+   *
+   * 最初は中身の詰まった箱を 1 つ置き、その面に窓を貼っていた。
+   * ところが窓のガラスも室内の面も、箱の前面より内側に来るので
+   * まるごと箱に隠れ、外からは額縁の出っ張りしか見えなかった。
+   * 5 階建てを正面から撮ったら、目地の入った一枚のスラブだった。
+   *
+   * 内側に一回り小さい暗い塊（＝室内）を置き、
+   * その外側に厚さ T の壁を、窓の位置を抜いて回す。
+   * こうすると開口が本当に開くので、
+   *   ・上枠が落とす影
+   *   ・見込み（開口の側面）の陰
+   *   ・奥のガラスの映り込み
+   * が全部そろう。壁の面が一段深くなる。
+   */
+  const T = 0.26;
+
+  // 基礎の水切り。壁より外へ出して、足元に影の線を作る
+  b.box({ x, y: y + 0.22, z, w: w + 0.20, h: 0.44, d: d + 0.20, yaw,
+    mat: trim, surface: SURFACE.CONCRETE });
+  b.box({ x, y: y + 0.46, z, w: w + 0.26, h: 0.05, d: d + 0.26, yaw,
+    mat: trim, surface: SURFACE.CONCRETE, collide: false });
+
+  const base = y + 0.44;
+  // 室内に相当する塊。窓の奥はここが見える
+  b.box({ x, y: base + H / 2, z, w: w - T * 2, h: H, d: d - T * 2, yaw,
+    mat: 'roomDark', surface: SURFACE.CONCRETE });
+
+  /* ---- 窓割り ---- */
+  const cols = Math.max(2, Math.round(w / 2.7));
+  const colsD = Math.max(2, Math.round(d / 2.7));
+  const winW = (w / cols) * 0.60;
+  const winWD = (d / colsD) * 0.60;
+
+  /*
+   * どの窓にブラインドが下りているか。
+   *
+   * 全部を暗くすると廃ビルに、全部を明るくすると
+   * 判で押したような CG に見える。位置から決まる擬似乱数で
+   * 3 割ほどを明るくすると、面に不揃いのリズムが出る。
+   * 建物の座標を種に混ぜてあるので、隣の棟とは並びが変わる。
+   */
+  const seed = Math.abs(Math.round(x * 31.7 + z * 17.3));
+  const blindAt = (i, f, s2) => {
+    const n = Math.sin(i * 12.9898 + f * 78.233 + s2 * 37.719 + seed) * 43758.5453;
+    return (n - Math.floor(n)) < 0.32;
+  };
+
+  /** 面ごとの壁芯（外面から T/2 内側） */
+  const faces = [
+    { n: 0, len: w, half: hw, other: hd - T / 2, cols, ww: winW },        // +Z
+    { n: 1, len: w, half: hw, other: -(hd - T / 2), cols, ww: winW },     // -Z
+    { n: 2, len: d, half: hd, other: hw - T / 2, cols: colsD, ww: winWD },  // +X
+    { n: 3, len: d, half: hd, other: -(hw - T / 2), cols: colsD, ww: winWD },// -X
+  ];
+  /** 面 n の線分の両端（ローカル） */
+  const faceEnds = (fc) => (fc.n < 2
+    ? [[-fc.half, fc.other], [fc.half, fc.other]]
+    : [[fc.other, -fc.half], [fc.other, fc.half]]);
+  /** 面 n の外向き yaw */
+  const faceYaw = (fc) => yaw + [0, Math.PI, Math.PI / 2, -Math.PI / 2][fc.n];
+
+  for (let f = 0; f < floors; f++) {
+    const fy = f === 0 ? base : base + groundH + fh * (f - 1);
+    const fHeight = f === 0 ? groundH : fh;
+    // 開口（1 階は正面だけ大きく開ける）
+    const winH = fHeight * 0.60;
+    const sill = fHeight * 0.22;
+
+    for (const fc of faces) {
+      const [[ax, az], [bx2, bz2]] = faceEnds(fc);
+      const [w1x, w1z] = at(ax, az), [w2x, w2z] = at(bx2, bz2);
+      const gaps = [];
+      if (f === 0) {
+        if (entrance && fc.n === 0) {
+          gaps.push({ start: fc.len / 2 - (w * 0.31), width: w * 0.62, bottom: 0, top: groundH - 1.1 });
+        } else if (fc.n === 1) {
+          // 背面は通用口
+          gaps.push({ start: fc.len * 0.62, width: 1.15, bottom: 0, top: 2.15 });
+        }
+      } else {
+        for (let i = 0; i < fc.cols; i++) {
+          const step = fc.len / fc.cols;
+          gaps.push({ start: step * i + (step - fc.ww) / 2, width: fc.ww, bottom: sill, top: sill + winH });
+        }
+      }
+      b.wallWithGaps({
+        x1: w1x, z1: w1z, x2: w2x, z2: w2z, y: fy, h: fHeight, thickness: T,
+        gaps, mat, surface: SURFACE.CONCRETE,
+      });
+
+      // 建具
+      const fyaw = faceYaw(fc);
+      const nx3 = Math.sin(fyaw), nz3 = Math.cos(fyaw);
+      for (let gi = 0; gi < gaps.length; gi++) {
+        const g = gaps[gi];
+        const t = g.start + g.width / 2 - fc.len / 2;
+        const [lx, lz] = fc.n < 2
+          ? [fc.n === 0 ? t : -t, fc.other]
+          : [fc.other, fc.n === 2 ? -t : t];
+        const [gx2, gz2] = at(lx, lz);
+        const cy = fy + (g.bottom + g.top) / 2;
+        const gh = g.top - g.bottom;
+        // ガラス（壁芯より少し内側）
+        const geo = new THREE.BoxGeometry(g.width - 0.06, gh - 0.06, 0.03);
+        geo.rotateY(fyaw);
+        geo.translate(gx2 - nx3 * (T * 0.18), cy, gz2 - nz3 * (T * 0.18));
+        b.addExtra(new THREE.Mesh(geo, b.mats.glass({ opacity: 0.30, transmission: 0.74 })));
+        // 方立
+        b.box({ x: gx2 - nx3 * (T * 0.18), y: cy, z: gz2 - nz3 * (T * 0.18),
+          w: 0.055, h: gh, d: 0.055, yaw: fyaw, mat: 'anodized', surface: SURFACE.METAL, collide: false });
+        // 額縁（開口の四周を外へ出す）
+        for (const [ox2, oy2, ww2, hh2] of [
+          [0, gh / 2 + 0.06, g.width + 0.24, 0.12],
+          [0, -gh / 2 - 0.06, g.width + 0.24, 0.12],
+          [-g.width / 2 - 0.06, 0, 0.12, gh],
+          [g.width / 2 + 0.06, 0, 0.12, gh],
+        ]) {
+          b.box({
+            x: gx2 + Math.cos(fyaw) * ox2 + nx3 * (T / 2 + 0.03),
+            y: cy + oy2,
+            z: gz2 - Math.sin(fyaw) * ox2 + nz3 * (T / 2 + 0.03),
+            w: ww2, h: hh2, d: 0.12, yaw: fyaw,
+            mat: trim, surface: SURFACE.CONCRETE, collide: false,
+          });
+        }
+        // ブラインド（開口の奥に紙 1 枚）
+        if (f > 0 && blindAt(gi, f, fc.n)) {
+          b.box({ x: gx2 - nx3 * (T * 0.42), y: cy + gh * 0.08, z: gz2 - nz3 * (T * 0.42),
+            w: g.width - 0.10, h: gh * 0.84, d: 0.03, yaw: fyaw,
+            mat: 'blindPale', surface: SURFACE.CONCRETE, collide: false });
+        }
+      }
+    }
+
+    // 階の境の見切り（スパンドレル）。これで横のラインが通る
+    if (f > 0) {
+      b.box({ x, y: fy + 0.10, z, w: w + 0.10, h: 0.20, d: d + 0.10, yaw,
+        mat: trim, surface: SURFACE.CONCRETE, collide: false });
+    }
+    // 床スラブ（内部が見えたときに階が判る）
+    b.box({ x, y: fy - 0.09, z, w: w - T * 2 + 0.02, h: 0.18, d: d - T * 2 + 0.02, yaw,
+      mat: 'concreteFloor', surface: SURFACE.CONCRETE, collide: false });
+  }
+
+  /* ---- 1 階 ---- */
+  if (entrance) {
+    // 正面（+z 側）を店舗・エントランスにする
+    const [gx, gz] = at(0, hd);
+    // 大判のガラス。方立で 3 枚に割る
+    const gw = w * 0.62;
+    windowUnit(b, { x: gx, y: y + 0.44 + groundH * 0.5, z: gz, yaw, w: gw, h: groundH - 1.3, bars: 3, sill: false });
+    // 入口の庇（キャンチ）
+    const [ax2, az2] = at(0, hd + 0.85);
+    b.box({ x: ax2, y: y + 0.44 + groundH - 0.55, z: az2, w: gw + 1.6, h: 0.22, d: 1.8, yaw,
+      mat: trim, surface: SURFACE.CONCRETE, collide: false });
+    // 御影石の腰。ビルの足元は必ず一段違う材で巻いてある
+    for (const sz of [-1, 1]) {
+      const [kx, kz] = at(0, sz * (hd + 0.06));
+      b.box({ x: kx, y: y + 0.44 + 0.5, z: kz, w: w * 0.99, h: 1.0, d: 0.12, yaw,
+        mat: 'granite', surface: SURFACE.CONCRETE, collide: false });
+    }
+    // 段
+    const [stx, stz] = at(0, hd + 0.7);
+    b.box({ x: stx, y: y + 0.30, z: stz, w: gw + 0.8, h: 0.28, d: 1.3, yaw,
+      mat: trim, surface: SURFACE.CONCRETE });
+  }
+
+  /* ---- 付帯 ---- */
+  // 竪樋（角に 2 本）
+  for (const sx of [-1, 1]) {
+    const [px, pz] = at(sx * (hw - 0.35), -hd);
+    downpipe(b, { x: px, y, z: pz, yaw: yaw + Math.PI, height: 0.44 + H - 0.2 });
+  }
+  // 引込盤と量水器
+  const [mx, mz] = at(-hw + 1.1, hd);
+  meterPanel(b, { x: mx, y: y + 0.5, z: mz, yaw });
+  // 側面の室外機（階ごと）
+  for (let f = 1; f < floors; f++) {
+    const fy = y + 0.44 + groundH + fh * (f - 1);
+    const [ax3, az3] = at(hw, -hd + d * 0.3);
+    wallAc(b, { x: ax3, y: fy + 0.9, z: az3, yaw: yaw + Math.PI / 2 });
+  }
+  // 外部避難階段（背面）
+  if (escape) {
+    const [ex, ez] = at(hw - 2.2, -hd - 1.5);
+    fireEscape(b, { x: ex, y: y + 0.44, z: ez, yaw: yaw + Math.PI, floors: floors - 1, fh });
+  }
+  // 袖看板
+  if (name) {
+    const [bx, bz] = at(hw + 0.45, hd - 1.4);
+    wallSign(b, { x: bx, y: y + 0.44 + groundH + fh * 0.9, z: bz, yaw: yaw + Math.PI / 2,
+      w: 0.62, h: 2.2, text: name, bg: signBg, fg: signFg, vertical: true, blade: true });
+    const [nx2, nz2] = at(0, hd + 0.1);
+    wallSign(b, { x: nx2, y: y + 0.44 + groundH + 0.55, z: nz2, yaw,
+      w: w * 0.5, h: 0.6, text: name, sub, bg: signBg, fg: signFg });
+  }
+
+  /* ---- 屋上 ---- */
+  const top = y + 0.44 + H;
+  parapet(b, { x, y: top, z, w, d, yaw, h: 1.05, mat: trim });
+  P.rooftopClutter(b, { x, y: top, z, yaw });
+  // 塔屋（階段室）。屋上の輪郭に高さの差を作る
+  const [px2, pz2] = at(-hw + 2.6, -hd + 2.4);
+  b.box({ x: px2, y: top + 1.35, z: pz2, w: 3.2, h: 2.7, d: 3.0, yaw, mat: trim, surface: SURFACE.CONCRETE });
+  b.box({ x: px2, y: top + 2.76, z: pz2, w: 3.5, h: 0.12, d: 3.3, yaw, mat: 'galvanized', surface: SURFACE.METAL, collide: false });
+  P.waterTank(b, { x: x + c * (hw - 2.2), y: top + 0.6, z: z - s * (hw - 2.2), radius: 1.1, height: 1.8, legs: 0.9 });
+  return b;
+}
+
+/**
+ * 面より奥へ引っ込めた窓。
+ * 額縁を外へ、ガラスを奥へ置くだけだが、
+ * これがあるかないかで壁の階調がまるで変わる。
+ */
+export function recessedWindow(b, o) {
+  const {
+    x, y, z, yaw = 0, w = 1.6, h = 2.0, depth = 0.20, trim = 'concrete',
+    blind = 0,
+  } = o;
+  const nx = Math.sin(yaw), nz = Math.cos(yaw);
+  const tx = Math.cos(yaw), tz = -Math.sin(yaw);
+
+  /*
+   * 窓の奥。
+   *
+   * 躯体は中身の詰まった箱なので、ガラスの向こうには
+   * 壁と同じコンクリートが見えていた。透過を上げても
+   * 「壁と同じ色の板」が見えるだけで、窓がまったく窓に見えない。
+   * 実際、5 階建てを撮ったら、のっぺりした一枚のスラブになっていた。
+   *
+   * 室内に相当する面を 1 枚入れる。
+   * すべて暗くすると死んだビルになるので、
+   * 何割かはブラインドを下ろした明るい面にする。
+   */
+  b.box({
+    x: x - nx * (depth + 0.05), y, z: z - nz * (depth + 0.05),
+    w: w + 0.06, h: h + 0.06, d: 0.08, yaw,
+    mat: blind > 0.5 ? 'blindPale' : 'roomDark', surface: SURFACE.CONCRETE, collide: false,
+  });
+
+  // 開口の四周（外へ 5cm 出す）
+  const F = 0.13;
+  for (const [ox, oy, ww, hh] of [
+    [0, h / 2 + F / 2, w + F * 2, F], [0, -h / 2 - F / 2, w + F * 2, F],
+    [-w / 2 - F / 2, 0, F, h], [w / 2 + F / 2, 0, F, h],
+  ]) {
+    b.box({
+      x: x + tx * ox + nx * 0.03, y: y + oy, z: z + tz * ox + nz * 0.03,
+      w: ww, h: hh, d: 0.10, yaw, mat: trim, surface: SURFACE.CONCRETE, collide: false,
+    });
+  }
+  // 内側の見込み（穴の壁）。ここが影になる
+  for (const [ox, oy, ww, hh] of [
+    [0, h / 2, w, 0.04], [0, -h / 2, w, 0.04],
+    [-w / 2, 0, 0.04, h], [w / 2, 0, 0.04, h],
+  ]) {
+    b.box({
+      x: x + tx * ox - nx * depth / 2, y: y + oy, z: z + tz * ox - nz * depth / 2,
+      w: ww, h: hh, d: depth, yaw, mat: trim, surface: SURFACE.CONCRETE, collide: false,
+    });
+  }
+  // ガラス（奥へ）
+  const geo = new THREE.BoxGeometry(w, h, 0.03);
+  geo.rotateY(yaw);
+  geo.translate(x - nx * depth, y, z - nz * depth);
+  b.addExtra(new THREE.Mesh(geo, b.mats.glass({ opacity: 0.34, transmission: 0.72 })));
+  // 方立
+  b.box({ x: x - nx * (depth - 0.02), y, z: z - nz * (depth - 0.02),
+    w: 0.05, h, d: 0.05, yaw, mat: 'anodized', surface: SURFACE.METAL, collide: false });
+  return b;
+}
+
+
+
+/* ================================================================= *
+ *  中に入れる建物
+ *
+ *  外観だけの棟と違い、こちらは
+ *    ・各階に歩ける床がある
+ *    ・階段で上下できる
+ *    ・部屋と廊下に仕切られている
+ *    ・屋上まで出られる
+ *  ところまで作る。対戦の舞台になるのはこの型。
+ * ================================================================= */
+
+/**
+ * 階段室。
+ *
+ * 1 階ぶんを 2 flight（折り返し）で上がる。
+ * 直通の 1 flight にすると、階高 3.4m を 45 度近い勾配で
+ * 一気に登ることになり、走ると引っかかる。
+ *
+ * b.stairs は yaw の逆向き（-sin, -cos）へ登るので、
+ *   +Z へ登らせたい → yaw = π
+ *   -Z へ登らせたい → yaw = 0
+ * を渡す。ここを取り違えると段が壁へ突っ込む。
+ *
+ * @param {object} o {x, y, z, yaw, fh, width, depth, mat}
+ *   x, z は階段室の中心。yaw は建物のローカル軸。
+ */
+export function stairFlight(b, o) {
+  const {
+    x, y = 0, z, yaw = 0, fh = 3.4, width = 1.5, depth = 5.2,
+    mat = 'concreteFloor', rail = 'gunMetal',
+  } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+
+  const STEPS = 9;
+  const rise = fh / (STEPS * 2);
+  const run = (depth / 2 - 0.5) / STEPS;
+
+  // 上り 1（-Z 側へ登る）
+  const [a1x, a1z] = at(-width / 2 - 0.05, depth / 2 - 0.4);
+  b.stairs({ x: a1x, y, z: a1z, width, rise, run, steps: STEPS, yaw, mat, surface: SURFACE.CONCRETE });
+  // 中間の踊り場
+  const [mlx, mlz] = at(0, -depth / 2 + 0.45);
+  b.box({ x: mlx, y: y + fh / 2 - 0.09, z: mlz, w: width * 2 + 0.1, h: 0.18, d: 0.9, yaw,
+    mat, surface: SURFACE.CONCRETE });
+  // 上り 2（+Z 側へ登る）
+  const [a2x, a2z] = at(width / 2 + 0.05, -depth / 2 + 0.9);
+  b.stairs({ x: a2x, y: y + fh / 2, z: a2z, width, rise, run, steps: STEPS,
+    yaw: yaw + Math.PI, mat, surface: SURFACE.CONCRETE });
+
+  // 中央の壁（折り返しの芯）。これが無いと 2 本の段が空中で並ぶだけになる
+  b.box({ x, y: y + fh / 2, z, w: 0.12, h: fh, d: depth - 1.4, yaw,
+    mat: 'paintedWall', surface: SURFACE.CONCRETE });
+  // 手すり（芯の両側）
+  for (const sx of [-1, 1]) {
+    const [r1x, r1z] = at(sx * 0.14, -depth / 2 + 1.0);
+    const [r2x, r2z] = at(sx * 0.14, depth / 2 - 0.5);
+    P.railing(b, { x1: r1x, z1: r1z, x2: r2x, z2: r2z, y: y + fh * 0.28, height: 0.95, mat: rail });
+  }
+  return b;
+}
+
+/**
+ * 事務所ビル（中に入れる）。
+ *
+ * 平面は「片端に階段室、残りを中廊下と両側の居室」。
+ * 実在の雑居ビルでいちばん多い形で、対戦の場としても素直に働く——
+ * 廊下が主動線、居室が待ち伏せ、階段が上下の抜け道になる。
+ *
+ * 各階に床を張り、屋上まで出られるようにしてある。
+ */
+export function officeBlock(b, o) {
+  const {
+    x, y = 0, z, yaw = 0, w = 22, d = 13, floors = 3, fh = 3.5,
+    ext = 'concreteRaw', trim = 'concrete', inner = 'paintedWall',
+    name = '', sub = '', signBg = '#1d2530', signFg = '#eef1f4',
+    escape = true,
+  } = o;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+  const hw = w / 2, hd = d / 2;
+  const T = 0.28;                 // 外壁の厚み
+  const H = fh * floors;
+  const base = y + 0.30;
+
+  const STAIR_W = 5.6;            // 階段室の幅（+X 側）
+  const stairCx = hw - STAIR_W / 2 - T;
+  const roomX0 = -hw + T;         // 居室ゾーンの西端
+  const roomX1 = hw - STAIR_W - T;
+  const CORR = 2.5;               // 中廊下の幅
+
+  /* ---- 基礎 ---- */
+  b.box({ x, y: y + 0.15, z, w: w + 0.24, h: 0.30, d: d + 0.24, yaw,
+    mat: trim, surface: SURFACE.CONCRETE });
+
+  /* ---- 各階 ---- */
+  for (let f = 0; f < floors; f++) {
+    const fy = base + fh * f;
+
+    // 床（居室ゾーンのみ。階段室は吹き抜けにして段だけを通す）
+    b.box({ x: at((roomX0 + roomX1) / 2, 0)[0], y: fy - 0.09, z: at((roomX0 + roomX1) / 2, 0)[1],
+      w: roomX1 - roomX0, h: 0.18, d: d - T * 2, yaw,
+      mat: f === 0 ? 'concreteFloor' : 'laminateGrey', surface: SURFACE.CONCRETE });
+
+    /* -- 外壁 4 面 -- */
+    const winH = fh * 0.58, sill = fh * 0.24;
+    const cols = Math.max(3, Math.round(w / 3.0));
+    const colsD = Math.max(2, Math.round(d / 3.0));
+
+    for (const face of [0, 1, 2, 3]) {
+      const isLong = face < 2;
+      const len = isLong ? w : d;
+      const nCol = isLong ? cols : colsD;
+      const ww = (len / nCol) * 0.58;
+      const other = isLong ? (face === 0 ? hd - T / 2 : -(hd - T / 2)) : (face === 2 ? hw - T / 2 : -(hw - T / 2));
+      const ends = isLong ? [[-hw, other], [hw, other]] : [[other, -hd], [other, hd]];
+      const [[ax, az], [bx2, bz2]] = ends;
+      const [p1x, p1z] = at(ax, az), [p2x, p2z] = at(bx2, bz2);
+
+      const gaps = [];
+      if (f === 0 && face === 0) {
+        // 正面の入口（階段室の前に取る）
+        gaps.push({ start: len / 2 + stairCx - 1.3, width: 2.6, bottom: 0, top: 2.4 });
+        for (let i = 0; i < nCol - 2; i++) {
+          const step = len / nCol;
+          gaps.push({ start: step * i + (step - ww) / 2, width: ww, bottom: sill, top: sill + winH });
+        }
+      } else if (f === 0 && face === 1) {
+        gaps.push({ start: len * 0.24, width: 1.2, bottom: 0, top: 2.2 });
+        for (let i = 2; i < nCol; i++) {
+          const step = len / nCol;
+          gaps.push({ start: step * i + (step - ww) / 2, width: ww, bottom: sill, top: sill + winH });
+        }
+      } else {
+        for (let i = 0; i < nCol; i++) {
+          const step = len / nCol;
+          gaps.push({ start: step * i + (step - ww) / 2, width: ww, bottom: sill, top: sill + winH });
+        }
+      }
+
+      b.wallWithGaps({ x1: p1x, z1: p1z, x2: p2x, z2: p2z, y: fy, h: fh, thickness: T,
+        gaps, mat: ext, surface: SURFACE.CONCRETE });
+
+      // 建具
+      const fyaw = yaw + [0, Math.PI, Math.PI / 2, -Math.PI / 2][face];
+      const nx3 = Math.sin(fyaw), nz3 = Math.cos(fyaw);
+      for (const g of gaps) {
+        const t = g.start + g.width / 2 - len / 2;
+        const [lx, lz] = isLong ? [face === 0 ? t : -t, other] : [other, face === 2 ? -t : t];
+        const [gx2, gz2] = at(lx, lz);
+        const cy = fy + (g.bottom + g.top) / 2;
+        const gh = g.top - g.bottom;
+        if (g.bottom < 0.05) {
+          // 出入口。ガラス扉にして、中が見えるようにする
+          const geo = new THREE.BoxGeometry(g.width - 0.14, gh - 0.12, 0.03);
+          geo.rotateY(fyaw);
+          geo.translate(gx2, cy, gz2);
+          b.addExtra(new THREE.Mesh(geo, b.mats.glass({ opacity: 0.22, transmission: 0.9 })));
+          b.box({ x: gx2, y: cy, z: gz2, w: 0.06, h: gh, d: 0.07, yaw: fyaw,
+            mat: 'anodized', surface: SURFACE.METAL, collide: false });
+        } else {
+          const geo = new THREE.BoxGeometry(g.width - 0.06, gh - 0.06, 0.03);
+          geo.rotateY(fyaw);
+          geo.translate(gx2 - nx3 * 0.05, cy, gz2 - nz3 * 0.05);
+          b.addExtra(new THREE.Mesh(geo, b.mats.glass({ opacity: 0.24, transmission: 0.82 })));
+          // 窓台（外へ出す）
+          b.box({ x: gx2 + nx3 * (T / 2 + 0.04), y: fy + g.bottom - 0.04, z: gz2 + nz3 * (T / 2 + 0.04),
+            w: g.width + 0.22, h: 0.08, d: 0.18, yaw: fyaw, rx: 0.05,
+            mat: trim, surface: SURFACE.CONCRETE, collide: false });
+          b.box({ x: gx2 - nx3 * 0.05, y: cy, z: gz2 - nz3 * 0.05, w: 0.05, h: gh, d: 0.05,
+            yaw: fyaw, mat: 'anodized', surface: SURFACE.METAL, collide: false });
+        }
+      }
+    }
+
+    /* -- 中廊下と居室 -- */
+    // 廊下の両側の間仕切り
+    for (const sz of [-1, 1]) {
+      const zw = sz * CORR / 2;
+      const rooms = 3;
+      const seg = (roomX1 - roomX0) / rooms;
+      const gaps = [];
+      for (let i = 0; i < rooms; i++) {
+        gaps.push({ start: seg * i + seg / 2 - 0.5, width: 1.0, bottom: 0, top: 2.1 });
+      }
+      const [q1x, q1z] = at(roomX0, zw), [q2x, q2z] = at(roomX1, zw);
+      b.wallWithGaps({ x1: q1x, z1: q1z, x2: q2x, z2: q2z, y: fy, h: fh, thickness: 0.14,
+        gaps, mat: inner, surface: SURFACE.CONCRETE });
+      // 各室の扉
+      for (let i = 0; i < rooms; i++) {
+        const lx = roomX0 + seg * i + seg / 2;
+        const [dx2, dz2] = at(lx, zw);
+        door(b, { x: dx2, y: fy, z: dz2, yaw: yaw + (sz > 0 ? 0 : Math.PI),
+          w: 1.0, h: 2.1, mat: 'woodDark', frame: inner });
+      }
+      // 室と室の間仕切り
+      for (let i = 1; i < rooms; i++) {
+        const lx = roomX0 + seg * i;
+        const [e1x, e1z] = at(lx, zw), [e2x, e2z] = at(lx, sz * (hd - T));
+        b.wall({ x1: e1x, z1: e1z, x2: e2x, z2: e2z, y: fy, h: fh, thickness: 0.12,
+          mat: inner, surface: SURFACE.CONCRETE });
+      }
+    }
+    // 廊下の西端の壁
+    {
+      const [c1x, c1z] = at(roomX0, -CORR / 2), [c2x, c2z] = at(roomX0, CORR / 2);
+      b.wall({ x1: c1x, z1: c1z, x2: c2x, z2: c2z, y: fy, h: fh, thickness: 0.14,
+        mat: inner, surface: SURFACE.CONCRETE });
+    }
+    // 廊下と階段室の間仕切り（開口 1 つ）
+    {
+      const [s1x, s1z] = at(roomX1, -hd + T), [s2x, s2z] = at(roomX1, hd - T);
+      b.wallWithGaps({ x1: s1x, z1: s1z, x2: s2x, z2: s2z, y: fy, h: fh, thickness: 0.16,
+        gaps: [{ start: (d - T * 2) / 2 - 0.65, width: 1.3, bottom: 0, top: 2.15 }],
+        mat: inner, surface: SURFACE.CONCRETE });
+    }
+
+    // 天井（最上階以外は上の床が兼ねるので、最上階だけ張る）
+    if (f === floors - 1) {
+      b.box({ x: at((roomX0 + roomX1) / 2, 0)[0], y: fy + fh - 0.09,
+        z: at((roomX0 + roomX1) / 2, 0)[1], w: roomX1 - roomX0, h: 0.18, d: d - T * 2, yaw,
+        mat: 'ceilingPanel', surface: SURFACE.CONCRETE });
+    }
+
+    /* -- 階段 -- */
+    const [scx, scz] = at(stairCx, 0);
+    stairFlight(b, { x: scx, y: fy, z: scz, yaw, fh, width: 1.5, depth: d - T * 2 - 1.2 });
+    // 階段室の床（各階の乗り口）
+    const [lpx, lpz] = at(stairCx, (d - T * 2) / 2 - 0.55);
+    b.box({ x: lpx, y: fy - 0.09, z: lpz, w: STAIR_W - 0.2, h: 0.18, d: 1.1, yaw,
+      mat: 'concreteFloor', surface: SURFACE.CONCRETE });
+
+    /* -- 室内の設え -- */
+    const rooms = 3;
+    const seg = (roomX1 - roomX0) / rooms;
+    for (const sz of [-1, 1]) {
+      for (let i = 0; i < rooms; i++) {
+        const rx = roomX0 + seg * (i + 0.5);
+        const rz = sz * (CORR / 2 + (hd - T - CORR / 2) / 2);
+        const kind = (i + (sz > 0 ? 0 : 1) + f) % 3;
+        if (kind === 0) {
+          for (const dxi of [-1, 1]) {
+            const [px, pz] = at(rx + dxi * 1.5, rz - sz * 0.6);
+            P.desk(b, { x: px, y: fy, z: pz, yaw: yaw + (sz > 0 ? Math.PI : 0) });
+            const [qx, qz] = at(rx + dxi * 1.5, rz + sz * 0.25);
+            P.officeChair(b, { x: qx, y: fy, z: qz, yaw: yaw + (sz > 0 ? 0 : Math.PI) });
+          }
+          const [shx, shz] = at(rx + seg * 0.3, sz * (hd - T - 0.35));
+          P.shelfUnit(b, { x: shx, y: fy, z: shz, yaw: yaw + (sz > 0 ? Math.PI : 0), w: 1.8 });
+        } else if (kind === 1) {
+          const [lkx, lkz] = at(rx, sz * (hd - T - 0.32));
+          P.lockerBank(b, { x: lkx, y: fy, z: lkz, yaw: yaw + (sz > 0 ? Math.PI : 0), doors: 4 });
+          const [tbx, tbz] = at(rx, rz);
+          P.diningTable(b, { x: tbx, y: fy, z: tbz, yaw });
+        } else {
+          const [sfx, sfz] = at(rx, sz * (hd - T - 0.6));
+          P.sofa(b, { x: sfx, y: fy, z: sfz, yaw: yaw + (sz > 0 ? Math.PI : 0), seats: 2 });
+          const [ppx, ppz] = at(rx + seg * 0.32, rz);
+          P.potPlant(b, { x: ppx, y: fy, z: ppz });
+        }
+        // 室内灯
+        b.light({ x: at(rx, rz)[0], y: fy + fh - 0.45, z: at(rx, rz)[1],
+          color: 0xf2f0e6, intensity: 2.2, distance: 7.5 });
+      }
+    }
+    // 廊下の灯り
+    for (let i = 0; i < 2; i++) {
+      const lx = roomX0 + (roomX1 - roomX0) * (i + 0.5) / 2;
+      b.light({ x: at(lx, 0)[0], y: fy + fh - 0.35, z: at(lx, 0)[1],
+        color: 0xe8eef2, intensity: 1.8, distance: 9 });
+    }
+  }
+
+  /* ---- 屋上 ---- */
+  const top = base + H;
+  // 屋上スラブ（居室ゾーンの上）
+  parapet(b, { x, y: top, z, w, d, yaw, h: 1.05, mat: trim });
+  // 塔屋（階段室の上）と屋上への扉
+  const [pcx, pcz] = at(stairCx, 0);
+  const PH = 2.6;
+  for (const face of [0, 1, 2, 3]) {
+    const isLong = face < 2;
+    const len = isLong ? STAIR_W : d - T * 2;
+    const other = isLong ? (face === 0 ? (d - T * 2) / 2 : -(d - T * 2) / 2) : (face === 2 ? STAIR_W / 2 : -STAIR_W / 2);
+    const ends = isLong
+      ? [[stairCx - STAIR_W / 2, other], [stairCx + STAIR_W / 2, other]]
+      : [[stairCx + other, -(d - T * 2) / 2], [stairCx + other, (d - T * 2) / 2]];
+    const [[ax, az], [bx2, bz2]] = ends;
+    const [p1x, p1z] = at(ax, az), [p2x, p2z] = at(bx2, bz2);
+    const gaps = face === 0 ? [{ start: len / 2 - 0.55, width: 1.1, bottom: 0, top: 2.1 }] : [];
+    b.wallWithGaps({ x1: p1x, z1: p1z, x2: p2x, z2: p2z, y: top, h: PH, thickness: 0.2,
+      gaps, mat: trim, surface: SURFACE.CONCRETE });
+  }
+  b.box({ x: pcx, y: top + PH + 0.08, z: pcz, w: STAIR_W + 0.3, h: 0.16, d: d - T * 2 + 0.3, yaw,
+    mat: 'galvanized', surface: SURFACE.METAL });
+  // 屋上の床（居室ゾーンの上に張る）
+  b.box({ x: at((roomX0 + roomX1) / 2, 0)[0], y: top - 0.09, z: at((roomX0 + roomX1) / 2, 0)[1],
+    w: roomX1 - roomX0, h: 0.18, d: d - T * 2, yaw,
+    mat: 'metalRoof', surface: SURFACE.CONCRETE });
+  P.rooftopClutter(b, { x: at(roomX0 + 3.5, 0)[0], y: top, z: at(roomX0 + 3.5, 0)[1], yaw });
+  P.waterTank(b, { x: at(roomX0 + (roomX1 - roomX0) * 0.7, -hd + 2.4)[0], y: top + 0.6,
+    z: at(roomX0 + (roomX1 - roomX0) * 0.7, -hd + 2.4)[1], radius: 1.1, height: 1.8, legs: 0.9 });
+
+  /* ---- 外部の付帯 ---- */
+  for (const sx of [-1, 1]) {
+    const [px, pz] = at(sx * (hw - 0.4), -hd);
+    downpipe(b, { x: px, y, z: pz, yaw: yaw + Math.PI, height: 0.30 + H - 0.2 });
+  }
+  const [mx, mz] = at(-hw + 1.2, hd);
+  meterPanel(b, { x: mx, y: y + 0.5, z: mz, yaw });
+  for (let f = 1; f < floors; f++) {
+    const [ax3, az3] = at(hw, -hd + d * 0.32);
+    wallAc(b, { x: ax3, y: base + fh * f + 0.9, z: az3, yaw: yaw + Math.PI / 2 });
+  }
+  if (escape) {
+    const [ex, ez] = at(-hw + 4.0, -hd - 1.6);
+    fireEscape(b, { x: ex, y: base, z: ez, yaw: yaw + Math.PI, floors, fh });
+  }
+  if (name) {
+    const [nx2, nz2] = at(0, hd + 0.12);
+    wallSign(b, { x: nx2, y: base + fh - 0.6, z: nz2, yaw,
+      w: w * 0.42, h: 0.7, text: name, sub, bg: signBg, fg: signFg });
+    const [bx3, bz3] = at(hw + 0.45, hd - 1.6);
+    wallSign(b, { x: bx3, y: base + fh * 1.6, z: bz3, yaw: yaw + Math.PI / 2,
+      w: 0.62, h: 2.2, text: name, bg: signBg, fg: signFg, vertical: true, blade: true });
+  }
+  return b;
+}
+
 export const BUILDINGS = {
-  windowUnit, door, parapet, gableRoof, wallSign,
+  windowUnit, recessedWindow, door, parapet, gableRoof, wallSign,
+  downpipe, wallAc, meterPanel, fireEscape, stairFlight,
   houseSmall, shopFront, apartment, warehouse, kiosk, vendingMachine,
+  midRise, officeBlock,
 };

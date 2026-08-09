@@ -200,6 +200,63 @@ export class MapBuilder {
   }
 
   /**
+   * 開口を複数持つ壁。
+   *
+   * wallWithGap は開口が 1 つしか開かない。
+   * 中層ビルの 1 面には窓が 4〜6 並ぶので、
+   * 1 開口ずつ壁を分割して呼ぶと、隣り合う壁が重なって
+   * 継ぎ目に段差が出る。ここでまとめて割る。
+   *
+   * @param {object} o wall と同じ + {gaps: [{start, width, bottom, top}]}
+   *   start は壁の始点からの距離、bottom/top は y からの高さ。
+   */
+  wallWithGaps(o) {
+    const { x1, z1, x2, z2, h = 3.2, gaps = [], ...rest } = o;
+    const y = o.y ?? 0;
+    const dx = x2 - x1, dz = z2 - z1;
+    const len = Math.hypot(dx, dz);
+    if (len < 0.02) return this;
+    const ux = dx / len, uz = dz / len;
+    const P = (t) => [x1 + ux * t, z1 + uz * t];
+
+    const list = gaps
+      .map((g) => ({
+        s: Math.max(0, Math.min(len, g.start)),
+        e: Math.max(0, Math.min(len, g.start + g.width)),
+        bottom: g.bottom ?? 0,
+        top: g.top ?? h,
+      }))
+      .filter((g) => g.e - g.s > 0.02)
+      .sort((a, c) => a.s - c.s);
+
+    let cursor = 0;
+    for (const g of list) {
+      const s = Math.max(cursor, g.s);
+      if (s >= g.e) continue;
+      // 開口の手前（無開口の壁）
+      if (s - cursor > 0.02) {
+        const [ax, az] = P(cursor), [bx, bz] = P(s);
+        this.wall({ ...rest, x1: ax, z1: az, x2: bx, z2: bz, h, y });
+      }
+      const [gx1, gz1] = P(s), [gx2, gz2] = P(g.e);
+      // 腰壁
+      if (g.bottom > 0.02) {
+        this.wall({ ...rest, x1: gx1, z1: gz1, x2: gx2, z2: gz2, h: g.bottom, y });
+      }
+      // まぐさ
+      if (h - g.top > 0.02) {
+        this.wall({ ...rest, x1: gx1, z1: gz1, x2: gx2, z2: gz2, h: h - g.top, y: y + g.top });
+      }
+      cursor = g.e;
+    }
+    if (len - cursor > 0.02) {
+      const [ax, az] = P(cursor);
+      this.wall({ ...rest, x1: ax, z1: az, x2, z2, h, y });
+    }
+    return this;
+  }
+
+  /**
    * 階段。
    * @param {object} o {x,y,z, width, rise, run, steps, yaw, mat, surface}
    */

@@ -12,6 +12,7 @@ import { sectionGizmos } from './s_gizmos.js';
 import { sectionSandbox } from './s_sandbox.js';
 import { sectionEdge } from './s_edge.js';
 import { sectionTerrain } from './s_terrain.js';
+import { sectionBuildLab } from './s_build.js';
 
 /**
  * マップ 0: TESTBED（テストベッド）
@@ -27,6 +28,7 @@ import { sectionTerrain } from './s_terrain.js';
  *   ギミック試験場… 動く仕掛けを置いて、乗ったり潜ったりする
  *   試作場   … 何も置いていない平地。思い付いたものをまず組む場所
  *   地形試験場… 斜面・掘り込み・盛土・地面の材質を歩いて確かめる
+ *   建築試作場… 建物を 1 棟ずつ台に載せ、四周と屋上から作りを詰める
  *
  * 作りの原則は 3 つ。
  *   1. 十字の通路から、すべての区画へ行けること
@@ -38,8 +40,8 @@ export const MAP_INFO = {
   id: 'testbed',
   name: 'TESTBED',
   nameJa: 'テストベッド',
-  desc: '検証用の施設。博物館・資材置き場・建物街・実験場・射撃場・ギミック試験場・試作場を十字の通路でつないである。対戦もできる。',
-  size: '検証用（184 × 164m）',
+  desc: '検証用の施設。博物館・資材置き場・建物街・建築試作場・実験場・射撃場・ギミック試験場・試作場を十字の通路でつないである。対戦もできる。',
+  size: '検証用（184 × 226m）',
   players: '2〜12人',
 
   /*
@@ -68,7 +70,7 @@ export const MAP_INFO = {
     dust: 0xdcd6c8, dustMix: 0.16, hazeGain: 1.04,
     distance: 520, scaleHeight: 130, max: 0.92,
   },
-  bounds: { min: { x: -94, z: -82 }, max: { x: 94, z: 86 } },
+  bounds: { min: { x: -94, z: -144 }, max: { x: 94, z: 86 } },
   viewDistance: 460,
   /** 一覧で「これは検証用」と分かるようにする印 */
   utility: true,
@@ -76,11 +78,17 @@ export const MAP_INFO = {
 
 /* 敷地 */
 const WEST = -92, EAST = 92;
-const NORTH = -80, SOUTH = 84;
+/*
+ * 北へ 62m 広げてある。
+ * 建築試作場は 1 棟ごとに 24m 角の台を要るので、
+ * 既存の区画の隙間には入らない。
+ */
+const NORTH = -142, SOUTH = 84;
 
 /* 十字の通路 */
 const AISLE_HW = 3.0;        // 東西通路の半幅
 const AVE_HW = 3.0;          // 南北通路の半幅
+const AVE_N = -84;           // 南北通路の北端（この先は建築試作場）
 
 /**
  * 区画の一覧。
@@ -100,6 +108,7 @@ const SECTIONS = [
   { no: '08', name: '試作場', en: 'SANDBOX', hue: HUE.sandbox, gate: [-6.4, 60, Math.PI / 2] },
   { no: '09', name: '射撃場', en: 'RANGE', hue: HUE.range, gate: [6.4, 52, -Math.PI / 2] },
   { no: '10', name: '地形試験場', en: 'TERRAIN', hue: HUE.lab, gate: [64, 4.6, FACE_N] },
+  { no: '11', name: '建築試作場', en: 'BUILDING LAB', hue: HUE.town, gate: [-6.4, -78, -Math.PI / 2] },
 ];
 
 export function buildTestbed(b) {
@@ -126,6 +135,7 @@ export function buildTestbed(b) {
   sectionSandbox(b, -50, 64);        // x -70..-30  z  49..79
   sectionRange(b, -12, 64);          // x -12..79   z  53..75
   sectionTerrain(b, 74, 34);         // x  61..87   z  19..49
+  sectionBuildLab(b, 0, -112);       // x -84..84  z -140..-84
 
   /* ---- スポーンと目標（対戦にも使えるように） ---- */
   spawnPad(b, -84, -66, 'B');
@@ -179,15 +189,21 @@ function avenues(b) {
   }
 
   /* ---- 南北の通路 ---- */
-  const ad = SOUTH - NORTH - 6;
-  b.box({ x: 0, y: 0.018, z: (SOUTH + NORTH) / 2, w: AVE_HW * 2, h: 0.03, d: ad,
+  /*
+   * 北の端は建築試作場の前で止める。
+   * 敷地を北へ広げたときに通路もそのまま伸ばしたら、
+   * 試作台のまん中を舗装路が突き抜けた。
+   * 試作場の前面通路（東西）が、そこから先の受け口になる。
+   */
+  const ad = SOUTH - AVE_N - 3;
+  b.box({ x: 0, y: 0.018, z: (SOUTH - 3 + AVE_N) / 2, w: AVE_HW * 2, h: 0.03, d: ad,
     mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
-  for (let z = NORTH + 5; z < SOUTH - 7; z += 7) {
+  for (let z = AVE_N + 2; z < SOUTH - 7; z += 7) {
     if (Math.abs(z) < AISLE_HW + 3) continue;
     b.box({ x: 0, y: 0.026, z: z + 1.75, w: 0.13, h: 0.03, d: 3.5, mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
   }
   for (const s of [-1, 1]) {
-    for (const [z0, z1] of [[NORTH + 3, -AISLE_HW - 1.2], [AISLE_HW + 1.2, SOUTH - 3]]) {
+    for (const [z0, z1] of [[AVE_N, -AISLE_HW - 1.2], [AISLE_HW + 1.2, SOUTH - 3]]) {
       b.box({ x: s * (AVE_HW + 0.09), y: 0.09, z: (z0 + z1) / 2, w: 0.18, h: 0.18, d: z1 - z0,
         mat: 'concrete', surface: SURFACE.CONCRETE });
       b.box({ x: s * (AVE_HW + 1.4), y: 0.10, z: (z0 + z1) / 2, w: 2.4, h: 0.03, d: z1 - z0,
