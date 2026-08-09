@@ -193,6 +193,16 @@ const PRESETS = {
 
   /* ---- 汚し（面に重ねて雰囲気を足す） ---- */
   soot:            { tex: 'soot',         repeat: 0.7,  params: { roughness: 1, metalness: 1 } },
+  /*
+   * 汚れを「板」として貼るとき用の、薄い版。
+   *
+   * soot / moss をそのまま箱で貼ると、真っ黒・真緑の矩形が
+   * 壁に貼り付いているようにしか見えない。
+   * 実際の雨だれや苔は下地の色をわずかに濁らせる程度なので、
+   * 明るめに寄せた別プリセットを用意する。
+   */
+  sootFaint:       { tex: 'soot',         repeat: 0.8,  params: { roughness: 1, metalness: 1, color: 0x8e8b86 }, seed: 411 },
+  mossFaint:       { tex: 'moss',         repeat: 1.2,  params: { roughness: 1, metalness: 1, color: 0x8a9184 }, seed: 512 },
   moss:            { tex: 'moss',         repeat: 1.4,  params: { roughness: 1, metalness: 1 } },
   mud:             { tex: 'mud',          repeat: 0.8,  params: { roughness: 1, metalness: 1 } },
 

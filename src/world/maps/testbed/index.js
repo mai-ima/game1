@@ -10,6 +10,8 @@ import { sectionTown } from './s_town.js';
 import { sectionYard, sectionMaterials } from './s_yard.js';
 import { sectionGizmos } from './s_gizmos.js';
 import { sectionSandbox } from './s_sandbox.js';
+import { sectionEdge } from './s_edge.js';
+import { sectionTerrain } from './s_terrain.js';
 
 /**
  * マップ 0: TESTBED（テストベッド）
@@ -24,6 +26,7 @@ import { sectionSandbox } from './s_sandbox.js';
  *   射撃場   … 距離ごとの減衰と、材質ごとの貫通を撃って確かめる
  *   ギミック試験場… 動く仕掛けを置いて、乗ったり潜ったりする
  *   試作場   … 何も置いていない平地。思い付いたものをまず組む場所
+ *   地形試験場… 斜面・掘り込み・盛土・地面の材質を歩いて確かめる
  *
  * 作りの原則は 3 つ。
  *   1. 十字の通路から、すべての区画へ行けること
@@ -87,6 +90,7 @@ const SECTIONS = [
   { no: '07', name: '資材置き場', en: 'ASSET YARD', hue: HUE.yard, gate: [34, 4.6, FACE_N] },
   { no: '08', name: '試作場', en: 'SANDBOX', hue: HUE.sandbox, gate: [-6.4, 60, Math.PI / 2] },
   { no: '09', name: '射撃場', en: 'RANGE', hue: HUE.range, gate: [6.4, 52, -Math.PI / 2] },
+  { no: '10', name: '地形試験場', en: 'TERRAIN', hue: HUE.lab, gate: [64, 4.6, FACE_N] },
 ];
 
 export function buildTestbed(b) {
@@ -112,6 +116,7 @@ export function buildTestbed(b) {
   sectionYard(b, 34, 24);            // x   9..59   z   9..39
   sectionSandbox(b, -50, 64);        // x -70..-30  z  49..79
   sectionRange(b, -12, 64);          // x -12..79   z  53..75
+  sectionTerrain(b, 74, 34);         // x  61..87   z  19..49
 
   /* ---- スポーンと目標（対戦にも使えるように） ---- */
   spawnPad(b, -84, -66, 'B');
@@ -134,15 +139,12 @@ function ground(b) {
    */
   b.floor({ x: cx, y: 0, z: cz, w, d, mat: 'concreteFloor', surface: SURFACE.CONCRETE });
 
-  // 外周のフェンス（落ちない・迷わない）
-  for (const [x1, z1, x2, z2] of [
-    [WEST + 1, NORTH + 1, EAST - 1, NORTH + 1],
-    [WEST + 1, SOUTH - 1, EAST - 1, SOUTH - 1],
-    [WEST + 1, NORTH + 1, WEST + 1, SOUTH - 1],
-    [EAST - 1, NORTH + 1, EAST - 1, SOUTH - 1],
-  ]) {
-    P.chainFence(b, { x1, z1, x2, z2, h: 3.0 });
-  }
+  /*
+   * 境界と、その外の街。
+   * 金網を一周させると、どこを向いても斜めの網が視界に入って
+   * ちらつき続ける。塀・仮囲い・土手を混ぜ、金網は要所だけにする。
+   */
+  sectionEdge(b, { west: WEST + 1, east: EAST - 1, north: NORTH + 1, south: SOUTH - 1 });
 }
 
 /**

@@ -126,6 +126,8 @@ export const MATERIAL_JA = {
   foam: '発泡材',
   burlap: '麻布',
   soot: '煤',
+  sootFaint: '雨だれ（薄）',
+  mossFaint: '苔（薄）',
   moss: '苔',
   mud: '泥',
   grass: '草',
