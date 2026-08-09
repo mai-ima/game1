@@ -171,6 +171,25 @@ const PRESETS = {
    * 室内に相当する暗い面と、ブラインドを下ろした明るい面の 2 種。
    */
   roomDark:        { tex: 'plaster',      repeat: 0.8,  params: { roughness: 1, metalness: 0, color: 0x1d2024 }, seed: 9201 },
+  // 掲示板の下地（フェルト）
+  feltGreen:       { tex: 'fabric',       repeat: 2.2,  params: { roughness: 1, metalness: 0, color: 0x4f6b58 }, seed: 9203 },
+  /*
+   * 室内の床。
+   *
+   * laminateGrey（明度 62%）や terrazzo を事務所の床に使ったら、
+   * 半球光とフィルが室内まで届くせいで真っ白に飛び、
+   * 模様が 1 本も残らなかった。屋内は屋外より 2〜3 段暗いのが普通なので、
+   * 材質の側を暗く作っておかないと釣り合わない。
+   */
+  floorVinyl:      { tex: 'laminate',     repeat: 1.1,  params: { roughness: 1, metalness: 0, color: 0x4e5255 }, seed: 9204 },
+  floorStone:      { tex: 'terrazzo',     repeat: 2.0,  params: { roughness: 1, metalness: 0, color: 0x56585c }, seed: 9205 },
+  /*
+   * 陸屋根の防水シート。
+   * 折板（metalRoof）を陸屋根に敷いたら、リブが光って
+   * 屋上一面が波板の倉庫の屋根になっていた。
+   * ビルの陸屋根はシート防水かアスファルト防水で、面は平ら。
+   */
+  roofMembrane:    { tex: 'rubber',       repeat: 0.45, params: { roughness: 1, metalness: 0, color: 0x707477 }, seed: 9206 },
   blindPale:       { tex: 'plaster',      repeat: 1.6,  params: { roughness: 1, metalness: 0, color: 0xb9b3a6 }, seed: 9202 },
   concreteBlock:   { tex: 'concreteBlock', repeat: 1.0, params: { roughness: 1, metalness: 1 } },
   stuccoRough:     { tex: 'stuccoRough',  repeat: 0.9,  params: { roughness: 1, metalness: 1 } },
@@ -619,6 +638,47 @@ export class MaterialLibrary {
     return this._register(mat, key);
   }
 
+  /**
+   * 建物の窓ガラス（外から見る用）。
+   *
+   * glass() は透過（transmission）を 0.94 まで上げてあるので、
+   * ショーケースには合うが、建物の窓に使うと室内が丸見えになる。
+   * 実際、3 階建ての事務所ビルを外から撮ったら、
+   * 間仕切りも机も全部透けて、透明な骨組みにしか見えなかった。
+   *
+   * 昼間の窓を外から見ると、目に入るのはほとんど空の映り込みで、
+   * 室内はその奥にわずかに沈んで見える。
+   * 透過をやめて、暗い色の半透明＋強い映り込みで作る。
+   * 中から外を見たときも素通しにはならず、窓として成立する。
+   */
+  windowGlass(opt = {}) {
+    const key = `windowGlass|${JSON.stringify(opt)}`;
+    if (this.cache.has(key)) return this.cache.get(key);
+    const set = this.tf.get('dirtyGlass', { size: 512, seed: 4242 });
+    const nrm = set.normalMap.clone(); nrm.needsUpdate = true;
+    nrm.repeat.set(1.4, 1.4);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x1b2730,
+      metalness: 0.12,
+      roughness: 0.09,
+      normalMap: nrm,
+      normalScale: new THREE.Vector2(0.16, 0.16),
+      transparent: true,
+      opacity: 0.72,
+      side: THREE.DoubleSide,
+      // 映り込みを主役にする。ここを上げないとただの黒い板になる
+      envMapIntensity: this.envIntensity * 2.2,
+      ...opt,
+    });
+    mat.name = 'windowGlass';
+    /*
+     * applyEnvironment が全マテリアルの envMapIntensity を
+     * 一律で上書きするので、倍率をここに預けておく。
+     */
+    mat.userData.envBoost = 2.2;
+    return this._register(mat, key);
+  }
+
   /** ガラス（物理マテリアル・透過） */
   glass(opt = {}) {
     const key = `glass|${JSON.stringify(opt)}`;
@@ -802,7 +862,8 @@ export class MaterialLibrary {
     this.envMap = envTexture;
     for (const m of this._all) {
       m.envMap = envTexture;
-      m.envMapIntensity = intensity;
+      // 窓ガラスのように、他より強く映り込ませたい材質がある
+      m.envMapIntensity = intensity * (m.userData.envBoost ?? 1);
       m.needsUpdate = true;
     }
   }

@@ -2346,3 +2346,69 @@ export const PROPS = {
   bed, wardrobe, fridge, kitchenUnit, tvSet, bookshelf, bench, counter,
   potPlant, trashBin,
 };
+
+/**
+ * 消火器（箱入り・壁掛け）。
+ *
+ * 事務所や集合住宅の廊下を歩いたとき、
+ * 壁が延々と続くだけだと「通路の書き割り」に見える。
+ * 実際の廊下には必ず、消火器・掲示板・分電盤・非常灯が付いている。
+ * 赤は視界の中で強く効くので、置くだけで場所の記憶にもなる。
+ */
+export function fireExtinguisher(b, o) {
+  const { x, y = 0, z, yaw = 0, box = true } = o;
+  const nx = Math.sin(yaw), nz = Math.cos(yaw);
+
+  if (box) {
+    // 収納箱（壁付け）
+    b.box({ x: x + nx * 0.16, y: y + 0.42, z: z + nz * 0.16, w: 0.30, h: 0.72, d: 0.26, yaw,
+      mat: 'paintedMetal', surface: SURFACE.METAL, collide: false });
+    // 扉のガラス窓
+    b.box({ x: x + nx * 0.29, y: y + 0.46, z: z + nz * 0.29, w: 0.20, h: 0.44, d: 0.02, yaw,
+      mat: 'acrylic', surface: SURFACE.GLASS, collide: false });
+    // 「消火器」の赤帯
+    b.box({ x: x + nx * 0.30, y: y + 0.13, z: z + nz * 0.30, w: 0.30, h: 0.10, d: 0.02, yaw,
+      mat: 'plasticGlossRed', surface: SURFACE.METAL, collide: false });
+  }
+  // 本体
+  b.cylinder({ x: x + nx * 0.16, y: y + 0.14, z: z + nz * 0.16, radius: 0.075, height: 0.42, segments: 10,
+    mat: 'plasticGlossRed', surface: SURFACE.METAL, collide: false });
+  b.cylinder({ x: x + nx * 0.16, y: y + 0.56, z: z + nz * 0.16, radius: 0.028, height: 0.07, segments: 8,
+    mat: 'brass', surface: SURFACE.METAL, collide: false });
+  // ホース
+  b.box({ x: x + nx * 0.24, y: y + 0.34, z: z + nz * 0.24, w: 0.03, h: 0.24, d: 0.03, yaw,
+    mat: 'plasticBlack', surface: SURFACE.METAL, collide: false });
+  return b;
+}
+
+/**
+ * 掲示板。
+ * 廊下の壁に貼る。紙の枚数がまちまちだと「使われている場所」に見える。
+ */
+export function noticeBoard(b, o) {
+  const { x, y = 1.5, z, yaw = 0, w = 1.6, h = 0.9, seed = 3 } = o;
+  const nx = Math.sin(yaw), nz = Math.cos(yaw);
+  const tx = Math.cos(yaw), tz = -Math.sin(yaw);
+  // 枠と下地
+  b.box({ x: x + nx * 0.035, y, z: z + nz * 0.035, w, h, d: 0.05, yaw,
+    mat: 'feltGreen', surface: SURFACE.CONCRETE, collide: false });
+  for (const [ox, oy, ww, hh] of [
+    [0, h / 2 + 0.03, w + 0.06, 0.06], [0, -h / 2 - 0.03, w + 0.06, 0.06],
+    [-w / 2 - 0.03, 0, 0.06, h + 0.12], [w / 2 + 0.03, 0, 0.06, h + 0.12],
+  ]) {
+    b.box({ x: x + tx * ox + nx * 0.04, y: y + oy, z: z + tz * ox + nz * 0.04,
+      w: ww, h: hh, d: 0.06, yaw, mat: 'aluminum', surface: SURFACE.METAL, collide: false });
+  }
+  // 貼り紙
+  let r = seed;
+  const rnd = () => { r = (r * 1103515245 + 12345) & 0x7fffffff; return (r / 0x7fffffff); };
+  for (let i = 0; i < 5; i++) {
+    const pw = 0.20 + rnd() * 0.10, ph = 0.28 + rnd() * 0.08;
+    const ox = -w / 2 + 0.16 + (w - 0.32) * (i / 4);
+    const oy = (rnd() - 0.5) * (h - ph - 0.1);
+    b.box({ x: x + tx * ox + nx * 0.062, y: y + oy, z: z + tz * ox + nz * 0.062,
+      w: pw, h: ph, d: 0.004, yaw, rz: (rnd() - 0.5) * 0.05,
+      mat: 'paperPrint', surface: SURFACE.CONCRETE, collide: false });
+  }
+  return b;
+}

@@ -340,13 +340,23 @@ export const DEFS2 = {
     const stain = smoothstep(0.55, 0.95, fbm(u * 3, v * 1.2, { octaves: 4, period: 3, seed: S + 31 }));
     const air = smoothstep(0.24, 0.06, worley(u * 60, v * 60, 60, S + 43, 1).f1);   // 気泡
 
-    let l = 0.275 + base * 0.075 + grain * 0.030 - air * 0.055 - seam * 0.06 - pc * 0.05;
+    /*
+     * 型枠の継ぎ目と P コン跡の強さ。
+     *
+     * 以前は明度で 5〜6%、法線で 0.7〜0.85 落としていた。
+     * 実物の P コン跡は直径 2cm 前後で、たいていモルタルで埋めてあり、
+     * 数 m 離れれば「わずかな色むら」にしかならない。
+     * 強すぎると、壁でも床でも黒い点が 45cm 間隔で整然と並び、
+     * 打ち放しというより穴あきボードに見える（実際その絵が撮れた）。
+     * 半分以下に落として、近寄ったときだけ判る程度にする。
+     */
+    let l = 0.275 + base * 0.075 + grain * 0.030 - air * 0.040 - seam * 0.032 - pc * 0.020;
     l *= 1 - stain * 0.14;
     o.r = l * 0.995; o.g = l * 1.0; o.b = l * 1.0;
-    o.h = base * 0.4 + grain * 0.1 - seam * 0.7 - pc * 0.85 - air * 0.3;
+    o.h = base * 0.4 + grain * 0.1 - seam * 0.34 - pc * 0.32 - air * 0.22;
     o.rough = clamp01(0.80 + grain * 0.12 + air * 0.08);
     o.metal = 0;
-    o.ao = clamp01(0.88 - seam * 0.35 - pc * 0.3 - air * 0.2);
+    o.ao = clamp01(0.88 - seam * 0.18 - pc * 0.14 - air * 0.16);
   },
 
   /* --- コンクリートブロック（CMU） --- */

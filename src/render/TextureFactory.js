@@ -54,20 +54,33 @@ const DEFS = {
     const base = fbm(u * 4, v * 4, { octaves: 5, period: 4, seed: S });
     const roll = valueNoise(u * 90, v * 12, 90, S + 5); // ローラー跡
     const scuff = ridged(u * 9, v * 3, { octaves: 4, period: 9, seed: S + 13 });
-    const chip = worley(u * 22, v * 22, 22, S + 31, 1).f1;
-    const chipped = smoothstep(0.12, 0.2, chip) < 0.5 ? 1 : 0;
+    /*
+     * 塗膜の剥がれ。
+     *
+     * 以前は worley 22 セルの中心を 0/1 の二値で塗り潰し、
+     * 明度を 6 割まで落としていた。1 タイル 1.1m に 22 セルなので
+     * 5cm 間隔、しかも階調が無いので、白い壁一面に黒い点が
+     * びっしり散った。事務所の廊下を撮ったら壁がカビだらけに見えた。
+     *
+     * 実際の剥がれは、ぶつけやすい下部と、水の回った所に寄って出る。
+     * 密度を落とし、出る場所をマスクで絞り、縁をぼかす。
+     */
+    const chip = worley(u * 13, v * 13, 13, S + 31, 1).f1;
+    const chipMask = smoothstep(0.74, 0.96, fbm(u * 2.5, v * 2.5, { octaves: 3, period: 2.5, seed: S + 67 }))
+      * (0.30 + 0.70 * smoothstep(0.55, 0.04, v));
+    const chipped = smoothstep(0.15, 0.05, chip) * chipMask;
     const drip = smoothstep(0.62, 0.98, fbm(u * 3, v * 0.6, { octaves: 3, period: 3, seed: S + 41 }));
 
     // 明度は日向で飽和しない範囲に収める（漆喰と同じ理由）
     let l = 0.30 + base * 0.060 + roll * 0.026;
     l -= scuff * 0.085 * smoothstep(0.35, 0.0, v);
     l -= drip * 0.13;
+    l *= 1 - chipped * 0.30;
     o.r = l * 0.955; o.g = l * 0.945; o.b = l * 0.912;
-    if (chipped) { o.r *= 0.62; o.g *= 0.6; o.b *= 0.56; }
-    o.h = base * 0.3 + roll * 0.12 - chipped * 0.6;
+    o.h = base * 0.3 + roll * 0.12 - chipped * 0.45;
     o.rough = clamp01(0.62 + scuff * 0.2 + chipped * 0.25);
     o.metal = 0;
-    o.ao = clamp01(0.86 - chipped * 0.3 - drip * 0.1);
+    o.ao = clamp01(0.86 - chipped * 0.22 - drip * 0.1);
   },
 
   /* --- アスファルト --- */
@@ -268,17 +281,29 @@ const DEFS = {
     const rings = Math.abs(Math.sin((wu * 3.2 + wv * 0.35) * TAU * 2.4));
     const ring = Math.pow(rings, 0.42);
     const fiber = valueNoise(u * 420, py * 9, 420, S + pi * 3);
-    const knotD = worley(u * 3.2, py * 1.1, 3, S + 77 + pi, 1).f1;
-    const knot = smoothstep(0.24, 0.05, knotD);
+    /*
+     * 節。
+     *
+     * 以前は 1 タイルに 3×5 個ほど、しかも明度を 4 割まで落としていた。
+     * 板の全面に黒い丸が散り、扉に貼ると虫食いのように見えた。
+     * 密度が高いのは repeat の高い部材（woodFine は 1 タイル 24cm）で
+     * 特に効き、細い脚や框が黒い斑点だらけになる。
+     *
+     * 実際の板材は、節の無い板が半分以上を占める。
+     * 板ごとの乱数で出す板を絞り、数を減らし、暗さも弱める。
+     */
+    const knotD = worley(u * 2.0, py * 0.7, 2, S + 77 + pi, 1).f1;
+    const knotOn = ((pi * 53 + S) % 10) < 4 ? 1 : 0;
+    const knot = smoothstep(0.13, 0.03, knotD) * knotOn;
 
     const tone = 0.5 + off * 0.32;
     let l = (0.2 + ring * 0.16 + fiber * 0.07) * (0.72 + tone * 0.5);
-    l = mix(l, l * 0.42, knot);
+    l = mix(l, l * 0.62, knot);
     o.r = l * 1.06; o.g = l * 0.68; o.b = l * 0.40;
-    o.h = ring * 0.35 + fiber * 0.3 + seam * 0.35 - knot * 0.25;
+    o.h = ring * 0.35 + fiber * 0.3 + seam * 0.35 - knot * 0.16;
     o.rough = clamp01(0.72 + fiber * 0.16 - ring * 0.06);
     o.metal = 0;
-    o.ao = clamp01(mix(0.35, 0.95, seam) - knot * 0.25);
+    o.ao = clamp01(mix(0.35, 0.95, seam) - knot * 0.16);
   },
 
   /* --- 合板（構造用ラワン合板の表面） --- */

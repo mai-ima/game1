@@ -30,7 +30,7 @@ export function sectionBuildLab(b, cx, cz) {
 
   /* ---- 敷地 ---- */
   b.box({ x: cx, y: 0.014, z: cz, w: W, h: 0.03, d: D,
-    mat: 'concreteRaw', surface: SURFACE.CONCRETE, collide: false });
+    mat: 'paving', surface: SURFACE.CONCRETE, collide: false });
   // 前面の通路（ここを歩いて 1 棟ずつ見る）。南北通路の受け口になる
   const roadZ = cz + D / 2 - 2;
   b.box({ x: cx, y: 0.02, z: roadZ, w: W - 4, h: 0.03, d: 7,
@@ -143,21 +143,43 @@ function detailWall(b, cx, cz) {
   const W = 17, H = 7.2;
   b.box({ x: cx, y: 0.09, z: cz, w: W + 1.2, h: 0.18, d: 1.6,
     mat: 'concrete', surface: SURFACE.CONCRETE });
-  b.box({ x: cx, y: 0.18 + H / 2, z: cz, w: W, h: H, d: 0.4,
-    mat: 'concreteRaw', surface: SURFACE.CONCRETE });
+  /*
+   * 壁は開口付きで作る。
+   *
+   * 中身の詰まった 1 枚板にしていたら、引込み窓を取り付けても
+   * ガラスも室内も壁の中に埋まり、四角い枠が浮き出るだけだった。
+   * 見本にならないので、窓と扉の位置は最初から抜いておく。
+   *
+   * 開口の位置は下の items と合わせてある（4 番目が窓、5 番目が扉）。
+   */
+  const pitch = W / 6;
+  const winX = -W / 2 + pitch * 3.5;
+  const doorX = -W / 2 + pitch * 4.5;
+  b.wallWithGaps({
+    x1: cx - W / 2, z1: cz, x2: cx + W / 2, z2: cz, y: 0.18, h: H, thickness: 0.4,
+    gaps: [
+      { start: W / 2 + winX - 0.85, width: 1.7, bottom: 1.4, top: 3.4 },
+      { start: W / 2 + doorX - 0.6, width: 1.2, bottom: 0, top: 2.2 },
+    ],
+    mat: 'concreteRaw', surface: SURFACE.CONCRETE,
+  });
+  // 開口の奥に室内相当の面を置く（外から覗いたときに抜けて見えないように）
+  b.box({ x: cx + winX, y: 0.18 + 2.4, z: cz - 0.45, w: 2.2, h: 2.4, d: 0.2,
+    mat: 'roomDark', surface: SURFACE.CONCRETE, collide: false });
+  b.box({ x: cx + doorX, y: 0.18 + 1.2, z: cz - 0.45, w: 1.8, h: 2.4, d: 0.2,
+    mat: 'roomDark', surface: SURFACE.CONCRETE, collide: false });
   // 天端の笠木
   b.box({ x: cx, y: 0.18 + H + 0.04, z: cz, w: W + 0.16, h: 0.08, d: 0.56,
     mat: 'galvanized', surface: SURFACE.METAL, collide: false });
 
   const items = [
-    ['竪樋', 'DOWNPIPE', (x) => B.downpipe(b, { x, y: 0.18, z: cz + 0.2, yaw: FACE_S, height: H - 0.4 })],
+    ['竪樋', 'DOWNPIPE', (x) => B.downpipe(b, { x, y: 0, z: cz + 0.2, yaw: FACE_S, height: H + 0.18 })],
     ['壁付け室外機', 'WALL AC', (x) => B.wallAc(b, { x, y: 1.35, z: cz + 0.2, yaw: FACE_S })],
-    ['引込盤', 'METER PANEL', (x) => B.meterPanel(b, { x, y: 0.6, z: cz + 0.2, yaw: FACE_S })],
-    ['引込み窓', 'RECESSED WINDOW', (x) => B.recessedWindow(b, { x, y: 2.4, z: cz + 0.2, yaw: FACE_S, w: 1.7, h: 2.0 })],
-    ['建具（扉）', 'DOOR', (x) => B.door(b, { x, y: 0.18, z: cz + 0.2, yaw: FACE_S, w: 0.95, h: 2.1, mat: 'paintedMetal', frame: 'concrete' })],
+    ['引込盤', 'METER PANEL', (x) => B.meterPanel(b, { x, y: 0.18, z: cz + 0.2, yaw: FACE_S })],
+    ['引込み窓', 'RECESSED WINDOW', (x) => B.recessedWindow(b, { x, y: 2.58, z: cz + 0.2, yaw: FACE_S, w: 1.7, h: 2.0 })],
+    ['建具（扉）', 'DOOR', (x) => B.door(b, { x, y: 0.18, z: cz + 0.2, yaw: FACE_S, w: 1.1, h: 2.2, mat: 'paintedMetal', frame: 'galvanized' })],
     ['避難階段', 'FIRE ESCAPE', (x) => B.fireEscape(b, { x, y: 0.18, z: cz + 0.6, yaw: FACE_S, floors: 2, fh: 3.3 })],
   ];
-  const pitch = W / items.length;
   for (let i = 0; i < items.length; i++) {
     const x = cx - W / 2 + pitch * (i + 0.5);
     items[i][2](x);
