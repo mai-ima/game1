@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { Clouds } from '../render/Clouds.js';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
@@ -33,9 +34,9 @@ import { LightPool } from '../render/LightPool.js';
  * 遠くの光は元々減衰しきっているので、見える絵は変わらない。
  */
 export const QUALITY = {
-  low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 4, dropRoughIBL: true },
-  medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 6 },
-  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.85, maxLights: 8 },
+  low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 4, dropRoughIBL: true, cloudOctaves: 3 },
+  medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 6, cloudOctaves: 4 },
+  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.85, maxLights: 8, cloudOctaves: 4 },
   /*
    * 最高はクオリティ最優先。
    * 動的解像度で解像度を落とさず（minScale 1.0）、環境遮蔽も
@@ -365,10 +366,17 @@ export class Engine {
     });
     const cam = new THREE.CubeCamera(0.1, 20000, rt);
 
-    // 空だけを写す
+    /*
+     * 空と雲だけを写す。
+     * 雲を外すと、軽量モードに切り替えた瞬間に空が無地へ戻ってしまう。
+     * 焼いてしまえば以後の画素コストはゼロなので、
+     * 内蔵 GPU 向けではむしろこちらのほうが都合がよい。
+     */
     const hidden = [];
     for (const c of this.scene.children) {
-      if (c !== this.sky && c.visible && !c.isLight) { c.visible = false; hidden.push(c); }
+      if (c !== this.sky && c !== this.clouds?.mesh && c.visible && !c.isLight) {
+        c.visible = false; hidden.push(c);
+      }
     }
     if (this._skyBox) this._skyBox.visible = false;   // 焼く対象に自分を含めない
     const prevBg = this.scene.background;
@@ -426,6 +434,8 @@ export class Engine {
     this._skyBox.material.uniforms.tCube.value = rt.texture;
     this._skyBox.visible = true;
     this.sky.visible = false;
+    // 雲は焼いた絵の中にあるので、実体はもう描かない
+    this.clouds?.setVisible(false);
     this.scene.background = null;
     void prevBg;
   }
@@ -477,6 +487,7 @@ export class Engine {
 
   /** 焼いた空を捨てて、毎フレーム計算する Sky に戻す */
   unbakeSky() {
+    this.clouds?.setVisible(true);
     if (!this._skyRT) return;
     this.scene.background = null;
     if (this._skyBox) this._skyBox.visible = false;
@@ -540,6 +551,18 @@ export class Engine {
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
     this.pmrem.compileEquirectangularShader();
 
+    /*
+     * 雲。
+     *
+     * Sky.js の内蔵雲は、太陽高度 66 度・トーンマップ後だと
+     * ほぼ白飛びして見えない（設定を振っても地平線際に筋が残る程度）。
+     * 空は画面の半分以上を占めるので、ここが無地だと
+     * 地上をどれだけ作り込んでも作りかけに見える。
+     * 形と陰影を自分で決められる層を別に持つ。
+     */
+    u.cloudCoverage.value = 0.0;        // 内蔵の雲は切る
+    this.clouds = new Clouds(this.scene, { octaves: QUALITY[this.quality]?.cloudOctaves ?? 4 });
+
     this.setSunAngle(46, 128); // 高度 / 方位（度）
   }
 
@@ -553,6 +576,8 @@ export class Engine {
     const theta = THREE.MathUtils.degToRad(azimuthDeg);
     this.sunPosition.setFromSphericalCoords(1, phi, theta);
     this.sky.material.uniforms.sunPosition.value.copy(this.sunPosition);
+
+    this.clouds?.setSun(this.sunPosition, this.sun?.color, this.hemi?.color);
 
     if (this.sun) {
       this.sun.position.copy(this.sunPosition).multiplyScalar(160);
@@ -1096,6 +1121,11 @@ export class Engine {
     this.elapsed += dt;
     if (this.compositePass) this.compositePass.uniforms.uTime.value = this.elapsed;
     if (this.sky) this.sky.material.uniforms.time.value = this.elapsed;
+    if (this.clouds) {
+      this.clouds.update(dt);
+      // 歩いても雲との距離が変わらないよう、中心をカメラへ寄せる
+      this.clouds.follow(this.camera.position);
+    }
 
     // 効果量が 0 のモーションブラーはパスごと止める（無駄な全画面描画を省く）
     if (this.blurPass) {
