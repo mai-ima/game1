@@ -1345,8 +1345,19 @@ export function stairFlight(b, o) {
   const [mlx, mlz] = at(0, -runLen - LAND / 2);
   b.box({ x: mlx, y: y + fh / 2 - 0.09, z: mlz, w: width * 2 + CORE, h: 0.18, d: LAND, yaw,
     mat, surface: SURFACE.CONCRETE });
-  // 上り 2
-  const [a2x, a2z] = at(lx2, -runLen - LAND);
+  /*
+   * 上り 2。
+   *
+   * 起点は踊り場の +Z 端（-runLen）。ここを踊り場の -Z 端に
+   * していたら、最初の 4 段が踊り場の板の中に埋まり、
+   * 踊り場に立った時点でプレイヤーが段と重なって
+   * どの方向へも動けなくなっていた（実測 420 フレーム全停止）。
+   *
+   * 上り 1 と上り 2 は同じ z 範囲を、左右に分かれて占める。
+   * 上り切る位置は乗り口の真上になり、そこに上階の床が来る。
+   * 実際の折り返し階段もこの平面。
+   */
+  const [a2x, a2z] = at(lx2, -runLen);
   b.stairs({ x: a2x, y: y + fh / 2, z: a2z, width, rise, run, steps: STEPS,
     yaw: yaw + Math.PI, mat, surface: SURFACE.CONCRETE });
 
@@ -1356,8 +1367,9 @@ export function stairFlight(b, o) {
     mat: core, surface: SURFACE.CONCRETE });
   // 手すり（芯壁の両側を、勾配に沿って）
   for (const [lx, dir] of [[lx1, -1], [lx2, 1]]) {
-    const [h1x, h1z] = at(lx + (dir > 0 ? -width / 2 - 0.02 : width / 2 + 0.02), dir > 0 ? -runLen - LAND : 0);
-    const [h2x, h2z] = at(lx + (dir > 0 ? -width / 2 - 0.02 : width / 2 + 0.02), dir > 0 ? -LAND : -runLen);
+    const off = dir > 0 ? -width / 2 - 0.02 : width / 2 + 0.02;
+    const [h1x, h1z] = at(lx + off, dir > 0 ? -runLen : 0);
+    const [h2x, h2z] = at(lx + off, dir > 0 ? 0 : -runLen);
     const y0 = dir > 0 ? y + fh / 2 : y;
     const len = Math.hypot(h2x - h1x, h2z - h1z);
     b.box({
@@ -1373,16 +1385,24 @@ export function stairFlight(b, o) {
       });
     }
   }
-  // 踊り場の手すり（外周側）
-  {
-    const [q1x, q1z] = at(-width - CORE / 2, -runLen - LAND);
-    const [q2x, q2z] = at(width + CORE / 2, -runLen - LAND);
-    P.railing(b, { x1: q1x, z1: q1z, x2: q2x, z2: q2z, y: y + fh / 2, height: 1.05, mat: rail });
-  }
+  /*
+   * 踊り場の外周には手すりを置かない。
+   *
+   * 折り返しの先は建物の外壁で、実物でも手すりは付かない。
+   * 置いてみたところ、踊り場に降りた足元へ当たり判定が立ち、
+   * そこに立つとどの方向へも動けなくなった
+   * （実測: 360 フレーム全部が停止）。
+   * 手すりが要るのは芯壁側と、吹き抜けに面した側だけ。
+   */
   return b;
 }
 
-/** stairFlight が使う奥行きと、上階の床が始まる位置 */
+/**
+ * stairFlight が占める奥行きと段数。
+ *
+ * 上階の床は「乗り口の z から +Z 側」に張る。
+ * 上り 2 は乗り口の真上で終わるので、そこが着地点になる。
+ */
 export function stairFlightSpan(fh = 3.5, run = 0.28) {
   const STEPS = Math.max(7, Math.round(fh / 0.36));
   const LAND = 1.25;
@@ -1588,7 +1608,7 @@ export function officeBlock(b, o) {
     stairFlight(b, { x: scx, y: fy, z: scz, yaw, fh, width: 1.35 });
     // 階段室の床。1 階は全面、上階は「上り切る位置」から +Z 側
     {
-      const fz0 = f === 0 ? -(d - T * 2) / 2 : stairEntry - span.landing;
+      const fz0 = f === 0 ? -(d - T * 2) / 2 : stairEntry;
       const fz1 = (d - T * 2) / 2;
       const [lpx, lpz] = at(stairCx, (fz0 + fz1) / 2);
       b.box({ x: lpx, y: fy - 0.09, z: lpz, w: STAIR_W - 0.2, h: 0.18, d: fz1 - fz0, yaw,
@@ -1606,7 +1626,13 @@ export function officeBlock(b, o) {
         if (kind === 0) {
           for (const dxi of [-1, 1]) {
             const [px, pz] = at(rx + dxi * 1.5, rz - sz * 0.6);
-            P.desk(b, { x: px, y: fy, z: pz, yaw: yaw + (sz > 0 ? Math.PI : 0) });
+            /*
+             * 天板はメラミン化粧板。
+             * 既定の woodFloor は 1 タイル 1.18m の床材なので、
+             * 1.4m の天板に貼ると木目が 1 本しか通らず、
+             * 板を切り出したというより丸太の断面に見える。
+             */
+            P.desk(b, { x: px, y: fy, z: pz, yaw: yaw + (sz > 0 ? Math.PI : 0), mat: 'melaminePale' });
             const [qx, qz] = at(rx + dxi * 1.5, rz + sz * 0.25);
             P.officeChair(b, { x: qx, y: fy, z: qz, yaw: yaw + (sz > 0 ? 0 : Math.PI) });
           }
@@ -1701,8 +1727,26 @@ export function officeBlock(b, o) {
 
   /* ---- 屋上 ---- */
   const top = base + H;
-  // 屋上スラブ（居室ゾーンの上）
   parapet(b, { x, y: top, z, w, d, yaw, h: 1.05, mat: trim });
+
+  /*
+   * 屋上レベルの階段室の床。
+   *
+   * これが無いと、最上階から階段を上り切った瞬間に落ちる。
+   * 実測でも、塔屋の中に立たせて前へ歩かせたら
+   * 11.1m から 0m まで落下していた。
+   * 階段は各階ぶん置いてあるのに、着地する床だけ
+   * 居室ゾーンの上にしか張っていなかった。
+   */
+  {
+    const spanTop = stairFlightSpan(fh);
+    const fz0 = -(d - T * 2) / 2 + spanTop.depth;
+    const fz1 = (d - T * 2) / 2;
+    const [rpx, rpz] = at(stairCx, (fz0 + fz1) / 2);
+    b.box({ x: rpx, y: top - 0.09, z: rpz, w: STAIR_W - 0.2, h: 0.18, d: fz1 - fz0, yaw,
+      mat: 'floorStone', surface: SURFACE.CONCRETE });
+  }
+
   // 塔屋（階段室の上）と屋上への扉
   const [pcx, pcz] = at(stairCx, 0);
   const PH = 2.6;
@@ -1715,9 +1759,20 @@ export function officeBlock(b, o) {
       : [[stairCx + other, -(d - T * 2) / 2], [stairCx + other, (d - T * 2) / 2]];
     const [[ax, az], [bx2, bz2]] = ends;
     const [p1x, p1z] = at(ax, az), [p2x, p2z] = at(bx2, bz2);
-    const gaps = face === 0 ? [{ start: len / 2 - 0.55, width: 1.1, bottom: 0, top: 2.1 }] : [];
+    /*
+     * 屋上への扉は居室ゾーン側（-X）に開ける。
+     * 以前は +Z 面に開けていたが、その先は屋上の床の外だった。
+     * 扉を出たとたんに落ちる。
+     */
+    const gaps = face === 3 ? [{ start: len / 2 - 0.6, width: 1.2, bottom: 0, top: 2.15 }] : [];
     b.wallWithGaps({ x1: p1x, z1: p1z, x2: p2x, z2: p2z, y: top, h: PH, thickness: 0.2,
       gaps, mat: trim, surface: SURFACE.CONCRETE });
+  }
+  // 塔屋の扉
+  {
+    const [dx4, dz4] = at(stairCx - STAIR_W / 2, 0);
+    door(b, { x: dx4, y: top, z: dz4, yaw: yaw - Math.PI / 2,
+      w: 1.1, h: 2.15, mat: 'paintedMetal', frame: 'aluminum' });
   }
   b.box({ x: pcx, y: top + PH + 0.08, z: pcz, w: STAIR_W + 0.3, h: 0.16, d: d - T * 2 + 0.3, yaw,
     mat: 'galvanized', surface: SURFACE.METAL });
