@@ -1306,38 +1306,87 @@ export function recessedWindow(b, o) {
  */
 export function stairFlight(b, o) {
   const {
-    x, y = 0, z, yaw = 0, fh = 3.4, width = 1.5, depth = 5.2,
-    mat = 'concreteFloor', rail = 'gunMetal',
+    x, y = 0, z, yaw = 0, fh = 3.5, width = 1.35, run = 0.28,
+    mat = 'concreteFloor', rail = 'gunMetal', core = 'paintedWall',
   } = o;
   const c = Math.cos(yaw), s = Math.sin(yaw);
+  /** ローカル (右, 奥=乗り口から離れる向きが -Z) → ワールド */
   const at = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
 
-  const STEPS = 9;
+  /*
+   * 折り返し階段。
+   *
+   * (x, z) は「乗り口」＝下の階の床から段が始まる所。
+   * そこから -Z へ上り、折り返して +Z へ戻り、
+   * 乗り口より踊り場 1 つぶん手前（-Z 側）で上の階の床に着く。
+   *
+   *      上階の床 ─┐            ┌─ 乗り口（下階の床）
+   *                ▼            ▼
+   *   -Z  ┌──踊り場──┐          │
+   *       │  ↑上り2  └──────────┘
+   *       └──↓上り1 ────────────
+   *
+   * 以前は上り 2 の終点が上階の床から 1.2m 手前で終わっており、
+   * 上り切っても床が無く、そこから先へ進めなかった。
+   * 上の階へ出られない階段は、階段の形をした行き止まりでしかない。
+   */
+  const STEPS = Math.max(7, Math.round(fh / 0.36));
   const rise = fh / (STEPS * 2);
-  const run = (depth / 2 - 0.5) / STEPS;
+  const runLen = run * STEPS;
+  const LAND = 1.25;
+  const CORE = 0.16;
+  const lx1 = -(width + CORE) / 2;      // 上り 1（-Z へ）
+  const lx2 = +(width + CORE) / 2;      // 上り 2（+Z へ）
 
-  // 上り 1（-Z 側へ登る）
-  const [a1x, a1z] = at(-width / 2 - 0.05, depth / 2 - 0.4);
+  // 上り 1
+  const [a1x, a1z] = at(lx1, 0);
   b.stairs({ x: a1x, y, z: a1z, width, rise, run, steps: STEPS, yaw, mat, surface: SURFACE.CONCRETE });
   // 中間の踊り場
-  const [mlx, mlz] = at(0, -depth / 2 + 0.45);
-  b.box({ x: mlx, y: y + fh / 2 - 0.09, z: mlz, w: width * 2 + 0.1, h: 0.18, d: 0.9, yaw,
+  const [mlx, mlz] = at(0, -runLen - LAND / 2);
+  b.box({ x: mlx, y: y + fh / 2 - 0.09, z: mlz, w: width * 2 + CORE, h: 0.18, d: LAND, yaw,
     mat, surface: SURFACE.CONCRETE });
-  // 上り 2（+Z 側へ登る）
-  const [a2x, a2z] = at(width / 2 + 0.05, -depth / 2 + 0.9);
+  // 上り 2
+  const [a2x, a2z] = at(lx2, -runLen - LAND);
   b.stairs({ x: a2x, y: y + fh / 2, z: a2z, width, rise, run, steps: STEPS,
     yaw: yaw + Math.PI, mat, surface: SURFACE.CONCRETE });
 
-  // 中央の壁（折り返しの芯）。これが無いと 2 本の段が空中で並ぶだけになる
-  b.box({ x, y: y + fh / 2, z, w: 0.12, h: fh, d: depth - 1.4, yaw,
-    mat: 'paintedWall', surface: SURFACE.CONCRETE });
-  // 手すり（芯の両側）
-  for (const sx of [-1, 1]) {
-    const [r1x, r1z] = at(sx * 0.14, -depth / 2 + 1.0);
-    const [r2x, r2z] = at(sx * 0.14, depth / 2 - 0.5);
-    P.railing(b, { x1: r1x, z1: r1z, x2: r2x, z2: r2z, y: y + fh * 0.28, height: 0.95, mat: rail });
+  // 折り返しの芯壁
+  const [cwx, cwz] = at(0, -(runLen + LAND) / 2);
+  b.box({ x: cwx, y: y + fh / 2, z: cwz, w: CORE, h: fh, d: runLen + LAND, yaw,
+    mat: core, surface: SURFACE.CONCRETE });
+  // 手すり（芯壁の両側を、勾配に沿って）
+  for (const [lx, dir] of [[lx1, -1], [lx2, 1]]) {
+    const [h1x, h1z] = at(lx + (dir > 0 ? -width / 2 - 0.02 : width / 2 + 0.02), dir > 0 ? -runLen - LAND : 0);
+    const [h2x, h2z] = at(lx + (dir > 0 ? -width / 2 - 0.02 : width / 2 + 0.02), dir > 0 ? -LAND : -runLen);
+    const y0 = dir > 0 ? y + fh / 2 : y;
+    const len = Math.hypot(h2x - h1x, h2z - h1z);
+    b.box({
+      x: (h1x + h2x) / 2, y: y0 + fh / 4 + 0.95, z: (h1z + h2z) / 2,
+      w: 0.045, h: 0.045, d: Math.hypot(len, fh / 2),
+      yaw: Math.atan2(h2x - h1x, h2z - h1z), rx: -Math.atan2(fh / 2, len),
+      mat: rail, surface: SURFACE.METAL, collide: false,
+    });
+    for (const t of [0.2, 0.5, 0.8]) {
+      b.cylinder({
+        x: h1x + (h2x - h1x) * t, y: y0 + (fh / 2) * t, z: h1z + (h2z - h1z) * t,
+        radius: 0.022, height: 0.95, segments: 6, mat: rail, surface: SURFACE.METAL, collide: false,
+      });
+    }
+  }
+  // 踊り場の手すり（外周側）
+  {
+    const [q1x, q1z] = at(-width - CORE / 2, -runLen - LAND);
+    const [q2x, q2z] = at(width + CORE / 2, -runLen - LAND);
+    P.railing(b, { x1: q1x, z1: q1z, x2: q2x, z2: q2z, y: y + fh / 2, height: 1.05, mat: rail });
   }
   return b;
+}
+
+/** stairFlight が使う奥行きと、上階の床が始まる位置 */
+export function stairFlightSpan(fh = 3.5, run = 0.28) {
+  const STEPS = Math.max(7, Math.round(fh / 0.36));
+  const LAND = 1.25;
+  return { depth: run * STEPS + LAND, landing: LAND, steps: STEPS };
 }
 
 /**
@@ -1514,20 +1563,37 @@ export function officeBlock(b, o) {
         mat: inner, surface: SURFACE.CONCRETE });
     }
 
-    // 天井（最上階以外は上の床が兼ねるので、最上階だけ張る）
-    if (f === floors - 1) {
-      b.box({ x: at((roomX0 + roomX1) / 2, 0)[0], y: fy + fh - 0.09,
-        z: at((roomX0 + roomX1) / 2, 0)[1], w: roomX1 - roomX0, h: 0.18, d: d - T * 2, yaw,
-        mat: 'ceilingPanel', surface: SURFACE.CONCRETE });
-    }
+    /*
+     * 天井。
+     *
+     * 上階の床スラブがそのまま天井になると、見上げたときに
+     * 床材（塩ビタイル）の裏面が見える。各階に天井板を 1 枚張る。
+     */
+    b.box({ x: at((roomX0 + roomX1) / 2, 0)[0], y: fy + fh - 0.14,
+      z: at((roomX0 + roomX1) / 2, 0)[1], w: roomX1 - roomX0 - 0.02, h: 0.1, d: d - T * 2 - 0.02, yaw,
+      mat: 'ceilingPanel', surface: SURFACE.CONCRETE, collide: false });
 
     /* -- 階段 -- */
-    const [scx, scz] = at(stairCx, 0);
-    stairFlight(b, { x: scx, y: fy, z: scz, yaw, fh, width: 1.5, depth: d - T * 2 - 1.2 });
-    // 階段室の床（各階の乗り口）
-    const [lpx, lpz] = at(stairCx, (d - T * 2) / 2 - 0.55);
-    b.box({ x: lpx, y: fy - 0.09, z: lpz, w: STAIR_W - 0.2, h: 0.18, d: 1.1, yaw,
-      mat: 'concreteFloor', surface: SURFACE.CONCRETE });
+    /*
+     * 乗り口を階段室の -Z 寄りに取り、そこから折り返して
+     * 「上り切った位置」に上階の床が来るようにする。
+     *
+     * 以前は階段室の中心に階段を置き、上階の床は +Z 端の帯だけだった。
+     * 上り切った所には床が無く、上の階へ出られなかった。
+     * 加えて、廊下から階段室へ入る開口（z=0）の足元にも床が無かった。
+     */
+    const span = stairFlightSpan(fh);
+    const stairEntry = -(d - T * 2) / 2 + span.depth;
+    const [scx, scz] = at(stairCx, stairEntry);
+    stairFlight(b, { x: scx, y: fy, z: scz, yaw, fh, width: 1.35 });
+    // 階段室の床。1 階は全面、上階は「上り切る位置」から +Z 側
+    {
+      const fz0 = f === 0 ? -(d - T * 2) / 2 : stairEntry - span.landing;
+      const fz1 = (d - T * 2) / 2;
+      const [lpx, lpz] = at(stairCx, (fz0 + fz1) / 2);
+      b.box({ x: lpx, y: fy - 0.09, z: lpz, w: STAIR_W - 0.2, h: 0.18, d: fz1 - fz0, yaw,
+        mat: 'floorStone', surface: SURFACE.CONCRETE });
+    }
 
     /* -- 室内の設え -- */
     const rooms = 3;

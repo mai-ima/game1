@@ -1,5 +1,14 @@
 import * as THREE from 'three';
 
+/*
+ * 段差を昇るときに試す持ち上げ量（stepHeight に対する比）。
+ *
+ * 小さい方から試し、通れたところで確定する。
+ * 一気に stepHeight まで持ち上げると、低い段でも
+ * 「stepHeight + 身長」ぶんの頭上空間を要求してしまう。
+ */
+const STEP_TRIES = [0.32, 0.58, 1.0];
+
 /**
  * FPS 向けの軽量コリジョンシステム。
  *
@@ -296,18 +305,34 @@ export class Physics {
       pos[axis] += amount;
       const hit = this._resolveAxis(pos, radius, height, axis, amount);
       if (hit) {
-        // 段差を昇れるか試す
+        /*
+         * 段差を昇れるか試す。
+         *
+         * 以前は必ず stepHeight（42cm）ぶん持ち上げてから重なりを見ていた。
+         * 蹴上げ 17cm の階段でも 42cm 持ち上がるので、
+         * 頭上に「42cm + 身長 1.8m」＝ 2.22m の空きが要ることになる。
+         * 上階の床が張り出した階段室では、この余裕が取れず、
+         * 数段目から先へ一歩も進めなくなっていた
+         * （実測: 3.5m 上がるはずの階段で 1.14m しか上がらず、
+         *  300 フレーム中 268 フレームが停止）。
+         *
+         * 実際に必要なのは段の高さぶんだけ。低い方から順に試して、
+         * 通れたところで止める。42cm の段は今までどおり昇れる。
+         */
         const savedY = pos.y;
-        pos.y += stepHeight;
-        const stillHit = this._overlaps(pos, radius, height);
-        if (!stillHit) {
-          // 昇った先で地面があるか確認（無ければ元に戻す）
-          const drop = this._groundBelow(pos, radius, stepHeight + 0.06);
-          if (drop !== null) {
-            pos.y = drop;
-            return;
-          }
+        let climbed = false;
+        for (const f of STEP_TRIES) {
+          const lift = stepHeight * f;
+          pos.y = savedY + lift;
+          if (this._overlaps(pos, radius, height)) continue;
+          // 昇った先で地面があるか確認（無ければ次を試す）
+          const drop = this._groundBelow(pos, radius, lift + 0.06);
+          if (drop === null || drop - savedY > stepHeight + 0.01) continue;
+          pos.y = drop;
+          climbed = true;
+          break;
         }
+        if (climbed) return;
         pos.y = savedY;
         pos[axis] = before;
         result.hitWall = true;
