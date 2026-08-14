@@ -519,17 +519,19 @@ export class Effects {
     const v = _v.copy(dir).multiplyScalar(2.4)
       .add(_v2.set((Math.random() - 0.5) * 0.8, 1.4 + Math.random() * 0.8, (Math.random() - 0.5) * 0.8));
     if (playerVel) v.addScaledVector(playerVel, 0.8);
-    const body = new DebrisBody(pos, v, 0.012);
+    // 器は使い回す（毎発 new すると短命な使い捨てが積み上がる）
+    const body = this.casings[i] || (this.casings[i] = new DebrisBody(pos, v, 0.012));
+    body.reset(pos, v, 0.012);
     body.restitution = 0.35;
-    this.casings[i] = body;
   }
 
   _updateCasings(dt) {
     let changed = false;
     for (let i = 0; i < this.casingMax; i++) {
       const b = this.casings[i];
-      if (!b) continue;
-      if (b.life > 6.5) { this.casings[i] = null; _m.makeScale(0, 0, 0); this.casingMesh.setMatrixAt(i, _m); changed = true; continue; }
+      // 器は捨てずに残す（使い回すため）。寿命切れは印で表す
+      if (!b || b.spent) continue;
+      if (b.life > 6.5) { b.spent = true; _m.makeScale(0, 0, 0); this.casingMesh.setMatrixAt(i, _m); changed = true; continue; }
       if (!b.resting) {
         b.step(this.physics, dt);
         _q.setFromEuler(b.rot);
@@ -668,9 +670,25 @@ export class Effects {
     this._updateCasings(dt);
   }
 
+  /*
+   * 後始末。
+   *
+   * three はシーンから外しただけでは GPU 側を解放しない。
+   * 以前はテクスチャしか返しておらず、頂点バッファと
+   * シェーダプログラムが積み残しになっていた。
+   */
   dispose() {
     for (const t of Object.values(this.tex)) t.dispose();
-    this.scene.remove(this.tracerMesh, this.dustMesh, this.sparkMesh, this.decalMesh, this.casingMesh, this.muzzleLight);
+    for (const m of [this.tracerMesh, this.dustMesh, this.sparkMesh, this.decalMesh, this.casingMesh]) {
+      if (!m) continue;
+      this.scene.remove(m);
+      m.geometry?.dispose();
+      m.material?.dispose();
+      m.dispose?.();          // InstancedMesh 自身が持つ資源
+    }
+    this.scene.remove(this.muzzleLight);
+    this.muzzleLight.dispose?.();
     this.engine.viewScene.remove(this.muzzleSprite);
+    this.muzzleSprite.material?.dispose();
   }
 }

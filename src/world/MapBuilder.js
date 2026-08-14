@@ -76,12 +76,16 @@ export class MapBuilder {
     const self = {
       mesh, collider, update, t: 0,
       /** 見た目と当たり判定をまとめて動かす */
+      /*
+       * レベルの枝は行列の自動更新を切ってあるので（_freezeStatic）、
+       * 動かしたものは自分で行列を組み直す。
+       */
       setPos(x, y, z) {
-        if (mesh) mesh.position.set(x, y, z);
+        if (mesh) { mesh.position.set(x, y, z); mesh.updateMatrixWorld(true); }
         if (collider) physics.moveCollider(collider, x, y, z);
       },
       setYaw(yaw) {
-        if (mesh) mesh.rotation.y = yaw;
+        if (mesh) { mesh.rotation.y = yaw; mesh.updateMatrixWorld(true); }
         if (collider) {
           physics.moveCollider(collider, collider.center.x, collider.center.y, collider.center.z, yaw);
         }
@@ -493,8 +497,36 @@ export class MapBuilder {
       this.root.add(inst);
     }
     this.instances.clear();
+    this._freezeStatic();
 
     return this.root;
+  }
+
+  /**
+   * 動かないものの行列更新を止める。
+   *
+   * three は毎フレーム、シーンの全オブジェクトを辿って
+   * 位置・回転・拡大から行列を組み直し、親の行列と掛け合わせる。
+   * レベルは 190 個ほどのメッシュを持つが、そのほとんどは
+   * 置いたきり一度も動かない。計算しても結果は毎回同じ。
+   *
+   * 根に matrixWorldAutoUpdate = false を立てると、
+   * three はこの枝へ降りてこなくなる。190 個ぶんの
+   * 行列合成と再帰がまるごと消える。
+   *
+   * 動く仕掛け（mover）だけは別で、setPos / setYaw を通ったときに
+   * 自分で行列を組み直す。
+   */
+  _freezeStatic() {
+    const moving = new Set(this.movers.map((m) => m.mesh).filter(Boolean));
+    this.root.traverse((o) => {
+      if (o === this.root || moving.has(o)) return;
+      o.updateMatrix();
+      o.matrixAutoUpdate = false;
+    });
+    this.root.updateMatrixWorld(true);
+    // ここから先、この枝はシーンの巡回対象から外れる
+    this.root.matrixWorldAutoUpdate = false;
   }
 
   /** インスタンス配置を登録 */
@@ -504,11 +536,24 @@ export class MapBuilder {
     return this;
   }
 
+  /*
+   * 後始末。
+   *
+   * ジオメトリはこのレベル専用なので返す。
+   * マテリアルとテクスチャは工房（MaterialLibrary）が
+   * 名前で使い回しているため、ここでは触らない。
+   * 触ると、次のマップが同じ材質を要求したときに
+   * 破棄済みのものを掴んで真っ黒になる。
+   */
   dispose() {
     this.scene.remove(this.root);
     this.root.traverse((o) => {
-      if (o.isMesh) { o.geometry?.dispose(); }
+      if (!o.isMesh) return;
+      o.geometry?.dispose();
+      o.dispose?.();        // InstancedMesh 自身が持つ資源
     });
+    this.movers.length = 0;
+    this.extras.length = 0;
     this.physics.clear();
   }
 }

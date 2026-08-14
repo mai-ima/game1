@@ -643,12 +643,59 @@ export class Physics {
   /**
    * 2点間に遮蔽物があるか（AI の視線判定用・高速版）
    */
+  /**
+   * 遮蔽の有無だけを見る（当たった場所は要らない）。
+   *
+   * raycast は当たるたびに結果の入れ物と Vector3 を 2 つ作る。
+   * 視線判定はボットの数 × 敵の数ぶん毎フレーム回るので、
+   * 使い捨てが毎秒千個単位で出ていた。
+   * ここでは「当たったか」しか要らないので、器を作らずに済ませる。
+   * 走査そのものは raycast と同じ手順。
+   */
+  _rayHits(origin, dir, maxDist, forBullets) {
+    const ox = origin.x, oy = origin.y, oz = origin.z;
+    const dx = dir.x, dy = dir.y, dz = dir.z;
+    const o = _rayO.set(ox, oy, oz);
+    const d = _rayD.set(dx, dy, dz);
+
+    const cs = this.cellSize;
+    const stamp = ++this._rayStamp;
+    let ix = Math.floor(ox / cs), iz = Math.floor(oz / cs);
+    const stepX = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+    const stepZ = dz > 0 ? 1 : (dz < 0 ? -1 : 0);
+    let tMaxX = stepX !== 0 ? ((ix + (stepX > 0 ? 1 : 0)) * cs - ox) / dx : Infinity;
+    let tMaxZ = stepZ !== 0 ? ((iz + (stepZ > 0 ? 1 : 0)) * cs - oz) / dz : Infinity;
+    const tDeltaX = stepX !== 0 ? Math.abs(cs / dx) : Infinity;
+    const tDeltaZ = stepZ !== 0 ? Math.abs(cs / dz) : Infinity;
+
+    let tEnter = 0;
+    for (let guard = 0; guard < 8192; guard++) {
+      const arr = this.grid.get(this._cellKey(ix, iz));
+      if (arr) {
+        for (let i = 0; i < arr.length; i++) {
+          const c = arr[i];
+          if (c._rayStamp === stamp) continue;
+          c._rayStamp = stamp;
+          if (!c.active) continue;
+          if (forBullets ? !c.blocksBullets : !c.blocksMovement) continue;
+          // 1 つでも当たれば遮蔽あり。以降を見る必要はない
+          if (this._rayBox(c, o, d, maxDist)) return true;
+        }
+      }
+      if (stepX === 0 && stepZ === 0) break;
+      if (tMaxX <= tMaxZ) { tEnter = tMaxX; ix += stepX; tMaxX += tDeltaX; }
+      else { tEnter = tMaxZ; iz += stepZ; tMaxZ += tDeltaZ; }
+      if (tEnter > maxDist) break;
+    }
+    return false;
+  }
+
   losBlocked(from, to) {
     const dir = _losDir.copy(to).sub(from);
     const dist = dir.length();
     if (dist < 0.01) return false;
     dir.divideScalar(dist);
-    return !!this.raycast(from, dir, dist - 0.02);
+    return this._rayHits(from, dir, dist - 0.02, true);
   }
 }
 
@@ -657,17 +704,36 @@ export class Physics {
  */
 export class DebrisBody {
   constructor(pos, vel, radius = 0.02) {
-    this.pos = pos.clone();
-    this.vel = vel.clone();
+    this.pos = new THREE.Vector3();
+    this.vel = new THREE.Vector3();
+    this.angVel = new THREE.Vector3();
+    this.rot = new THREE.Euler();
+    this.reset(pos, vel, radius);
+  }
+
+  /**
+   * 中身を入れ直して使い回す。
+   *
+   * 薬莢は 1 発ごとに 1 個出る。自動火器なら毎秒 10 個以上、
+   * ボットも含めれば秒あたり数十個。そのたびに Vector3 を
+   * 3 つと Euler を作っていたので、短命な使い捨てが積み上がり、
+   * ごみ集めが時々まとめて走ってカクつきの種になっていた。
+   * 器は 40 個で足りる（それ以上は古いものから消える）。
+   */
+  reset(pos, vel, radius = 0.02) {
+    this.pos.copy(pos);
+    this.vel.copy(vel);
     this.radius = radius;
-    this.angVel = new THREE.Vector3(
+    this.angVel.set(
       (Math.random() - 0.5) * 28, (Math.random() - 0.5) * 28, (Math.random() - 0.5) * 28
     );
-    this.rot = new THREE.Euler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
+    this.rot.set(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
     this.life = 0;
     this.resting = false;
+    this.spent = false;      // 寿命切れの印（器は残して使い回す）
     this.restitution = 0.32;
     this.friction = 0.72;
+    return this;
   }
 
   step(physics, dt) {
