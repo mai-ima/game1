@@ -8,15 +8,30 @@ import { injectAtmosphere } from './Atmosphere.js';
  * repeat: ワールド 1m あたりのタイル数（UV は後段でワールドスケールに合わせる）
  * params: THREE.MeshStandardMaterial / MeshPhysicalMaterial への追加パラメータ
  */
+/*
+ * 色違いのプリセットは、テクスチャを共有する。
+ *
+ * 以前は色違いにも seed を別に振っていた。TextureFactory は
+ * name|size|seed でキャッシュするので、色を変えるためだけに
+ * アルベド・ORM・法線の 3 枚が新しく焼かれていた。
+ * 52 件あったので、それだけで 156 枚。
+ *
+ * 実測すると、コンパウンド 1 面でテクスチャは 284 枚あった。
+ * 最高画質は 1 枚 2048×2048×4 バイトなので、
+ * ミップマップを含めると 4GB を超える。
+ * 「たまに落ちる」の主因はこれで、機械の性能ではなく作りの問題。
+ *
+ * 模様まで変えたい所（同じ材質が隣り合う場面）だけ seed を残す。
+ */
 const PRESETS = {
   /* ---- 建材 ---- */
   concrete:        { tex: 'concrete',     repeat: 1.0,  params: { roughness: 1, metalness: 1 } },
-  concreteFloor:   { tex: 'concrete',     repeat: 0.85, params: { roughness: 1, metalness: 1, color: 0xb8b6b0 }, seed: 88 },
+  concreteFloor:   { tex: 'concrete',     repeat: 0.85, params: { roughness: 1, metalness: 1, color: 0xb8b6b0 } },
   paintedWall:     { tex: 'paintedWall',  repeat: 0.9,  params: { roughness: 1, metalness: 1 } },
-  paintedWallBlue: { tex: 'paintedWall',  repeat: 0.9,  params: { roughness: 1, metalness: 1, color: 0x8fa4b8 }, seed: 302 },
+  paintedWallBlue: { tex: 'paintedWall',  repeat: 0.9,  params: { roughness: 1, metalness: 1, color: 0x8fa4b8 } },
   plaster:         { tex: 'plaster',      repeat: 1.0, params: { roughness: 1, metalness: 1 } },
   brick:           { tex: 'brick',        repeat: 0.55, params: { roughness: 1, metalness: 1 } },
-  brickPale:       { tex: 'brick',        repeat: 0.55, params: { roughness: 1, metalness: 1, color: 0xc9bda8 }, seed: 555 },
+  brickPale:       { tex: 'brick',        repeat: 0.55, params: { roughness: 1, metalness: 1, color: 0xc9bda8 } },
   rock:            { tex: 'rock',         repeat: 0.6, params: { roughness: 1, metalness: 1 } },
   tile:            { tex: 'tile',         repeat: 1.1, params: { roughness: 1, metalness: 1 } },
   paving:          { tex: 'paving',       repeat: 0.42,  params: { roughness: 1, metalness: 1 } },
@@ -30,7 +45,7 @@ const PRESETS = {
   /* ---- 金属 ---- */
   rustedMetal:     { tex: 'rustedMetal',  repeat: 0.9,  params: { roughness: 1, metalness: 1 } },
   paintedMetal:    { tex: 'paintedMetal', repeat: 1.0,  params: { roughness: 1, metalness: 1 } },
-  paintedMetalTan: { tex: 'paintedMetal', repeat: 1.0,  params: { roughness: 1, metalness: 1, color: 0xc8b389 }, seed: 71 },
+  paintedMetalTan: { tex: 'paintedMetal', repeat: 1.0,  params: { roughness: 1, metalness: 1, color: 0xc8b389 } },
   brushedMetal:    { tex: 'brushedMetal', repeat: 0.8,  params: { roughness: 1, metalness: 1 } },
   aluminum:        { tex: 'aluminum',     repeat: 0.7,  params: { roughness: 1, metalness: 1 } },
   carbon:          { tex: 'carbon',       repeat: 2.2,  params: { roughness: 1, metalness: 1 } },
@@ -41,7 +56,7 @@ const PRESETS = {
 
   /* ---- 有機物 / 布 ---- */
   wood:            { tex: 'wood',         repeat: 0.85,  params: { roughness: 1, metalness: 1 } },
-  woodDark:        { tex: 'wood',         repeat: 0.85,  params: { roughness: 1, metalness: 1, color: 0x8a6a4c }, seed: 909 },
+  woodDark:        { tex: 'wood',         repeat: 0.85,  params: { roughness: 1, metalness: 1, color: 0x8a6a4c } },
   plywood:         { tex: 'plywood',      repeat: 0.9, params: { roughness: 1, metalness: 1 } },
   osb:             { tex: 'osb',          repeat: 0.8, params: { roughness: 1, metalness: 1 } },
   fabric:          { tex: 'fabric',       repeat: 0.8,  params: { roughness: 1, metalness: 1 } },
@@ -55,15 +70,15 @@ const PRESETS = {
 
   /* ---- 屋内の仕上げ（マンション・博物館・駅） ---- */
   marble:          { tex: 'marble',       repeat: 0.5,  params: { roughness: 1, metalness: 1 } },
-  marbleDark:      { tex: 'marble',       repeat: 0.5,  params: { roughness: 1, metalness: 1, color: 0x4a4e55 }, seed: 616 },
+  marbleDark:      { tex: 'marble',       repeat: 0.5,  params: { roughness: 1, metalness: 1, color: 0x4a4e55 } },
   terrazzo:        { tex: 'terrazzo',     repeat: 2.0,  params: { roughness: 1, metalness: 1 } },
   granite:         { tex: 'granite',      repeat: 1.2,  params: { roughness: 1, metalness: 1 } },
   woodFloor:       { tex: 'woodFloor',    repeat: 0.85,  params: { roughness: 1, metalness: 1 } },
-  woodFloorDark:   { tex: 'woodFloor',    repeat: 0.85,  params: { roughness: 1, metalness: 1, color: 0x9a7550 }, seed: 424 },
+  woodFloorDark:   { tex: 'woodFloor',    repeat: 0.85,  params: { roughness: 1, metalness: 1, color: 0x9a7550 } },
   carpet:          { tex: 'carpet',       repeat: 1.6,  params: { roughness: 1, metalness: 1 } },
-  carpetRed:       { tex: 'carpet',       repeat: 1.6,  params: { roughness: 1, metalness: 1, color: 0xa8564a }, seed: 733 },
+  carpetRed:       { tex: 'carpet',       repeat: 1.6,  params: { roughness: 1, metalness: 1, color: 0xa8564a } },
   wallpaper:       { tex: 'wallpaper',    repeat: 0.36, params: { roughness: 1, metalness: 1 } },
-  wallpaperWarm:   { tex: 'wallpaper',    repeat: 0.36, params: { roughness: 1, metalness: 1, color: 0xd6c8ac }, seed: 191 },
+  wallpaperWarm:   { tex: 'wallpaper',    repeat: 0.36, params: { roughness: 1, metalness: 1, color: 0xd6c8ac } },
   ceramicTile:     { tex: 'ceramicTile',  repeat: 0.77, params: { roughness: 1, metalness: 1 } },
   ceilingPanel:    { tex: 'ceilingPanel', repeat: 0.42, params: { roughness: 1, metalness: 1 } },
   velvet:          { tex: 'velvet',       repeat: 2.0,  params: { roughness: 1, metalness: 1 } },
@@ -83,24 +98,24 @@ const PRESETS = {
    * 部材の太さに合う密度を別に用意する。
    */
   woodFine:        { tex: 'wood',         repeat: 4.2,  params: { roughness: 1, metalness: 1 } },
-  woodFineDark:    { tex: 'wood',         repeat: 4.2,  params: { roughness: 1, metalness: 1, color: 0x8a6a4c }, seed: 909 },
+  woodFineDark:    { tex: 'wood',         repeat: 4.2,  params: { roughness: 1, metalness: 1, color: 0x8a6a4c } },
   upholstery:      { tex: 'upholstery',   repeat: 1.4,  params: { roughness: 1, metalness: 1 } },
-  upholsteryBlue:  { tex: 'upholstery',   repeat: 1.4,  params: { roughness: 1, metalness: 1, color: 0x6f7f96 }, seed: 512 },
-  upholsteryOlive: { tex: 'upholstery',   repeat: 1.4,  params: { roughness: 1, metalness: 1, color: 0x7c7a5e }, seed: 828 },
+  upholsteryBlue:  { tex: 'upholstery',   repeat: 1.4,  params: { roughness: 1, metalness: 1, color: 0x6f7f96 } },
+  upholsteryOlive: { tex: 'upholstery',   repeat: 1.4,  params: { roughness: 1, metalness: 1, color: 0x7c7a5e } },
   bedding:         { tex: 'bedding',      repeat: 0.75, params: { roughness: 1, metalness: 1 } },
-  beddingBlue:     { tex: 'bedding',      repeat: 0.75, params: { roughness: 1, metalness: 1, color: 0x9aa8bc }, seed: 344 },
+  beddingBlue:     { tex: 'bedding',      repeat: 0.75, params: { roughness: 1, metalness: 1, color: 0x9aa8bc } },
   melamine:        { tex: 'melamine',     repeat: 0.7,  params: { roughness: 1, metalness: 1 } },
-  melaminePale:    { tex: 'melamine',     repeat: 0.7,  params: { roughness: 1, metalness: 1, color: 0xd8cdbc }, seed: 611 },
-  melamineDark:    { tex: 'melamine',     repeat: 0.7,  params: { roughness: 1, metalness: 1, color: 0x7a6450 }, seed: 277 },
+  melaminePale:    { tex: 'melamine',     repeat: 0.7,  params: { roughness: 1, metalness: 1, color: 0xd8cdbc } },
+  melamineDark:    { tex: 'melamine',     repeat: 0.7,  params: { roughness: 1, metalness: 1, color: 0x7a6450 } },
   laminate:        { tex: 'laminate',     repeat: 1.1,  params: { roughness: 1, metalness: 1 } },
-  laminateGrey:    { tex: 'laminate',     repeat: 1.1,  params: { roughness: 1, metalness: 1, color: 0x9ea3a6 }, seed: 155 },
+  laminateGrey:    { tex: 'laminate',     repeat: 1.1,  params: { roughness: 1, metalness: 1, color: 0x9ea3a6 } },
   applianceWhite:  { tex: 'applianceWhite', repeat: 0.9, params: { roughness: 1, metalness: 1 } },
-  applianceGrey:   { tex: 'applianceWhite', repeat: 0.9, params: { roughness: 1, metalness: 1, color: 0xb8bcc0 }, seed: 733 },
+  applianceGrey:   { tex: 'applianceWhite', repeat: 0.9, params: { roughness: 1, metalness: 1, color: 0xb8bcc0 } },
 
   /* ---- 街路・鉄道 ---- */
   // 区画線は下地とは別の板として置く。線幅 15cm に対し 1 タイル 33cm
   lineWhite:       { tex: 'roadPaint',    repeat: 3.0,  params: { roughness: 1, metalness: 1 } },
-  lineYellow:      { tex: 'roadPaint',    repeat: 3.0,  params: { roughness: 1, metalness: 1, color: 0xd9b752 }, seed: 621 },
+  lineYellow:      { tex: 'roadPaint',    repeat: 3.0,  params: { roughness: 1, metalness: 1, color: 0xd9b752 } },
   tactilePaving:   { tex: 'tactilePaving', repeat: 1.0, params: { roughness: 1, metalness: 1 } },
   ballast:         { tex: 'ballast',      repeat: 1.33, params: { roughness: 1, metalness: 1 } },
   railSteel:       { tex: 'railSteel',    repeat: 6.0,  params: { roughness: 1, metalness: 1 } },
@@ -111,7 +126,7 @@ const PRESETS = {
   galvanized:      { tex: 'galvanized',   repeat: 2.5,  params: { roughness: 1, metalness: 1 } },
   formPly:         { tex: 'formPly',      repeat: 0.55, params: { roughness: 1, metalness: 1 } },
   tarp:            { tex: 'tarp',         repeat: 4.0,  params: { roughness: 1, metalness: 1 } },
-  tarpGreen:       { tex: 'tarp',         repeat: 4.0,  params: { roughness: 1, metalness: 1, color: 0x8fb87a }, seed: 355 },
+  tarpGreen:       { tex: 'tarp',         repeat: 4.0,  params: { roughness: 1, metalness: 1, color: 0x8fb87a } },
 
   /* ---- 武器の表面処理 ----
    * 実銃の仕上げは「黒い金属」で一括りにできない。
@@ -120,13 +135,13 @@ const PRESETS = {
   parkerized:      { tex: 'parkerized',   repeat: 4.0,  params: { roughness: 1, metalness: 1 } },
   anodizedBlack:   { tex: 'anodizedBlack', repeat: 4.0, params: { roughness: 1, metalness: 1 } },
   cerakoteFDE:     { tex: 'cerakoteFDE',  repeat: 3.5,  params: { roughness: 1, metalness: 1 } },
-  cerakoteOD:      { tex: 'cerakoteFDE',  repeat: 3.5,  params: { roughness: 1, metalness: 1, color: 0x6a7256 }, seed: 447 },
-  cerakoteGrey:    { tex: 'cerakoteFDE',  repeat: 3.5,  params: { roughness: 1, metalness: 1, color: 0x8c8e90 }, seed: 908 },
+  cerakoteOD:      { tex: 'cerakoteFDE',  repeat: 3.5,  params: { roughness: 1, metalness: 1, color: 0x6a7256 } },
+  cerakoteGrey:    { tex: 'cerakoteFDE',  repeat: 3.5,  params: { roughness: 1, metalness: 1, color: 0x8c8e90 } },
   bluedSteel:      { tex: 'bluedSteel',   repeat: 4.0,  params: { roughness: 1, metalness: 1 } },
   nitride:         { tex: 'nitride',      repeat: 5.0,  params: { roughness: 1, metalness: 1 } },
   stampedSteel:    { tex: 'stampedSteel', repeat: 3.0,  params: { roughness: 1, metalness: 1 } },
   woodStock:       { tex: 'woodStock',    repeat: 2.5,  params: { roughness: 1, metalness: 1 } },
-  woodStockDark:   { tex: 'woodStock',    repeat: 2.5,  params: { roughness: 1, metalness: 1, color: 0x8a5a3a }, seed: 271 },
+  woodStockDark:   { tex: 'woodStock',    repeat: 2.5,  params: { roughness: 1, metalness: 1, color: 0x8a5a3a } },
   scopeLens:       { tex: 'scopeLens',    repeat: 20.0, params: { roughness: 1, metalness: 1 } },
 
   /* ---- 人物の被服・装備 ---- */
@@ -134,14 +149,14 @@ const PRESETS = {
   camoDesert:      { tex: 'camoDesert',   repeat: 1.7,  params: { roughness: 1, metalness: 1 } },
   camoUrban:       { tex: 'camoUrban',    repeat: 1.7,  params: { roughness: 1, metalness: 1 } },
   cordura:         { tex: 'cordura',      repeat: 5.0,  params: { roughness: 1, metalness: 1 } },
-  corduraTan:      { tex: 'cordura',      repeat: 5.0,  params: { roughness: 1, metalness: 1, color: 0xa89570 }, seed: 512 },
-  corduraOD:       { tex: 'cordura',      repeat: 5.0,  params: { roughness: 1, metalness: 1, color: 0x6d7458 }, seed: 733 },
+  corduraTan:      { tex: 'cordura',      repeat: 5.0,  params: { roughness: 1, metalness: 1, color: 0xa89570 } },
+  corduraOD:       { tex: 'cordura',      repeat: 5.0,  params: { roughness: 1, metalness: 1, color: 0x6d7458 } },
   kevlarWeave:     { tex: 'kevlarWeave',  repeat: 5.0,  params: { roughness: 1, metalness: 1 } },
   nomex:           { tex: 'nomex',        repeat: 4.0,  params: { roughness: 1, metalness: 1 } },
   bootLeather:     { tex: 'bootLeather',  repeat: 3.0,  params: { roughness: 1, metalness: 1 } },
   skinWeathered:   { tex: 'skinWeathered', repeat: 3.0, params: { roughness: 1, metalness: 1 } },
-  skinPale:        { tex: 'skinWeathered', repeat: 3.0, params: { roughness: 1, metalness: 1, color: 0xe8c9ae }, seed: 141 },
-  skinDark:        { tex: 'skinWeathered', repeat: 3.0, params: { roughness: 1, metalness: 1, color: 0x8a5f45 }, seed: 626 },
+  skinPale:        { tex: 'skinWeathered', repeat: 3.0, params: { roughness: 1, metalness: 1, color: 0xe8c9ae } },
+  skinDark:        { tex: 'skinWeathered', repeat: 3.0, params: { roughness: 1, metalness: 1, color: 0x8a5f45 } },
 
   /* ---- 建材・壁・屋根 ---- */
   concreteRaw:     { tex: 'concreteRaw',  repeat: 0.55, params: { roughness: 1, metalness: 1 } },
@@ -156,13 +171,13 @@ const PRESETS = {
    * テクスチャは既存のものを使い回すので、増えるのは
    * マテリアルとドローコールが数個だけ。
    */
-  cityCream:       { tex: 'concreteRaw',  repeat: 0.5,  params: { roughness: 1, metalness: 1, color: 0xd6cdb8 }, seed: 9101 },
-  citySand:        { tex: 'stuccoRough',  repeat: 0.55, params: { roughness: 1, metalness: 1, color: 0xc9b393 }, seed: 9102 },
-  cityGrey:        { tex: 'concreteRaw',  repeat: 0.5,  params: { roughness: 1, metalness: 1, color: 0x9fa0a0 }, seed: 9103 },
-  cityWarmGrey:    { tex: 'plaster',      repeat: 0.6,  params: { roughness: 1, metalness: 1, color: 0xb2a695 }, seed: 9104 },
-  cityRust:        { tex: 'brickOld',     repeat: 0.75, params: { roughness: 1, metalness: 1, color: 0xa8846a }, seed: 9105 },
-  citySlate:       { tex: 'plaster',      repeat: 0.6,  params: { roughness: 1, metalness: 1, color: 0x8b8f95 }, seed: 9106 },
-  cityBone:        { tex: 'stuccoRough',  repeat: 0.55, params: { roughness: 1, metalness: 1, color: 0xdad3c4 }, seed: 9107 },
+  cityCream:       { tex: 'concreteRaw',  repeat: 0.5,  params: { roughness: 1, metalness: 1, color: 0xd6cdb8 } },
+  citySand:        { tex: 'stuccoRough',  repeat: 0.55, params: { roughness: 1, metalness: 1, color: 0xc9b393 } },
+  cityGrey:        { tex: 'concreteRaw',  repeat: 0.5,  params: { roughness: 1, metalness: 1, color: 0x9fa0a0 } },
+  cityWarmGrey:    { tex: 'plaster',      repeat: 0.6,  params: { roughness: 1, metalness: 1, color: 0xb2a695 } },
+  cityRust:        { tex: 'brickOld',     repeat: 0.75, params: { roughness: 1, metalness: 1, color: 0xa8846a } },
+  citySlate:       { tex: 'plaster',      repeat: 0.6,  params: { roughness: 1, metalness: 1, color: 0x8b8f95 } },
+  cityBone:        { tex: 'stuccoRough',  repeat: 0.55, params: { roughness: 1, metalness: 1, color: 0xdad3c4 } },
   /*
    * 窓の奥に入れる面。
    *
@@ -170,9 +185,9 @@ const PRESETS = {
    * 壁と同じ色が見えてしまい、窓が窓に見えなかった。
    * 室内に相当する暗い面と、ブラインドを下ろした明るい面の 2 種。
    */
-  roomDark:        { tex: 'plaster',      repeat: 0.8,  params: { roughness: 1, metalness: 0, color: 0x1d2024 }, seed: 9201 },
+  roomDark:        { tex: 'plaster',      repeat: 0.8,  params: { roughness: 1, metalness: 0, color: 0x1d2024 } },
   // 掲示板の下地（フェルト）
-  feltGreen:       { tex: 'fabric',       repeat: 2.2,  params: { roughness: 1, metalness: 0, color: 0x4f6b58 }, seed: 9203 },
+  feltGreen:       { tex: 'fabric',       repeat: 2.2,  params: { roughness: 1, metalness: 0, color: 0x4f6b58 } },
   /*
    * 室内の床。
    *
@@ -181,43 +196,43 @@ const PRESETS = {
    * 模様が 1 本も残らなかった。屋内は屋外より 2〜3 段暗いのが普通なので、
    * 材質の側を暗く作っておかないと釣り合わない。
    */
-  floorVinyl:      { tex: 'laminate',     repeat: 1.1,  params: { roughness: 1, metalness: 0, color: 0x4e5255 }, seed: 9204 },
-  floorStone:      { tex: 'terrazzo',     repeat: 2.0,  params: { roughness: 1, metalness: 0, color: 0x56585c }, seed: 9205 },
+  floorVinyl:      { tex: 'laminate',     repeat: 1.1,  params: { roughness: 1, metalness: 0, color: 0x4e5255 } },
+  floorStone:      { tex: 'terrazzo',     repeat: 2.0,  params: { roughness: 1, metalness: 0, color: 0x56585c } },
   /*
    * 陸屋根の防水シート。
    * 折板（metalRoof）を陸屋根に敷いたら、リブが光って
    * 屋上一面が波板の倉庫の屋根になっていた。
    * ビルの陸屋根はシート防水かアスファルト防水で、面は平ら。
    */
-  roofMembrane:    { tex: 'rubber',       repeat: 0.45, params: { roughness: 1, metalness: 0, color: 0x707477 }, seed: 9206 },
-  blindPale:       { tex: 'plaster',      repeat: 1.6,  params: { roughness: 1, metalness: 0, color: 0xb9b3a6 }, seed: 9202 },
+  roofMembrane:    { tex: 'rubber',       repeat: 0.45, params: { roughness: 1, metalness: 0, color: 0x707477 } },
+  blindPale:       { tex: 'plaster',      repeat: 1.6,  params: { roughness: 1, metalness: 0, color: 0xb9b3a6 } },
   concreteBlock:   { tex: 'concreteBlock', repeat: 1.0, params: { roughness: 1, metalness: 1 } },
   stuccoRough:     { tex: 'stuccoRough',  repeat: 0.9,  params: { roughness: 1, metalness: 1 } },
-  stuccoWhite:     { tex: 'stuccoRough',  repeat: 0.9,  params: { roughness: 1, metalness: 1, color: 0xd8d5cd }, seed: 383 },
+  stuccoWhite:     { tex: 'stuccoRough',  repeat: 0.9,  params: { roughness: 1, metalness: 1, color: 0xd8d5cd } },
   plasterCracked:  { tex: 'plasterCracked', repeat: 0.7, params: { roughness: 1, metalness: 1 } },
   sandstone:       { tex: 'sandstone',    repeat: 0.6,  params: { roughness: 1, metalness: 1 } },
   adobe:           { tex: 'adobe',        repeat: 0.8,  params: { roughness: 1, metalness: 1 } },
   woodSiding:      { tex: 'woodSiding',   repeat: 0.7,  params: { roughness: 1, metalness: 1 } },
-  woodSidingWhite: { tex: 'woodSiding',   repeat: 0.7,  params: { roughness: 1, metalness: 1, color: 0xcfd0c8 }, seed: 818 },
+  woodSidingWhite: { tex: 'woodSiding',   repeat: 0.7,  params: { roughness: 1, metalness: 1, color: 0xcfd0c8 } },
   sidingMetal:     { tex: 'sidingMetal',  repeat: 0.7,  params: { roughness: 1, metalness: 1 } },
   roofTile:        { tex: 'roofTile',     repeat: 0.45, params: { roughness: 1, metalness: 1 } },
-  roofTileRed:     { tex: 'roofTile',     repeat: 0.45, params: { roughness: 1, metalness: 1, color: 0xb06a4a }, seed: 929 },
+  roofTileRed:     { tex: 'roofTile',     repeat: 0.45, params: { roughness: 1, metalness: 1, color: 0xb06a4a } },
   asphaltShingle:  { tex: 'asphaltShingle', repeat: 0.8, params: { roughness: 1, metalness: 1 } },
   metalRoof:       { tex: 'metalRoof',    repeat: 0.65, params: { roughness: 1, metalness: 1 } },
-  metalRoofGreen:  { tex: 'metalRoof',    repeat: 0.65, params: { roughness: 1, metalness: 1, color: 0x6d8a72 }, seed: 464 },
+  metalRoofGreen:  { tex: 'metalRoof',    repeat: 0.65, params: { roughness: 1, metalness: 1, color: 0x6d8a72 } },
   brickGlazed:     { tex: 'brickGlazed',  repeat: 1.1,  params: { roughness: 1, metalness: 1 } },
 
   /* ---- 小物・什器 ---- */
   plasticMatte:    { tex: 'plasticMatte', repeat: 2.5,  params: { roughness: 1, metalness: 1 } },
-  plasticBlack:    { tex: 'plasticMatte', repeat: 2.5,  params: { roughness: 1, metalness: 1, color: 0x3c3e42 }, seed: 202 },
-  plasticYellow:   { tex: 'plasticMatte', repeat: 2.5,  params: { roughness: 1, metalness: 1, color: 0xd8a52a }, seed: 313 },
+  plasticBlack:    { tex: 'plasticMatte', repeat: 2.5,  params: { roughness: 1, metalness: 1, color: 0x3c3e42 } },
+  plasticYellow:   { tex: 'plasticMatte', repeat: 2.5,  params: { roughness: 1, metalness: 1, color: 0xd8a52a } },
   plasticGloss:    { tex: 'plasticGloss', repeat: 2.5,  params: { roughness: 1, metalness: 1 } },
-  plasticGlossRed: { tex: 'plasticGloss', repeat: 2.5,  params: { roughness: 1, metalness: 1, color: 0xa8382c }, seed: 575 },
+  plasticGlossRed: { tex: 'plasticGloss', repeat: 2.5,  params: { roughness: 1, metalness: 1, color: 0xa8382c } },
   acrylic:         { tex: 'acrylic',      repeat: 2.0,  params: { roughness: 1, metalness: 1 } },
   stainless:       { tex: 'stainless',    repeat: 1.6,  params: { roughness: 1, metalness: 1 } },
   castIron:        { tex: 'castIron',     repeat: 1.8,  params: { roughness: 1, metalness: 1 } },
   chippedPaint:    { tex: 'chippedPaint', repeat: 1.4,  params: { roughness: 1, metalness: 1 } },
-  chippedPaintRed: { tex: 'chippedPaint', repeat: 1.4,  params: { roughness: 1, metalness: 1, color: 0xc2705c }, seed: 686 },
+  chippedPaintRed: { tex: 'chippedPaint', repeat: 1.4,  params: { roughness: 1, metalness: 1, color: 0xc2705c } },
   perforatedMetal: { tex: 'perforatedMetal', repeat: 4.5, params: { roughness: 1, metalness: 1 } },
   // 抜けのある材質。alphaTest で切り抜く（hasAlpha を見て自動で有効になる）
   /*
@@ -248,14 +263,14 @@ const PRESETS = {
    * 実際の雨だれや苔は下地の色をわずかに濁らせる程度なので、
    * 明るめに寄せた別プリセットを用意する。
    */
-  sootFaint:       { tex: 'soot',         repeat: 0.8,  params: { roughness: 1, metalness: 1, color: 0x8e8b86 }, seed: 411 },
-  mossFaint:       { tex: 'moss',         repeat: 1.2,  params: { roughness: 1, metalness: 1, color: 0x8a9184 }, seed: 512 },
+  sootFaint:       { tex: 'soot',         repeat: 0.8,  params: { roughness: 1, metalness: 1, color: 0x8e8b86 } },
+  mossFaint:       { tex: 'moss',         repeat: 1.2,  params: { roughness: 1, metalness: 1, color: 0x8a9184 } },
   moss:            { tex: 'moss',         repeat: 1.4,  params: { roughness: 1, metalness: 1 } },
   mud:             { tex: 'mud',          repeat: 0.8,  params: { roughness: 1, metalness: 1 } },
 
   /* ---- 自然物・屋外 ---- */
   grass:           { tex: 'grass',        repeat: 1.1,  params: { roughness: 1, metalness: 1 } },
-  grassDry:        { tex: 'grass',        repeat: 1.1,  params: { roughness: 1, metalness: 1, color: 0xbdb178 }, seed: 240 },
+  grassDry:        { tex: 'grass',        repeat: 1.1,  params: { roughness: 1, metalness: 1, color: 0xbdb178 } },
   foliage:         { tex: 'foliage',      repeat: 1.4,  params: { roughness: 1, metalness: 1 } },
   bark:            { tex: 'bark',         repeat: 1.5,  params: { roughness: 1, metalness: 1 } },
   water:           { tex: 'water',        repeat: 0.5,  params: { roughness: 1, metalness: 1 } },
@@ -266,14 +281,14 @@ const PRESETS = {
   posterWall:      { tex: 'posterWall',   repeat: 0.45, params: { roughness: 1, metalness: 1 } },
   rustHeavy:       { tex: 'rustHeavy',    repeat: 0.9,  params: { roughness: 1, metalness: 1 } },
   brickOld:        { tex: 'brickOld',     repeat: 1.1,  params: { roughness: 1, metalness: 1 } },
-  brickOldGrey:    { tex: 'brickOld',     repeat: 1.1,  params: { roughness: 1, metalness: 1, color: 0x9c9a94 }, seed: 505 },
+  brickOldGrey:    { tex: 'brickOld',     repeat: 1.1,  params: { roughness: 1, metalness: 1, color: 0x9c9a94 } },
 
   /* ---- 建材・什器（続き） ---- */
   meshScreen:      { tex: 'meshScreen',   repeat: 2.2,  params: { roughness: 1, metalness: 1 } },
   scaffoldPlank:   { tex: 'scaffoldPlank', repeat: 0.7, params: { roughness: 1, metalness: 1 } },
   corrugatedPlastic: { tex: 'corrugatedPlastic', repeat: 0.6, params: { roughness: 1, metalness: 1 } },
   awningFabric:    { tex: 'awningFabric', repeat: 0.55, params: { roughness: 1, metalness: 1 } },
-  awningGreen:     { tex: 'awningFabric', repeat: 0.55, params: { roughness: 1, metalness: 1, color: 0x7fa06a }, seed: 616 },
+  awningGreen:     { tex: 'awningFabric', repeat: 0.55, params: { roughness: 1, metalness: 1, color: 0x7fa06a } },
   solarPanel:      { tex: 'solarPanel',   repeat: 0.55, params: { roughness: 1, metalness: 1 } },
 };
 

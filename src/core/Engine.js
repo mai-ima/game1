@@ -51,7 +51,7 @@ export const QUALITY = {
    * 動的解像度で解像度を落とさず（minScale 1.0）、環境遮蔽も
    * 半解像度ではなく等倍で掛ける。フレームレートより絵を優先する段。
    */
-  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 4096, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 100, texSize: 2048, bloomScale: 1.0, minScale: 1.0,
+  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 4096, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 100, texSize: 1024, bloomScale: 1.0, minScale: 1.0,
             gtaoScale: 1.0, gtaoSamples: 16, maxLights: 12 },
 
   /*
@@ -78,7 +78,7 @@ export const QUALITY_INFO = {
   low:    { label: '低',   desc: '影 1536・ブルーム・FXAA。軽いが平板にはならない構成。' },
   medium: { label: '中',   desc: '影 2048・SMAA・等倍以上の解像度。多くのノートPCで 60fps を狙える。' },
   high:   { label: '高',   desc: 'さらに環境遮蔽（GTAO）と高解像度テクスチャ。既定の推奨設定。' },
-  ultra:  { label: '最高', desc: '影 4096・等倍の環境遮蔽・2048 テクスチャ。解像度を自動で下げないクオリティ最優先の段。要 dGPU。' },
+  ultra:  { label: '最高', desc: '影 4096・等倍の環境遮蔽・1024 テクスチャ。解像度を自動で下げないクオリティ最優先の段。要 dGPU。' },
   igpu:   { label: '内蔵GPU最適化', desc: 'Intel UHD など内蔵 GPU 向け。ポスト処理を 1 パスに統合し、影・ブルームは残したまま徹底的に負荷を削る。旧世代の UHD でも動くことを狙った段。' },
 };
 

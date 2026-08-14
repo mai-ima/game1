@@ -48,7 +48,7 @@ export class MaterialShowcase {
    */
   async build(opt = {}) {
     const cols = opt.cols || 6;
-    const texSize = opt.texSize || 1024;
+    const texSize = opt.texSize || 512;
     const onProgress = opt.onProgress || (() => {});
 
     const names = [...MaterialLibrary.presets];

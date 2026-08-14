@@ -40,7 +40,8 @@ async function start() {
   const showcase = new MaterialShowcase(engine, mats);
   await showcase.build({
     cols: parseInt(qs.get('cols') || '6', 10),
-    texSize: parseInt(qs.get('tex') || '1024', 10),
+    // 119 材質を 1024 で焼くと 2GB になり、ページごと落ちる
+    texSize: parseInt(qs.get('tex') || '512', 10),
     onProgress: (t, name) => boot?.set(10 + t * 88, `生成中 ${name}`),
   });
 

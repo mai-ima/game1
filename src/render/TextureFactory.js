@@ -1282,9 +1282,28 @@ export class TextureFactory {
   /**
    * @param {THREE.WebGLRenderer} renderer 異方性フィルタの最大値取得用
    */
-  constructor(renderer) {
+  constructor(renderer, opt = {}) {
     this.maxAniso = renderer ? renderer.capabilities.getMaxAnisotropy() : 8;
     this.cache = new Map();
+    /*
+     * 焼いたテクスチャの実バイト数と、その上限。
+     *
+     * 1 組（アルベド・ORM・法線）で size²×4×3、
+     * ミップマップでさらに 1.33 倍かかる。
+     * 512 なら 1 組 4.2MB、1024 なら 16.8MB。
+     *
+     * 材質は 119 種ある。見本ページは既定で 1024 の全種類を焼くので、
+     * それだけで 2GB になる。機械の性能とは関係なく、
+     * GPU メモリもヒープも尽きてタブごと落ちる。
+     * マップも材質を足すたびに同じ崖へ近づく。
+     *
+     * 総量に上限を置き、超えそうなら解像度を半分ずつ落として焼く。
+     * 絵は粗くなるが、落ちるよりはよい。
+     */
+    this.bytes = 0;
+    this.budget = (opt.budget ?? 420) * 1024 * 1024;
+    this.downgraded = 0;
+    this.lastSize = 512;
   }
 
   /** 利用可能なマテリアル名の一覧 */
@@ -1298,10 +1317,24 @@ export class TextureFactory {
    *            metalnessMap:THREE.Texture, aoMap:THREE.Texture}}
    */
   get(name, opt = {}) {
-    const size = opt.size || 512;
     const seed = opt.seed ?? 1234;
-    const key = `${name}|${size}|${seed}`;
+    /*
+     * キャッシュは名前と種だけで引く。
+     * 以前はサイズも鍵に含めていたので、同じ材質を別のサイズで
+     * 要求すると 2 組目が焼かれていた。
+     */
+    const key = `${name}|${seed}`;
     if (this.cache.has(key)) return this.cache.get(key);
+
+    // 予算に収まるところまで解像度を落とす
+    let size = opt.size || 512;
+    const cost = (n) => n * n * 4 * 3 * 1.34;
+    while (size > 128 && this.bytes + cost(size) > this.budget) {
+      size >>= 1;
+      this.downgraded++;
+    }
+    this.lastSize = size;
+    this.bytes += cost(size);
 
     const def = DEFS[name];
     if (!def) throw new Error(`未定義のマテリアル: ${name}`);
