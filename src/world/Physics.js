@@ -60,6 +60,14 @@ export class Collider {
     this.mesh = opt.mesh || null;
     this.tag = opt.tag || null;
     this.active = true;
+    /*
+     * ブロードフェーズの重複除去に使う世代番号。
+     * 1 つのコライダは複数の升目に登録されるので、
+     * 同じ走査で二度拾わないための目印がいる。
+     * Set を毎回作るより、この整数比較のほうがずっと安い。
+     */
+    this._rayStamp = 0;
+    this._queryStamp = 0;
 
     // ワールド AABB（ブロードフェーズ用）
     this.min = new THREE.Vector3();
@@ -134,6 +142,9 @@ export class Physics {
     this.colliders = [];
     this.grid = new Map();
     this.gravity = -19.6;   // ゲーム的に重めの重力（COD 系の落下感）
+    /** ブロードフェーズの走査ごとに進める世代番号（重複除去用） */
+    this._rayStamp = 0;
+    this._queryStamp = 0;
   }
 
   /* ================= 構築 ================= */
@@ -243,21 +254,29 @@ export class Physics {
     }
   }
 
-  /** 指定 AABB と重なる可能性のあるコライダを集める */
+  /**
+   * 指定 AABB と重なる可能性のあるコライダを集める。
+   *
+   * 重複除去は Set ではなく世代番号で行う。
+   * 移動解決だけで毎フレーム十数回呼ばれるので、
+   * そのたびに Set を作り直す（clear と hash 挿入）のは無視できない。
+   * コライダ側に「最後に見た番号」を持たせれば、判定は整数比較 1 回で済む。
+   */
   query(min, max, out = []) {
     out.length = 0;
     const cs = this.cellSize;
     const x0 = Math.floor(min.x / cs), x1 = Math.floor(max.x / cs);
     const z0 = Math.floor(min.z / cs), z1 = Math.floor(max.z / cs);
-    const seen = this._seen ??= new Set();
-    seen.clear();
+    const stamp = ++this._queryStamp;
     for (let x = x0; x <= x1; x++) {
       for (let z = z0; z <= z1; z++) {
         const arr = this.grid.get(this._cellKey(x, z));
         if (!arr) continue;
-        for (const c of arr) {
-          if (!c.active || seen.has(c)) continue;
-          seen.add(c);
+        for (let i = 0; i < arr.length; i++) {
+          const c = arr[i];
+          if (c._queryStamp === stamp) continue;
+          c._queryStamp = stamp;
+          if (!c.active) continue;
           if (c.max.x < min.x || c.min.x > max.x) continue;
           if (c.max.y < min.y || c.min.y > max.y) continue;
           if (c.max.z < min.z || c.min.z > max.z) continue;
@@ -498,24 +517,61 @@ export class Physics {
     const o = _rayO.set(ox, oy, oz);
     const d = _rayD.set(dx, dy, dz);
 
-    // レイの AABB でブロードフェーズ
-    const min = _v1.set(
-      Math.min(ox, ox + dx * maxDist),
-      Math.min(oy, oy + dy * maxDist),
-      Math.min(oz, oz + dz * maxDist)
-    );
-    const max = _v2.set(
-      Math.max(ox, ox + dx * maxDist),
-      Math.max(oy, oy + dy * maxDist),
-      Math.max(oz, oz + dz * maxDist)
-    );
-    const list = this.query(min, max, this._qr ??= []);
+    /*
+     * ブロードフェーズはレイに沿った格子走査（DDA）で行う。
+     *
+     * 以前は「レイ全長を包む AABB」で升目を集めていた。
+     * 弾は 320m 飛ぶので、その AABB はマップ全体を覆う。
+     * つまり格子で分けた意味がまるごと消え、毎回すべてのコライダに
+     * スラブ判定を掛けていた（実測で 1,500 個規模）。
+     * 発砲のたび・ボットの視線判定のたびにこれが走るため、
+     * ここが CPU 側で最も重い場所になっていた。
+     *
+     * 手前の升目から順に辿れば、
+     *   ・触るのはレイが実際に通る升目だけ
+     *   ・当たった時点で、それより奥の升目は見る必要がない
+     * の 2 つが同時に効く。
+     *
+     * 結果は総当たりと厳密に一致する。コライダは自分の AABB が
+     * 掛かる升目すべてに登録されているので、レイが交差するなら
+     * 交点のある升目に必ず入っている。
+     */
+    const cs = this.cellSize;
+    const stamp = ++this._rayStamp;
 
-    for (const c of list) {
-      if (forBullets && !c.blocksBullets) continue;
-      if (!forBullets && !c.blocksMovement) continue;
-      const r = this._rayBox(c, o, d, bestT);
-      if (r && r.t < bestT) { bestT = r.t; best = { t: r.t, nx: r.nx, ny: r.ny, nz: r.nz, collider: c }; }
+    let ix = Math.floor(ox / cs), iz = Math.floor(oz / cs);
+    const stepX = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+    const stepZ = dz > 0 ? 1 : (dz < 0 ? -1 : 0);
+    // 次の升目境界に達する t と、1 升進むのに要る t
+    let tMaxX = stepX !== 0 ? ((ix + (stepX > 0 ? 1 : 0)) * cs - ox) / dx : Infinity;
+    let tMaxZ = stepZ !== 0 ? ((iz + (stepZ > 0 ? 1 : 0)) * cs - oz) / dz : Infinity;
+    const tDeltaX = stepX !== 0 ? Math.abs(cs / dx) : Infinity;
+    const tDeltaZ = stepZ !== 0 ? Math.abs(cs / dz) : Infinity;
+
+    // この升目へ入った時点の t。bestT を超えたら以降は見なくてよい
+    let tEnter = 0;
+    for (let guard = 0; guard < 8192; guard++) {
+      if (tEnter > bestT) break;
+
+      const arr = this.grid.get(this._cellKey(ix, iz));
+      if (arr) {
+        for (let i = 0; i < arr.length; i++) {
+          const c = arr[i];
+          // 複数の升目にまたがるコライダを二度見ない（Set より安い）
+          if (c._rayStamp === stamp) continue;
+          c._rayStamp = stamp;
+          if (!c.active) continue;
+          if (forBullets ? !c.blocksBullets : !c.blocksMovement) continue;
+          const r = this._rayBox(c, o, d, bestT);
+          if (r && r.t < bestT) { bestT = r.t; best = { t: r.t, nx: r.nx, ny: r.ny, nz: r.nz, collider: c }; }
+        }
+      }
+
+      // 真上・真下へのレイは升目をまたがない
+      if (stepX === 0 && stepZ === 0) break;
+      if (tMaxX <= tMaxZ) { tEnter = tMaxX; ix += stepX; tMaxX += tDeltaX; }
+      else { tEnter = tMaxZ; iz += stepZ; tMaxZ += tDeltaZ; }
+      if (tEnter > maxDist) break;
     }
 
     if (!best) return null;

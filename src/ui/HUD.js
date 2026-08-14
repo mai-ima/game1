@@ -509,6 +509,13 @@ export class HUD {
       board: $('hudBoard'),
     };
 
+    /*
+     * 毎フレーム書き込む値の控え。
+     * 同じ値の再代入を止めるだけで、DOM に触る回数が 1 桁減る。
+     */
+    this._prev = Object.create(null);
+    this._filled = -1;
+
     // 横画面スマホは縦の余白が乏しいので、画面高からサイズを決める
     const h = window.innerHeight;
     const size = h < 460 ? 96 : (window.innerWidth < 780 ? 124 : 176);
@@ -540,28 +547,54 @@ export class HUD {
   setMapName(name) { this.el.mapLabel.textContent = name; }
   setModeName(name) { this.el.modeName.textContent = name; }
 
+  /*
+   * 以下の setter は毎フレーム呼ばれる。
+   *
+   * textContent や style への代入は、値が同じでもブラウザに
+   * 「変わったかもしれない」と伝わり、スタイル再計算の対象になる。
+   * 体力も弾数も、実際に動くのは撃った瞬間だけなので、
+   * 前回と同じ値なら触らない。_w / _t は書き込みを 1 か所に集めるための小道具。
+   */
+  _t(el, key, value) {
+    if (this._prev[key] === value) return;
+    this._prev[key] = value;
+    el.textContent = value;
+  }
+
+  _w(el, key, value) {
+    if (this._prev[key] === value) return;
+    this._prev[key] = value;
+    el.style.width = value;
+  }
+
+  _c(el, key, cls, on) {
+    if (this._prev[key] === on) return;
+    this._prev[key] = on;
+    el.classList.toggle(cls, on);
+  }
+
   setHealth(hp, max) {
     const p = Math.max(0, Math.min(1, hp / max));
-    this.el.hpNum.textContent = Math.ceil(hp);
-    this.el.hpBar.style.width = `${p * 100}%`;
-    this.el.vitals.classList.toggle('low', p < 0.35);
+    this._t(this.el.hpNum, 'hp', Math.ceil(hp));
+    this._w(this.el.hpBar, 'hpw', `${p * 100}%`);
+    this._c(this.el.vitals, 'low', 'low', p < 0.35);
   }
 
   setStamina(v, max) {
     const p = Math.max(0, Math.min(1, v / max));
-    this.el.stamBar.style.width = `${p * 100}%`;
-    this.el.vitals.classList.toggle('showstam', p < 0.995);
+    this._w(this.el.stamBar, 'stam', `${p * 100}%`);
+    this._c(this.el.vitals, 'stamon', 'showstam', p < 0.995);
   }
 
   setAmmo({ mag, reserve, weapon }) {
     if (!weapon) return;
-    this.el.ammoMag.textContent = mag;
-    this.el.ammoRes.textContent = reserve;
-    this.el.wName.textContent = weapon.name;
-    this.el.wMode.textContent = {
+    this._t(this.el.ammoMag, 'mag', mag);
+    this._t(this.el.ammoRes, 'res', reserve);
+    this._t(this.el.wName, 'wn', weapon.name);
+    this._t(this.el.wMode, 'wm', {
       auto: 'フルオート', semi: 'セミオート', burst: 'バースト', bolt: 'ボルト', pump: 'ポンプ',
-    }[weapon.fireMode] || '';
-    this.el.ammo.classList.toggle('empty', mag === 0);
+    }[weapon.fireMode] || '');
+    this._c(this.el.ammo, 'empty', 'empty', mag === 0);
 
     // 弾数の刻み（30発を超える場合は間引く）
     if (this._lastMag !== weapon.magSize) {
@@ -572,14 +605,18 @@ export class HUD {
       this._tickRatio = weapon.magSize / n;
     }
     if (this._tickEls) {
+      // 刻みは弾数が変わったときだけ塗り直す（30 個の classList を毎フレーム触らない）
       const filled = Math.ceil(mag / this._tickRatio);
-      for (let i = 0; i < this._tickEls.length; i++) {
-        this._tickEls[i].classList.toggle('spent', i >= filled);
+      if (filled !== this._filled) {
+        this._filled = filled;
+        for (let i = 0; i < this._tickEls.length; i++) {
+          this._tickEls[i].classList.toggle('spent', i >= filled);
+        }
       }
     }
   }
 
-  setReloading(on) { this.el.ammo.classList.toggle('reloading', on); }
+  setReloading(on) { this._c(this.el.ammo, 'reloading', 'reloading', on); }
 
   /**
    * 照準の広がりを設定する。
@@ -724,19 +761,19 @@ export class HUD {
      * （Math.floor(Infinity/60) は Infinity になり "Infinity:NaN" と出てしまう）。
      */
     const timed = Number.isFinite(s.remaining);
-    this.el.scorebar.classList.toggle('untimed', !timed);
+    this._c(this.el.scorebar, 'untimed', 'untimed', !timed);
     if (timed) {
-      this.el.scoreA.textContent = s.A ?? 0;
-      this.el.scoreB.textContent = s.B ?? 0;
+      this._t(this.el.scoreA, 'sa', s.A ?? 0);
+      this._t(this.el.scoreB, 'sb', s.B ?? 0);
       const t = Math.max(0, s.remaining);
       const m = Math.floor(t / 60), sec = Math.floor(t % 60);
-      this.el.clock.textContent = `${m}:${String(sec).padStart(2, '0')}`;
-      this.el.clock.classList.toggle('urgent', t < 30);
+      this._t(this.el.clock, 'clock', `${m}:${String(sec).padStart(2, '0')}`);
+      this._c(this.el.clock, 'urgent', 'urgent', t < 30);
     } else {
-      this.el.clock.textContent = '自由行動';
-      this.el.clock.classList.remove('urgent');
+      this._t(this.el.clock, 'clock', '自由行動');
+      this._c(this.el.clock, 'urgent', 'urgent', false);
     }
-    if (modeName) this.el.modeName.textContent = modeName;
+    if (modeName) this._t(this.el.modeName, 'mode', modeName);
     this._updateObjective(s);
   }
 
@@ -749,37 +786,36 @@ export class HUD {
     const el = this.el.obj;
     if (s.attackers) {
       // 捜索と破壊
-      el.classList.add('show');
+      this._c(el, 'objshow', 'show', true);
       const mine = this._playerTeam || 'A';
       const attacking = s.attackers === mine;
-      if (s.planted) {
-        this.el.objT.textContent = attacking ? '爆弾設置済み — 防衛せよ' : '爆弾を解除せよ';
-        this.el.objT.classList.add('warn');
-      } else {
-        this.el.objT.textContent = attacking ? '爆弾を設置せよ' : '設置を阻止せよ';
-        this.el.objT.classList.remove('warn');
-      }
-      this.el.objS.textContent = `ラウンド ${s.round}　${s.A ?? 0} - ${s.B ?? 0}`;
       const acting = !!s.action && s.progress > 0.01;
-      el.classList.toggle('acting', acting);
+      this._c(el, 'objact', 'acting', acting);
       if (acting) {
-        this.el.objBar.style.width = `${Math.round(s.progress * 100)}%`;
-        this.el.objT.textContent = s.action === 'plant' ? '設置中…' : '解除中…';
+        this._w(this.el.objBar, 'objbar', `${Math.round(s.progress * 100)}%`);
+        this._t(this.el.objT, 'objt', s.action === 'plant' ? '設置中…' : '解除中…');
+      } else if (s.planted) {
+        this._t(this.el.objT, 'objt', attacking ? '爆弾設置済み — 防衛せよ' : '爆弾を解除せよ');
+      } else {
+        this._t(this.el.objT, 'objt', attacking ? '爆弾を設置せよ' : '設置を阻止せよ');
       }
+      this._c(this.el.objT, 'objwarn', 'warn', !!s.planted);
+      this._t(this.el.objS, 'objs', `ラウンド ${s.round}　${s.A ?? 0} - ${s.B ?? 0}`);
     } else if (s.tags !== undefined) {
       // キルコンファームド
-      el.classList.add('show');
-      el.classList.remove('acting');
-      this.el.objT.textContent = 'ドッグタグを回収せよ';
-      this.el.objS.textContent = s.tags > 0 ? `未回収 ${s.tags} 枚` : '未回収なし';
+      this._c(el, 'objshow', 'show', true);
+      this._c(el, 'objact', 'acting', false);
+      this._t(this.el.objT, 'objt', 'ドッグタグを回収せよ');
+      this._t(this.el.objS, 'objs', s.tags > 0 ? `未回収 ${s.tags} 枚` : '未回収なし');
     } else if (s.weapon) {
       // ガンゲーム
-      el.classList.add('show');
-      el.classList.remove('acting');
-      this.el.objT.textContent = `第 ${(s.A ?? 0) + 1} 段階 / ${s.limit}`;
-      this.el.objS.textContent = '倒すたびに武器が変わる';
+      this._c(el, 'objshow', 'show', true);
+      this._c(el, 'objact', 'acting', false);
+      this._t(this.el.objT, 'objt', `第 ${(s.A ?? 0) + 1} 段階 / ${s.limit}`);
+      this._t(this.el.objS, 'objs', '倒すたびに武器が変わる');
     } else {
-      el.classList.remove('show', 'acting');
+      this._c(el, 'objshow', 'show', false);
+      this._c(el, 'objact', 'acting', false);
     }
   }
 

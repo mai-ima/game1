@@ -70,6 +70,8 @@ const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
 const _dir = new THREE.Vector3();
+// 注視先の控え（一時ベクトルの使い回しで壊れないように別に持つ）
+const _glance = new THREE.Vector3();
 // 射撃解決の専用一時領域（毎発の生成を避ける）
 const _fOrigin = new THREE.Vector3();
 const _fOrigin2 = new THREE.Vector3();
@@ -518,9 +520,21 @@ export class Bot {
 
     let best = null, bestScore = -Infinity;
     let glanceAt = null, glanceBest = 0;
-    const seenNow = new Set();
+    /*
+     * 使い捨てを作らない。
+     *
+     * 索敵はボットの数だけ毎フレーム回る。ここで Set と
+     * ジェネレータのイテレータを作ると、それだけで毎秒千個近い
+     * 短命オブジェクトが出て、GC が細かく走る原因になる。
+     * 対象はせいぜい 7 体なので、使い回しの配列で足りる。
+     */
+    const seenNow = this._seenBuf ??= [];
+    seenNow.length = 0;
+    const foes = world.enemiesInto
+      ? world.enemiesInto(this.team, this._foeBuf ??= [])
+      : [...world.enemiesOf(this.team)];
 
-    for (const e of world.enemiesOf(this.team)) {
+    for (const e of foes) {
       if (!e.alive) continue;
       const ep = e.getEyePosition ? e.getEyePosition(_v2) : _v2.copy(e.position);
       const d = myEye.distanceTo(ep);
@@ -533,7 +547,7 @@ export class Bot {
       if (!inFov && !close) continue;
       if (this.ctx.physics.losBlocked(myEye, ep)) continue;
 
-      seenNow.add(e);
+      seenNow.push(e);
 
       /* --- 発見までの速さを決める --- */
       // 距離: 近いほど速い
@@ -558,7 +572,15 @@ export class Bot {
        * 実測でも「12m 先に棒立ちの相手を 25 秒間まったく発見しない」
        * という結果になっていた。
        */
-      if (cur > 0.18 && cur > glanceBest) { glanceBest = cur; glanceAt = ep; }
+      /*
+       * 注視先は座標を控える。
+       *
+       * ep は使い回しの一時ベクトルなので、参照を持ち回ると
+       * ループの続きで別の相手の座標に書き換わってしまう。
+       * 実際、首を振る先が「いちばん気配の強い相手」ではなく
+       * 「最後に評価した相手」になっていた。
+       */
+      if (cur > 0.18 && cur > glanceBest) { glanceBest = cur; glanceAt = _glance.copy(ep); }
 
       /*
        * 発見済みの相手だけが標的候補。近いほど優先。
@@ -585,7 +607,7 @@ export class Bot {
 
     // 見えていない相手の索敵蓄積は少しずつ抜ける
     for (const [e, v] of this._spot) {
-      if (!seenNow.has(e)) {
+      if (seenNow.indexOf(e) < 0) {
         const nv = v - dt * 0.55;
         if (nv <= 0) this._spot.delete(e); else this._spot.set(e, nv);
       }

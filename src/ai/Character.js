@@ -43,10 +43,52 @@ function part(geo) {
   return g;
 }
 
+/*
+ * 兵士のジオメトリは全員で共有する。
+ *
+ * buildSoldier は 1 体につき 30 個あまりのジオメトリを組み立てる。
+ * 中身は 1 体目と完全に同じ（形は陣営や迷彩に依らない）のに、
+ * 7 体ぶん別々に作っていた。生成に時間がかかるだけでなく、
+ * GPU にも同じ頂点が 7 組載る。
+ *
+ * buildSoldier の中の mergeParts は毎回同じ順序で呼ばれるので、
+ * 呼ばれた順に控えておけば、2 体目からはそれを配るだけで済む。
+ * 参照を配るので dispose は共有側で 1 度だけ行う。
+ */
+const _geoCache = [];
+let _geoIdx = -1;      // -1 = 記録も再利用もしない（単体で呼ばれたとき）
+/** 影の代役（全員で同じ形・同じ材質） */
+let _proxyGeo = null, _proxyMat = null;
+/** 陣営色のマテリアル（色ごとに 1 つ） */
+const _accentCache = new Map();
+function _accentMat(teamColor) {
+  let m = _accentCache.get(teamColor);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ color: teamColor, roughness: 0.55, metalness: 0.1 });
+    // setTeamColor がこの印を頼りに陣営色だけを塗り替える
+    m.userData.isAccent = true;
+    _accentCache.set(teamColor, m);
+  }
+  return m;
+}
+
 function mergeParts(list) {
+  if (_geoIdx >= 0 && _geoCache[_geoIdx] !== undefined) return _geoCache[_geoIdx++];
   const valid = list.filter(Boolean).map(part);
-  if (!valid.length) return null;
-  return valid.length === 1 ? valid[0] : BufferGeometryUtils.mergeGeometries(valid, false);
+  const merged = !valid.length ? null
+    : (valid.length === 1 ? valid[0] : BufferGeometryUtils.mergeGeometries(valid, false));
+  if (_geoIdx >= 0) _geoCache[_geoIdx++] = merged;
+  return merged;
+}
+
+/** 共有しているジオメトリをすべて解放する（マップを捨てるときだけ） */
+export function disposeSoldierGeometry() {
+  for (const g of _geoCache) g?.dispose();
+  _geoCache.length = 0;
+  _proxyGeo?.dispose(); _proxyGeo = null;
+  _proxyMat?.dispose(); _proxyMat = null;
+  for (const m of _accentCache.values()) m.dispose();
+  _accentCache.clear();
 }
 
 /**
@@ -61,7 +103,31 @@ function mergeParts(list) {
  * @param {object} mats MaterialLibrary
  * @param {string} model WEAPONS[].model のキー
  */
+/*
+ * 三人称の銃も型ごとに 1 挺だけ組み、以降は複製で配る。
+ *
+ * Object3D.clone() は階層だけを作り直し、ジオメトリとマテリアルは
+ * 元の参照をそのまま使う。7 体ぶん別々に組み立てる必要はない。
+ */
+const _weaponProto = new Map();
+
 export function buildWorldWeapon(mats, model) {
+  const cached = _weaponProto.get(model);
+  if (cached) return cached.clone(true);
+  const root = _buildWorldWeapon(mats, model);
+  _weaponProto.set(model, root);
+  return root.clone(true);
+}
+
+/** 共有している三人称武器を解放する */
+export function disposeWorldWeapons() {
+  for (const root of _weaponProto.values()) {
+    root.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); });
+  }
+  _weaponProto.clear();
+}
+
+function _buildWorldWeapon(mats, model) {
   const builder = MODEL_BUILDERS[model] || MODEL_BUILDERS.m4a1;
   const M = {
     metal: mats.get('gunMetal', { repeat: [1, 1] }),
@@ -93,6 +159,8 @@ export function buildWorldWeapon(mats, model) {
 export function buildSoldier(mats, teamColor = 0x2f6fb8, opt = {}) {
   const root = new THREE.Group();
   root.name = 'soldier';
+  // ここから先の mergeParts は、1 体目で記録し 2 体目以降は使い回す
+  _geoIdx = 0;
 
   const M = {
     uniform: mats.uniform,
@@ -100,10 +168,12 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8, opt = {}) {
     skin: mats.skin,
     boot: mats.boot,
     metal: mats.metal,
-    accent: new THREE.MeshStandardMaterial({ color: teamColor, roughness: 0.55, metalness: 0.1 }),
+    /*
+     * 陣営色。色は 2 種類しか無いので、体ごとに作らず色ごとに 1 つ持つ。
+     * マテリアルを増やすと three はその数だけ描画をまとめ直せなくなる。
+     */
+    accent: _accentMat(teamColor),
   };
-  // setTeamColor がこの印を頼りに陣営色だけを塗り替える
-  M.accent.userData.isAccent = true;
 
   /*
    * 向きを合わせるための中間層。
@@ -515,10 +585,10 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8, opt = {}) {
    * visible を false にすると three は影パスでも飛ばしてしまうため、
    * 「見えているが色を書かないメッシュ」として置く必要がある。
    */
-  const proxy = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.30, 1.02, 3, 10),
-    new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })
-  );
+  // 代役のカプセルも全員で同じ形。1 つ作って使い回す
+  _proxyGeo ??= new THREE.CapsuleGeometry(0.30, 1.02, 3, 10);
+  _proxyMat ??= new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+  const proxy = new THREE.Mesh(_proxyGeo, _proxyMat);
   proxy.name = 'shadowProxy';
   proxy.position.y = 0.92;
   proxy.castShadow = true;
@@ -528,6 +598,9 @@ export function buildSoldier(mats, teamColor = 0x2f6fb8, opt = {}) {
   root.add(proxy);
   root.userData.shadowProxy = proxy;
 
+  // ジオメトリは共有物なので、この兵士だけで捨ててはいけない目印
+  root.userData.sharedGeometry = true;
+  _geoIdx = -1;
   return root;
 }
 

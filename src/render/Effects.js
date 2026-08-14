@@ -236,12 +236,21 @@ export class Effects {
       this.tracerMesh.setMatrixAt(i, _m);
     }
     this.tracerMesh.instanceMatrix.needsUpdate = true;
+    // 稼働 0 のうちは描かない（下端の実体まで毎フレーム回すのを避ける）
+    this.tracerMesh.count = 0;
+    this._tActive = 0;
+    this._tMax = 0;
   }
 
   /** 曳光弾を飛ばす */
   tracer(from, to, speed = 900) {
-    const p = this.tracerPool.find((x) => !x.active);
+    const pool = this.tracerPool;
+    let p = null;
+    for (let i = 0; i < pool.length; i++) {
+      if (!pool[i].active) { p = pool[i]; if (i + 1 > this._tMax) this._tMax = i + 1; break; }
+    }
     if (!p) return;
+    this._tActive++;
     p.active = true;
     p.from.copy(from);
     p.to.copy(to);
@@ -251,14 +260,20 @@ export class Effects {
   }
 
   _updateTracers(dt) {
+    // 飛んでいる曳光弾が無ければ、行列も描画も触らない
+    if (this._tActive === 0) {
+      if (this.tracerMesh.count !== 0) { this.tracerMesh.count = 0; this._tMax = 0; }
+      return;
+    }
     let changed = false;
-    for (let i = 0; i < this.tracerPool.length; i++) {
+    for (let i = 0; i < this._tMax; i++) {
       const p = this.tracerPool[i];
       if (!p.active) continue;
       p.t += dt;
       const k = p.t / p.dur;
       if (k >= 1) {
         p.active = false;
+        this._tActive--;
         _m.makeScale(0, 0, 0);
         this.tracerMesh.setMatrixAt(i, _m);
         changed = true;
@@ -275,6 +290,8 @@ export class Effects {
       this.tracerMesh.setMatrixAt(i, _m);
       changed = true;
     }
+    // 実際に使っている範囲だけ描く
+    this.tracerMesh.count = this._tActive ? this._tMax : 0;
     if (changed) this.tracerMesh.instanceMatrix.needsUpdate = true;
   }
 
@@ -312,11 +329,34 @@ export class Effects {
     }
     this._dustCount = N;
     this._sparkCount = 220;
+    /*
+     * 空き枠を探す位置。
+     *
+     * 以前は毎回 find() で 380 個を頭から舐めていた。
+     * ショットガン 1 発で数十個まとめて要るので、
+     * 弾を撃つたびに数千回の走査になる。
+     * 前回の続きから探せば、ほぼ 1 回の比較で見つかる。
+     */
+    this._pCursor = 0;
+    /** 実際に動いている粒子の数。0 なら更新ごと省ける */
+    this._pActive = 0;
+    // 描いた実体の数（前フレームぶん）。0 に落とすと描画自体が消える
+    this._dustDrawn = 0;
+    this._sparkDrawn = 0;
+    this.dustMesh.count = 0;
+    this.sparkMesh.count = 0;
   }
 
   _spawnParticle(kind, pos, vel, opt = {}) {
-    const p = this.particles.find((x) => !x.active);
+    const list = this.particles;
+    const n = list.length;
+    let p = null;
+    for (let k = 0; k < n; k++) {
+      const q = list[(this._pCursor + k) % n];
+      if (!q.active) { p = q; this._pCursor = (this._pCursor + k + 1) % n; break; }
+    }
     if (!p) return null;
+    this._pActive++;
     p.active = true;
     p.kind = kind;
     p.pos.copy(pos);
@@ -335,13 +375,30 @@ export class Effects {
   }
 
   _updateParticles(dt, camera) {
+    /*
+     * 動いている粒子が 1 つも無いときは、まるごと省く。
+     *
+     * 以前は稼働 0 でも毎フレーム 380+220 個の行列を書き戻し、
+     * その全部を GPU へ送り直していた。撃っていない間もずっと払う
+     * 費用で、しかも絵には 1 画素も出ない。
+     * 前フレームに描いていたぶんだけ一度潰して、あとは触らない。
+     */
+    if (this._pActive === 0) {
+      if (this._dustDrawn || this._sparkDrawn) {
+        this._dustDrawn = 0; this._sparkDrawn = 0;
+        this.dustMesh.count = 0;
+        this.sparkMesh.count = 0;
+      }
+      return;
+    }
+
     let di = 0, si = 0;
     const camQ = camera.quaternion;
     for (const p of this.particles) {
       if (!p.active) continue;
       p.life += dt;
       const k = p.life / p.maxLife;
-      if (k >= 1) { p.active = false; continue; }
+      if (k >= 1) { p.active = false; this._pActive--; continue; }
 
       p.vel.y += p.gravity * dt;
       p.vel.multiplyScalar(1 - Math.min(1, p.drag * dt));
@@ -368,12 +425,20 @@ export class Effects {
         }
       }
     }
-    // 未使用分は潰す
-    for (let i = di; i < this._dustCount; i++) { _m.makeScale(0, 0, 0); this.dustMesh.setMatrixAt(i, _m); }
-    for (let i = si; i < this._sparkCount; i++) { _m.makeScale(0, 0, 0); this.sparkMesh.setMatrixAt(i, _m); }
-    this.dustMesh.instanceMatrix.needsUpdate = true;
-    this.dustMesh.instanceColor.needsUpdate = true;
-    this.sparkMesh.instanceMatrix.needsUpdate = true;
+    /*
+     * 描く実体の数を、実際に詰めたぶんだけに縮める。
+     *
+     * 以前は余った枠を scale 0 の行列で潰していたが、
+     * それでも GPU は 600 個ぶんの頂点シェーダを回す。
+     * count を縮めれば、描かれない実体の費用がまるごと消える。
+     * 見える絵は同じ（潰した実体は元から何も描いていない）。
+     */
+    this.dustMesh.count = di;
+    this.sparkMesh.count = si;
+    this._dustDrawn = di;
+    this._sparkDrawn = si;
+    if (di) { this.dustMesh.instanceMatrix.needsUpdate = true; this.dustMesh.instanceColor.needsUpdate = true; }
+    if (si) this.sparkMesh.instanceMatrix.needsUpdate = true;
   }
 
   /* ================= デカール ================= */
@@ -394,12 +459,20 @@ export class Effects {
     this.scene.add(this.decalMesh);
     for (let i = 0; i < MAX; i++) { _m.makeScale(0, 0, 0); this.decalMesh.setMatrixAt(i, _m); }
     this.decalMesh.instanceMatrix.needsUpdate = true;
+    /*
+     * まだ 1 発も撃っていないうちから 96 個ぶん回す必要はない。
+     * 実際に貼った数だけ描く（残りは元から scale 0 で何も描いていない）。
+     */
+    this.decalMesh.count = 0;
   }
 
   /** 弾痕を貼る */
   decal(point, normal, size = 0.11) {
     const i = this.decalIndex % this.decalMax;
     this.decalIndex++;
+    if (this.decalMesh.count < this.decalMax) {
+      this.decalMesh.count = Math.min(this.decalIndex, this.decalMax);
+    }
     _q.setFromUnitVectors(_AXIS_Z, normal);
     // 面内でランダム回転
     const spin = _q2.setFromAxisAngle(_AXIS_Z, Math.random() * Math.PI * 2);
@@ -431,12 +504,17 @@ export class Effects {
     }
     this.casingMesh.instanceMatrix.needsUpdate = true;
     this._casingIndex = 0;
+    // 弾痕と同じ理由。排出した数だけ描く
+    this.casingMesh.count = 0;
   }
 
   /** 薬莢を排出 */
   ejectCasing(pos, dir, playerVel = null) {
     const i = this._casingIndex % this.casingMax;
     this._casingIndex++;
+    if (this.casingMesh.count < this.casingMax) {
+      this.casingMesh.count = Math.min(this._casingIndex, this.casingMax);
+    }
     // 右斜め後方へ飛ばす
     const v = _v.copy(dir).multiplyScalar(2.4)
       .add(_v2.set((Math.random() - 0.5) * 0.8, 1.4 + Math.random() * 0.8, (Math.random() - 0.5) * 0.8));

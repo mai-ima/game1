@@ -410,29 +410,69 @@ export class MapBuilder {
    * バッチを結合して実際の Mesh を生成する。
    * 必ずレベル構築の最後に 1 度だけ呼ぶ。
    */
-  finalize() {
-    for (const [matKey, batch] of this.batches) {
-      if (batch.geos.length === 0) continue;
-      const merged = BufferGeometryUtils.mergeGeometries(batch.geos, false);
-      if (!merged) {
-        console.warn(`バッチ結合に失敗: ${matKey}`);
-        continue;
-      }
-      merged.computeBoundingSphere();
-      // repeat を 1 にしたマテリアルを使う（UV 側でワールドスケール済み）。
-      // テクスチャ無しの単色マテリアル（brass / copper 等）も同じキー空間で扱う。
-      const material = PRESETS[matKey]
-        ? this.mats.get(matKey, { repeat: [1, 1], normalScale: new THREE.Vector2(0.72, 0.72) })
-        : this.mats.solid(matKey);
-      const mesh = new THREE.Mesh(merged, material);
-      mesh.name = `batch:${matKey}`;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.root.add(mesh);
-      // 元ジオメトリを解放
-      for (const g of batch.geos) g.dispose();
+  /**
+   * バッチを 1 つ仕上げる。finalize から順に呼ばれる。
+   * @returns {boolean} 何か作ったか
+   */
+  _finalizeBatch(matKey, batch) {
+    if (batch.geos.length === 0) return false;
+    const merged = BufferGeometryUtils.mergeGeometries(batch.geos, false);
+    if (!merged) {
+      console.warn(`バッチ結合に失敗: ${matKey}`);
+      return false;
+    }
+    merged.computeBoundingSphere();
+    // repeat を 1 にしたマテリアルを使う（UV 側でワールドスケール済み）。
+    // テクスチャ無しの単色マテリアル（brass / copper 等）も同じキー空間で扱う。
+    const material = PRESETS[matKey]
+      ? this.mats.get(matKey, { repeat: [1, 1], normalScale: new THREE.Vector2(0.72, 0.72) })
+      : this.mats.solid(matKey);
+    const mesh = new THREE.Mesh(merged, material);
+    mesh.name = `batch:${matKey}`;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    this.root.add(mesh);
+    // 元ジオメトリを解放
+    for (const g of batch.geos) g.dispose();
+    return true;
+  }
+
+  /**
+   * フレームを跨ぎながら仕上げる。
+   *
+   * mats.get() はテクスチャをその場で合成する（512×512 を 3 枚、
+   * さらに法線を作るのに 9 タップの微分を全画素）。
+   * このマップは 60 種類以上の材質を使うので、まとめてやると
+   * メインスレッドが数秒止まり、ローディング画面ごと固まる。
+   * 兵士の生成は 1 体ずつフレームを跨いでいるのに、
+   * それより重いこの工程だけ一息で走っていた。
+   *
+   * @param {(p:number)=>void} onProgress 0..1
+   * @param {()=>Promise} yieldFrame フレームを譲る関数
+   */
+  async finalizeAsync(onProgress = () => {}, yieldFrame = null) {
+    const keys = [...this.batches.keys()];
+    let i = 0;
+    for (const matKey of keys) {
+      this._finalizeBatch(matKey, this.batches.get(matKey));
+      i++;
+      onProgress(i / Math.max(1, keys.length));
+      // 1 材質ごとに描画の順番を返す（数十 ms ずつに割れる）
+      if (yieldFrame) await yieldFrame();
     }
     this.batches.clear();
+    this._finalizeRest();
+    return this.root;
+  }
+
+  finalize() {
+    for (const [matKey, batch] of this.batches) this._finalizeBatch(matKey, batch);
+    this.batches.clear();
+    return this._finalizeRest();
+  }
+
+  /** インスタンス群など、バッチ以外の仕上げ */
+  _finalizeRest() {
 
     // インスタンス群を生成
     for (const [key, list] of this.instances) {

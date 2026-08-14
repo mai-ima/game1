@@ -5,7 +5,7 @@ import { PlayerController } from '../player/PlayerController.js';
 import { WeaponSystem } from '../player/WeaponSystem.js';
 import { Effects } from '../render/Effects.js';
 import { Bot, DIFFICULTY } from '../ai/Bot.js';
-import { HIT_ZONE } from '../ai/Character.js';
+import { HIT_ZONE, disposeSoldierGeometry, disposeWorldWeapons } from '../ai/Character.js';
 import { damageAt, WEAPONS } from '../player/weapons/WeaponDefs.js';
 import { GAME_MODES } from './GameModes.js';
 import { Awareness } from '../ai/Awareness.js';
@@ -148,9 +148,20 @@ export class Game {
     this.builder = new MapBuilder(this.engine.scene, this.physics, this.mats);
     mapModule.build(this.builder);
 
+    /*
+     * 材質ごとにフレームを跨いで仕上げる。
+     *
+     * 1 材質ぶんのテクスチャ合成は 512×512 を 3 枚（さらに法線の
+     * 微分で全画素を 9 回読む）。このマップは 60 種類以上使うので、
+     * まとめて回すとメインスレッドが数秒止まり、
+     * ローディング画面ごと固まって「落ちた」ように見える。
+     */
     onProgress(0.55, 'マテリアルを生成中');
     await nextFrame();
-    this.builder.finalize();
+    await this.builder.finalizeAsync(
+      (p) => onProgress(0.55 + p * 0.30, 'マテリアルを生成中'),
+      nextFrame
+    );
 
     // 街灯や室内灯はプールへ渡す。実体になるのは近い数灯だけ
     this.engine.lightPool.setDefs(this.builder.lights);
@@ -463,6 +474,25 @@ export class Game {
     for (const b of this.bots) {
       if (b.team !== team && b.alive) yield b;
     }
+  }
+
+  /**
+   * enemiesOf の、配列を使い回す版。
+   *
+   * ジェネレータは呼ぶたびにイテレータを作る。索敵はボットの数だけ
+   * 毎フレーム回るので、ここだけで毎秒数百個の使い捨てが出ていた。
+   * 中身は enemiesOf と同じ。渡した配列に詰めて返す。
+   *
+   * @param {string} team
+   * @param {Array} out 詰め先（呼び出し側が持ち回る）
+   */
+  enemiesInto(team, out) {
+    out.length = 0;
+    if (this.playerStats.team !== team && this.playerStats.alive) out.push(this._playerAsTarget());
+    for (const b of this.bots) {
+      if (b.team !== team && b.alive) out.push(b);
+    }
+    return out;
   }
 
   /**
@@ -875,6 +905,9 @@ export class Game {
     this.weapons.dispose();
     this.effects.dispose();
     this.builder?.dispose();
+    // 兵士と三人称武器のジオメトリは全員で共有しているので、ここで 1 度だけ返す
+    disposeSoldierGeometry();
+    disposeWorldWeapons();
     this.engine.scene.fog = null;
   }
 }

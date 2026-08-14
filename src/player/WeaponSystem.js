@@ -216,9 +216,28 @@ export class WeaponSystem {
    * @param {Record<string,string[]>} attachments
    */
   setLoadout(weaponIds, attachments = {}) {
-    // 既存モデルを破棄
-    for (const { root } of this.models.values()) root.parent?.remove(root);
+    /*
+     * 既存モデルを破棄する。
+     *
+     * 以前はシーンから外すだけで、頂点バッファを返していなかった。
+     * three は明示的に dispose しないと GPU 側を解放しないので、
+     * 試合をやり直すたびに前の銃が積み上がる。
+     * ガンゲームはキルのたびにここを通るため、1 試合の中でも増え続ける。
+     * マテリアルは工房が使い回しているので、返すのはジオメトリだけ。
+     */
+    for (const { root } of this.models.values()) {
+      root.parent?.remove(root);
+      root.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); });
+    }
     this.models.clear();
+
+    /*
+     * 実効ステータスの控えも捨てる。
+     * 銃が同じでアタッチメントだけ変えた場合、
+     * 控えが残っていると前の構成の値が出てきてしまう。
+     */
+    this._statsCache = null;
+    this._statsCacheFor = null;
 
     this.loadout = weaponIds.filter((id) => WEAPONS[id]);
     this.attachments = attachments;
@@ -872,7 +891,10 @@ export class WeaponSystem {
   }
 
   dispose() {
-    for (const { root } of this.models.values()) root.parent?.remove(root);
+    for (const { root } of this.models.values()) {
+      root.parent?.remove(root);
+      root.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); });
+    }
     this.models.clear();
     this.holder.parent?.remove(this.holder);
   }
