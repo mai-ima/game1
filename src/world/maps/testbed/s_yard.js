@@ -17,7 +17,7 @@ import { label, plate, floorPlate, apron, displayRow, HUE, FACE_S, FACE_N } from
  * 新しく作った物はまず奥の空き枠に置けばよい。
  */
 export function sectionYard(b, cx, cz) {
-  const W = 50, D = 30;
+  const W = 50, D = 42;
   apron(b, { x: cx, z: cz, w: W, d: D, mat: 'gravel' });
   label(b, { x: cx, y: 2.8, z: cz - D / 2 - 0.6, yaw: FACE_S,
     text: '資材置き場', sub: 'ASSET YARD', accent: HUE.yard, w: 4.6 });
@@ -100,6 +100,46 @@ export function sectionYard(b, cx, cz) {
   floorPlate(b, { x: cx + 9, z: zB - 2.2, text: '足場 3 層', accent: HUE.yard, w: 2.8 });
   P.siteOffice(b, { x: cx + 18, y: 0, z: zB + 1.0, yaw: FACE_N });
   floorPlate(b, { x: cx + 18, z: zB - 2.4, text: '現場事務所', accent: HUE.yard, w: 3.0 });
+
+  /* ---- 街路の小物（仕上がったものを名前付きで並べる） ---- */
+  /*
+   * 市街地を歩いて視界に入る順に数えると、建物より先に目へ入るのは
+   * 「地面から 1m まで」の物ばかりになる。
+   * ここに並べておけば、マップを組むときに何が使えるか一目で分かる。
+   */
+  const zS = cz + 11.5;
+  const street = [
+    ['側溝と蓋', 'GUTTER', (x, z) => P.gutter(b, { x1: x, z1: z - 1.1, x2: x, z2: z + 1.1 })],
+    ['マンホール', 'MANHOLE', (x, z) => P.manhole(b, { x, z })],
+    ['車止め', 'BOLLARD', (x, z) => { for (const i of [-1, 0, 1]) P.bollard(b, { x: x + i * 0.8, z }); }],
+    ['道路標識', 'ROAD SIGN', (x, z) => P.roadSign(b, { x, z, yaw: FACE_N, kind: 'triangle', text: '徐行', bg: '#c8a21e', fg: '#20242a' })],
+    ['カーブミラー', 'MIRROR', (x, z) => P.curveMirror(b, { x, z, yaw: FACE_N })],
+    ['ガードレール', 'GUARDRAIL', (x, z) => P.guardrail(b, { x1: x - 1.2, z1: z, x2: x + 1.2, z2: z })],
+    ['消火栓', 'HYDRANT', (x, z) => P.hydrant(b, { x, z, yaw: FACE_N })],
+    ['郵便ポスト', 'POST BOX', (x, z) => P.postBox(b, { x, z, yaw: FACE_N })],
+    ['街路樹', 'STREET TREE', (x, z) => P.streetTree(b, { x, z, seed: 5 })],
+    ['ゴミ集積所', 'GARBAGE', (x, z) => P.garbagePoint(b, { x, z, yaw: FACE_N })],
+    ['自転車', 'BICYCLE', (x, z) => P.bicycle(b, { x, z, yaw: FACE_N + 0.4 })],
+  ];
+  for (let i = 0; i < street.length; i++) {
+    const x = cx - 22 + i * 4.1;
+    /*
+     * 台は周囲より 1 段暗くする。
+     * 舗装と同じ色にしたら、上から見たとき台が見えず、
+     * 小物が地面にばらまかれているようにしか見えなかった。
+     */
+    b.box({ x, y: 0.018, z: zS, w: 3.6, h: 0.03, d: 3.6,
+      mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
+    for (const [ox, oz, ww, dd] of [[0, -1.8, 3.6, 0.09], [0, 1.8, 3.6, 0.09], [-1.8, 0, 0.09, 3.6], [1.8, 0, 0.09, 3.6]]) {
+      b.box({ x: x + ox, y: 0.021, z: zS + oz, w: ww, h: 0.03, d: dd,
+        mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
+    }
+    street[i][2](x, zS);
+    plate(b, { x, y: 0.42, z: zS + 1.95, yaw: FACE_N,
+      text: street[i][0], sub: street[i][1], accent: HUE.yard, w: 3.2 });
+  }
+  label(b, { x: cx - 26, y: 2.1, z: zS, yaw: Math.PI / 2,
+    text: '街路の小物', sub: 'STREET PROPS', accent: HUE.yard, w: 3.4 });
 
   /* ---- いちばん奥: 新しい物の置き枠 ---- */
   for (let i = 0; i < 5; i++) {

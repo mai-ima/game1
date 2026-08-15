@@ -300,6 +300,12 @@ const PRESETS = {
   netGrey:         { tex: 'meshScreen',   repeat: 3.2, params: { roughness: 1, metalness: 0.3, color: 0x8e9296 }, alphaTest: 0.42 },
   // 半透明のゴミ袋
   trashBag:        { tex: 'plasticMatte', repeat: 1.4, params: { roughness: 1, metalness: 0, color: 0xbcc0b8 } },
+
+  /* ---- 室内の小物 ---- */
+  plasticGrey:     { tex: 'plasticMatte', repeat: 2.5, params: { roughness: 1, metalness: 0, color: 0x8a8e90 } },
+  // カーテン。麻の目が出ないよう、織りの細かい生地を使う
+  curtainFabric:   { tex: 'upholstery',   repeat: 1.0, params: { roughness: 1, metalness: 0, color: 0xc7bda8 } },
+  curtainLace:     { tex: 'meshScreen',   repeat: 5.0, params: { roughness: 1, metalness: 0, color: 0xe4e2da }, alphaTest: 0.28 },
   scaffoldPlank:   { tex: 'scaffoldPlank', repeat: 0.7, params: { roughness: 1, metalness: 1 } },
   corrugatedPlastic: { tex: 'corrugatedPlastic', repeat: 0.6, params: { roughness: 1, metalness: 1 } },
   awningFabric:    { tex: 'awningFabric', repeat: 0.55, params: { roughness: 1, metalness: 1 } },

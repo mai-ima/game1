@@ -10,6 +10,7 @@ import { SURFACE } from './Physics.js';
  * 名前空間はここに集約しておく。
  */
 export * from './props/street.js';
+export * from './props/interior.js';
 
 /**
  * レベルを彩る小物（プロップ）のライブラリ。

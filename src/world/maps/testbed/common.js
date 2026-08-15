@@ -16,7 +16,7 @@ export const FACE_N = Math.PI;
 /** 区画の色帯 */
 export const HUE = {
   hub: '#d97757',       // 中央広場
-  museum: '#7b8fa8',    // 博物館
+  museum: '#7b8fa8',    // （旧・博物館。配色として残す）
   lab: '#4a90d9',       // 実験場
   range: '#d9482f',     // 射撃場
   town: '#8a7b56',      // 建物街

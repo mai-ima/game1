@@ -3,7 +3,7 @@ import { SURFACE } from '../../Physics.js';
 import * as P from '../../Props.js';
 import * as B from '../../Buildings.js';
 import { label, plate, floorPlate, HUE, FACE_S, FACE_N, mulberry32 } from './common.js';
-import { sectionMuseum } from './s_museum.js';
+import { sectionRoom } from './s_room.js';
 import { sectionLab } from './s_lab.js';
 import { sectionRange } from './s_range.js';
 import { sectionTown } from './s_town.js';
@@ -21,9 +21,9 @@ import { sectionProps } from './s_props.js';
  * 遊ぶための場所ではなく、作ったものを確かめるための施設。
  * 次の役目をひとつの敷地に同居させてある。
  *
- *   博物館   … 均一な室内照明で 1 点ずつ丁寧に見る
- *   資材置き場… まとめて置いて量と嵩を見る。新しい物の仮置き場も兼ねる
- *   建物街   … 建物を街並みとして並べ、道からの見え方を確かめる
+ *   室内試作場… 壁と天井のある部屋に家具を置き、立って見る
+ *   完成小物 … 仕上がった小物を名前を付けて並べる
+ *   完成建物 … 仕上がった建物を街並みとして並べ、道からの見え方を確かめる
  *   実験場   … 段差・斜面・隙間・落下の限界値を歩いて測る
  *   射撃場   … 距離ごとの減衰と、材質ごとの貫通を撃って確かめる
  *   ギミック試験場… 動く仕掛けを置いて、乗ったり潜ったりする
@@ -42,7 +42,7 @@ export const MAP_INFO = {
   id: 'testbed',
   name: 'TESTBED',
   nameJa: 'テストベッド',
-  desc: '検証用の施設。博物館・資材置き場・建物街・建築試作場・実験場・射撃場・ギミック試験場・試作場を十字の通路でつないである。対戦もできる。',
+  desc: '検証用の施設。試作場（建築・小物・室内）と、完成した建物・小物の展示、実験場・射撃場・ギミック試験場を十字の通路でつないである。対戦もできる。',
   size: '検証用（228 × 226m）',
   players: '2〜12人',
 
@@ -106,12 +106,12 @@ const AVE_N = -84;           // 南北通路の北端（この先は建築試作
  */
 const SECTIONS = [
   { no: '01', name: '中央広場', en: 'HUB', hue: HUE.hub, gate: null },
-  { no: '02', name: '博物館', en: 'MUSEUM', hue: HUE.museum, gate: [0, -14, FACE_S] },
+  { no: '02', name: '室内試作場', en: 'INTERIOR LAB', hue: HUE.mat, gate: [0, -14, FACE_S] },
   { no: '03', name: '実験場', en: 'MOVEMENT LAB', hue: HUE.lab, gate: [-44, -4.6, FACE_S] },
   { no: '04', name: 'ギミック試験場', en: 'MOVING PARTS', hue: HUE.gizmo, gate: [44, -4.6, FACE_S] },
   { no: '05', name: 'マテリアル見本', en: 'MATERIALS', hue: HUE.mat, gate: [-20, -4.6, FACE_S] },
-  { no: '06', name: '建物街', en: 'TOWN BLOCK', hue: HUE.town, gate: [-40, 4.6, FACE_N] },
-  { no: '07', name: '資材置き場', en: 'ASSET YARD', hue: HUE.yard, gate: [34, 4.6, FACE_N] },
+  { no: '06', name: '完成建物の展示', en: 'BUILDINGS', hue: HUE.town, gate: [-40, 4.6, FACE_N] },
+  { no: '07', name: '完成小物の展示', en: 'PROPS', hue: HUE.yard, gate: [34, 4.6, FACE_N] },
   { no: '08', name: '試作場', en: 'SANDBOX', hue: HUE.sandbox, gate: [-6.4, 60, Math.PI / 2] },
   { no: '09', name: '射撃場', en: 'RANGE', hue: HUE.range, gate: [6.4, 52, -Math.PI / 2] },
   { no: '10', name: '地形試験場', en: 'TERRAIN', hue: HUE.lab, gate: [64, 4.6, FACE_N] },
@@ -129,12 +129,12 @@ export function buildTestbed(b) {
   /*
    * 区画の配置。
    * 各区画の実寸（下のコメント）が重ならないよう、余白 4m 以上を空けてある。
-   *   博物館     54 × 26      実験場     44 × 38
+   *   室内試作場 32 × 22      実験場     44 × 38
    *   ギミック   46 × 34      建物街     62 × 34
    *   資材置き場 50 × 30      マテリアル 21 × 25
    *   試作場     40 × 30      射撃場     91 × 22
    */
-  sectionMuseum(b, 0, -46);          // x -27..27   z -59..-33
+  sectionRoom(b, 0, -46);            // x -16..16   z -58..-36
   sectionLab(b, -58, -34);           // x -80..-36  z -53..-15
   sectionGizmos(b, 58, -34);         // x  35..81   z -51..-17
   sectionMaterials(b, -20, -17);     // x -30..-9   z -29..-4
