@@ -83,6 +83,25 @@ function concreteWall(b, x1, z1, x2, z2, rand) {
   const n = Math.max(1, Math.round(A.len / PITCH));
   const step = A.len / n;
 
+  /*
+   * 当たり判定は区間まるごとで 1 個にする。
+   *
+   * ここは長らく素通しだった。板を 1 枚ずつ collide:false で置き、
+   * 当たり判定があるのは 2m 間隔の柱（走り方向の見付け 0.16m）と
+   * 高さ 0.18m の基礎だけ。柱と柱の間に 1.84m の穴が空いていて、
+   * 直径 0.68m のプレイヤーはそのまま歩いて抜けられた。
+   * 抜けた先は敷地スラブの外なので、落ち続けて戻れない。
+   *
+   * 板ごとにコライダを持たせるとコライダが 5 倍に増えるだけで得が無い。
+   * 金網（Props.chainFence）と同じく、見た目は分割して置き、
+   * 当たり判定は区間で 1 個にまとめる。
+   */
+  b.physics.addBox(
+    (x1 + x2) / 2, WALL_H / 2, (z1 + z2) / 2,
+    0.13, WALL_H / 2, A.len / 2, A.yaw,
+    { surface: SURFACE.CONCRETE },
+  );
+
   for (let i = 0; i <= n; i++) {
     const t = i * step;
     const px = x1 + A.ux * t, pz = z1 + A.uz * t;

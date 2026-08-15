@@ -52,7 +52,16 @@ for (const s of spots) {
       const hy = c.half ? c.half.y : c.hy;
       const hz = c.half ? c.half.z : c.hz;
       if (hx === undefined) continue;
-      const pad = Math.max(hx, hz) * 0.42;   // 回転ぶんの余裕
+      /*
+       * 回転ぶんの余裕。
+       *
+       * 最初は max(hx,hz)*0.42 にしていたが、これでは足りない。
+       * 壁は yaw=π/2 で置かれることが多く、そのときローカル Z の
+       * 長さ（2m 超）がワールド X 方向へ伸びる。0.42 倍では
+       * 目の前の壁が一覧に出てこず、「壁が無い」と読み違えた。
+       * 半径の大きいほうを丸ごと足して、取りこぼしを無くす。
+       */
+      const pad = Math.max(hx, hz);
       if (hi.x < cx - hx - pad || lo.x > cx + hx + pad) continue;
       if (hi.y < cy - hy || lo.y > cy + hy) continue;
       if (hi.z < cz2 - hz - pad || lo.z > cz2 + hz + pad) continue;

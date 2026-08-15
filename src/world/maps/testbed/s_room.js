@@ -40,10 +40,18 @@ function room(b, cx, cz, w, d, opt = {}) {
 
   // 廊下側の壁（扉の開口）
   const doorW = 0.92;
+  /*
+   * 開口の高さ。
+   *
+   * 2.02m にしていたら、玄関で上がり框（高さ 18cm）に乗ろうとした
+   * ときに通れなくなった。段差を越えるには一度 24cm 持ち上がるので、
+   * 身長 1.8m と合わせて頭が 2.04m まで上がり、まぐさに当たる。
+   * 段差のある部屋では、開口の高さに余裕が要る。
+   */
   b.wallWithGaps({
     x1: cx - w / 2, z1: cz + d / 2, x2: cx + w / 2, z2: cz + d / 2,
     y: 0, h: CH, thickness: WALL,
-    gaps: door ? [{ start: w / 2 - doorW / 2, width: doorW, bottom: 0, top: 2.02 }] : [],
+    gaps: door ? [{ start: w / 2 - doorW / 2, width: doorW, bottom: 0, top: 2.18 }] : [],
     mat: wallMat, surface: SURFACE.CONCRETE,
   });
   // 外壁側（窓の開口）
@@ -74,7 +82,7 @@ function room(b, cx, cz, w, d, opt = {}) {
 
   // 建具
   if (door) {
-    B.door(b, { x: cx, y: 0, z: cz + d / 2, yaw: FACE_S, w: doorW, h: 2.02,
+    B.door(b, { x: cx, y: 0, z: cz + d / 2, yaw: FACE_S, w: doorW, h: 2.16,
       mat: 'woodFineDark', frame: 'aluminum', open: 0.9 });
   }
   if (hasWindow) {
@@ -128,9 +136,16 @@ export function sectionRoom(b, cx, cz) {
   P.dishCabinet(b, { x: rx(0) - RW / 2 + 0.55, y: 0, z: rz + 0.6, yaw: Math.PI / 2 });
   P.microwave(b, { x: rx(0) + RW / 2 - 0.6, y: 0.85, z: rz - 0.4, yaw: -Math.PI / 2 });
   P.fridge(b, { x: rx(0) + RW / 2 - 0.5, y: 0, z: rz + 1.1, yaw: -Math.PI / 2 });
-  P.diningTable(b, { x: rx(0), y: 0, z: rz + 1.3, yaw: 0 });
+  /*
+   * 扉の正面 1.5m には物を置かない。
+   *
+   * 食卓を扉の真正面へ置いたら、部屋に一歩も入れなくなった
+   * （実測: 360 フレーム中 333 が停止）。
+   * 実際の部屋も、扉の正面は通り道として空けてある。
+   */
+  P.diningTable(b, { x: rx(0) - 1.1, y: 0, z: rz + 1.2, yaw: 0 });
   for (const s of [-1, 1]) {
-    P.woodChair(b, { x: rx(0) + s * 0.85, y: 0, z: rz + 1.3, yaw: s > 0 ? -Math.PI / 2 : Math.PI / 2 });
+    P.woodChair(b, { x: rx(0) - 1.1 + s * 0.85, y: 0, z: rz + 1.2, yaw: s > 0 ? -Math.PI / 2 : Math.PI / 2 });
   }
 
   /* 02 水回り */
@@ -144,7 +159,7 @@ export function sectionRoom(b, cx, cz) {
   room(b, rx(2), rz, RW, RD, { name: '居室', sub: 'LIVING', accent: HUE.mat, floor: 'woodFloor' });
   P.futon(b, { x: rx(2) - 0.7, y: 0, z: rz, yaw: 0, w: 1.0, d: 2.0 });
   P.wardrobe(b, { x: rx(2) + RW / 2 - 0.35, y: 0, z: rz - 0.8, yaw: -Math.PI / 2 });
-  P.tvSet(b, { x: rx(2) + 0.9, y: 0, z: rz + RD / 2 - 0.5, yaw: FACE_N });
+  P.tvSet(b, { x: rx(2) + 1.5, y: 0, z: rz + RD / 2 - 0.5, yaw: FACE_N });
   P.acIndoor(b, { x: rx(2), y: 2.15, z: rz - RD / 2 + WALL, yaw: FACE_S });
   P.wallClock(b, { x: rx(2) + RW / 2 - WALL, y: 1.95, z: rz + 0.6, yaw: -Math.PI / 2 });
   P.potPlant(b, { x: rx(2) - RW / 2 + 0.5, y: 0, z: rz + RD / 2 - 0.7 });
@@ -153,9 +168,16 @@ export function sectionRoom(b, cx, cz) {
   room(b, rx(3), rz, RW, RD, { name: '玄関', sub: 'ENTRANCE', accent: HUE.mat, floor: 'ceramicTile' });
   P.shoeCabinet(b, { x: rx(3) - RW / 2 + 0.6, y: 0, z: rz - 0.5, yaw: Math.PI / 2, umbrella: true });
   P.wallClock(b, { x: rx(3), y: 2.0, z: rz - RD / 2 + WALL, yaw: FACE_S, radius: 0.14 });
-  P.bench(b, { x: rx(3) + RW / 2 - 0.5, y: 0, z: rz + 0.8, yaw: -Math.PI / 2 });
-  // 上がり框（玄関の段差）
-  b.box({ x: rx(3), y: 0.09, z: rz + RD / 2 - 1.2, w: RW - WALL, h: 0.18, d: 2.2,
+  P.bench(b, { x: rx(3) + RW / 2 - 0.5, y: 0.18, z: rz - 0.6, yaw: -Math.PI / 2 });
+  /*
+   * 上がり框。
+   *
+   * 扉のすぐ内側（開口から 0.1m）に置いていたので、
+   * 扉をくぐった瞬間に段へ乗る形になり、持ち上がった頭が
+   * まぐさに当たって入れなかった。
+   * 実際の玄関も、土間を 1m ほど取ってから框が来る。
+   */
+  b.box({ x: rx(3), y: 0.09, z: rz - 0.45, w: RW - WALL, h: 0.18, d: 2.6,
     mat: 'woodFine', surface: SURFACE.WOOD });
 
   label(b, { x: cx, y: 2.9, z: cz + D / 2 + 0.4, yaw: FACE_S,

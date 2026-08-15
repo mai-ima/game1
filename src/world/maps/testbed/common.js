@@ -95,12 +95,38 @@ export function label(b, o) {
  * 面に貼る銘板。
  * 展示台の前面や壁に貼る。自立の名札を展示物の手前に立てると
  * 肝心の展示物が隠れてしまうので、こちらを使う。
+ *
+ * x, z は「貼る対象の中心」を渡す。銘板をどれだけ手前へ出すかは
+ * offset で指定する。位置は向きから導くので、対象の寸法だけ考えればよい。
+ *
+ * @param {object} o {x, y, z, yaw, offset, text, sub, accent, w}
  */
 export function plate(b, o) {
-  const { x, y = 0.26, z, yaw = 0, text, sub = '', accent = '#c8783c', w = 1.3 } = o;
+  const { x, y = 0.26, z, yaw = 0, offset = 0, text, sub = '', accent = '#c8783c', w = 1.3 } = o;
+
+  /*
+   * 位置を向きから導く理由。
+   *
+   * 以前は位置（x, z）と向き（yaw）を別々に受け取っていた。
+   * すると「台の +Z 側に置いて −Z を向く」——つまり台の中を向いた銘板が
+   * 書けてしまう。実際に 6 箇所がそうなっていた。
+   *   実験場の基準寸法（支柱の中を向く）
+   *   実験場のよじ登り（台の中を向く）
+   *   資材置き場の街路小物と材質見本（どちらも台の中）
+   *   射撃場の距離標（標の中）
+   *   小物試作場（台の中）
+   * どれも形は正しく、向きだけが裏返っていて、
+   * その角度から撮らないかぎり気付けなかった。
+   *
+   * displayRow では front = cos(yaw) の符号から位置を導いて直したので、
+   * 同じ導出をここへ移す。食い違いを「直す」のではなく「書けなくする」。
+   */
+  const px = x + Math.sin(yaw) * (offset + 0.014);
+  const pz = z + Math.cos(yaw) * (offset + 0.014);
+
   const geo = new THREE.PlaneGeometry(w, w * 0.25);
   const mesh = new THREE.Mesh(geo, b.mats.label(text, { sub, accent }));
-  mesh.position.set(x + Math.sin(yaw) * 0.014, y, z + Math.cos(yaw) * 0.014);
+  mesh.position.set(px, y, pz);
   mesh.rotation.y = yaw;
   mesh.userData.signText = text;
   mesh.userData.signKind = 'plate';

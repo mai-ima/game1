@@ -11,6 +11,7 @@ import { SURFACE } from './Physics.js';
  */
 export * from './props/street.js';
 export * from './props/interior.js';
+export * from './props/furniture.js';
 
 /**
  * レベルを彩る小物（プロップ）のライブラリ。

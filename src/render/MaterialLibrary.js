@@ -81,6 +81,16 @@ const PRESETS = {
   wallpaperWarm:   { tex: 'wallpaper',    repeat: 0.36, params: { roughness: 1, metalness: 1, color: 0xd6c8ac } },
   ceramicTile:     { tex: 'ceramicTile',  repeat: 0.77, params: { roughness: 1, metalness: 1 } },
   ceilingPanel:    { tex: 'ceilingPanel', repeat: 0.42, params: { roughness: 1, metalness: 1 } },
+  /*
+   * 畳。
+   *
+   * 1 タイル 19cm 角（repeat 5.2）にして、い草 1 本を 4px で焼く。
+   * 密度を落とすと寄ったとき縞が消えて黄土色の板になる。
+   * 縞は u 方向に走るので、敷く側で 90 度ずつ回して市松に組む。
+   */
+  tatami:          { tex: 'tatami',       repeat: 5.2,  params: { roughness: 1, metalness: 1 } },
+  tatamiWorn:      { tex: 'tatami',       repeat: 5.2,  params: { roughness: 1, metalness: 1, color: 0xc9b489 } },
+  shojiPaper:      { tex: 'shojiPaper',   repeat: 1.4,  params: { roughness: 1, metalness: 1 } },
   velvet:          { tex: 'velvet',       repeat: 2.0,  params: { roughness: 1, metalness: 1 } },
   brassPolished:   { tex: 'brassPolished', repeat: 2.5, params: { roughness: 1, metalness: 1 } },
   /*

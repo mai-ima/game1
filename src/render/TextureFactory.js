@@ -1149,6 +1149,76 @@ const DEFS = {
     o.ao = clamp01(0.78 + nap2 * 0.22);
   },
 
+  /*
+   * --- 畳（い草の表） ---
+   *
+   * い草は 1 本 1.5mm ほど。1 タイルを 19cm 角にして 128 本ぶんを
+   * 512px へ収める（1 本 4px）。これより粗く取ると、遠目には
+   * ただの黄土色の板になり、寄ると縞が潰れて金属板に見える。
+   *
+   * 縞は u 方向に走る。畳は縦横を交互に敷くので、
+   * 敷く側で 90 度回して向きを変える。
+   */
+  tatami(u, v, o, S) {
+    const N = 128;                                     // 1 タイルあたりの本数
+    const g = v * N;
+    const idx = Math.floor(g);
+    const t = g - idx;                                 // 1 本の中の位置
+    // 断面のふくらみ。角ばらせると織物に見えない
+    const round = Math.sin(t * Math.PI);
+    // い草 1 本ごとの色の振れ。青みの残った草と、日に灼けた草が混ざる
+    const strand = ((idx * 37 + 11) % 97) / 97;
+    const green = 0.35 + strand * 0.5;
+    /*
+     * 横糸（経糸）で締めた筋。3.5cm ごとにわずかに凹む。
+     * これが無いと縞だけの布になり、畳の「編まれている」感じが出ない。
+     */
+    const weft = Math.abs(((u * 5.4) % 1) - 0.5) * 2;
+    const knot = 1 - smoothstep(0.72, 1.0, weft);
+    // い草の繊維（1 本の中の細かい筋）
+    const fibre = valueNoise(u * 340, v * N * 2.2, 340, S + idx);
+    // 日焼けと、人の通る場所の擦れ
+    const sun = fbm(u * 2.2, v * 2.2, { octaves: 4, period: 2, seed: S + 61 });
+    const wear = smoothstep(0.62, 0.96, fbm(u * 7, v * 7, { octaves: 4, period: 7, seed: S + 17 }));
+
+    const l = 0.30 + round * 0.055 + fibre * 0.022 - knot * 0.03 + sun * 0.03;
+    // 新しい畳は緑、灼けると黄土。両方を混ぜる
+    const age = clamp01(0.42 + sun * 0.5 + wear * 0.3);
+    o.r = l * mix(0.80, 1.04, age);
+    o.g = l * mix(0.88, 0.93, age);
+    o.b = l * mix(0.52, 0.60, age) * (1 - green * 0.12);
+    o.h = round * 0.7 + fibre * 0.15 - knot * 0.45;
+    o.rough = clamp01(0.82 + fibre * 0.1 - round * 0.12 + wear * 0.08);
+    o.metal = 0;
+    o.ao = clamp01(0.72 + round * 0.28 - knot * 0.18);
+  },
+
+  /*
+   * --- 障子紙 ---
+   *
+   * 白い板で済ませると襖と区別が付かない。
+   * 楮の繊維が透けて見えるのが障子紙の見えかたなので、
+   * 長い繊維の筋を色ではなく明るさの揺らぎとして入れる。
+   */
+  shojiPaper(u, v, o, S) {
+    // 漉きムラ（大きくゆっくり）
+    const pulp = fbm(u * 6, v * 6, { octaves: 4, period: 6, seed: S + 3 });
+    // 長い繊維。横方向へ強く引き伸ばす
+    const fibre = valueNoise(u * 220, v * 26, 220, S + 19);
+    const fibre2 = valueNoise(u * 30, v * 260, 30, S + 47);
+    // 日焼け（下側ほど白く、上は少し飴色）
+    const age = fbm(u * 1.6, v * 1.6, { octaves: 3, period: 2, seed: S + 71 });
+
+    const l = 0.74 + pulp * 0.04 + fibre * 0.035 + fibre2 * 0.02;
+    o.r = l * 1.0;
+    o.g = l * (0.985 - age * 0.02);
+    o.b = l * (0.935 - age * 0.05);
+    o.h = fibre * 0.3 + fibre2 * 0.2 + pulp * 0.2;
+    o.rough = clamp01(0.88 - fibre * 0.06);
+    o.metal = 0;
+    o.ao = clamp01(0.95 - pulp * 0.06);
+  },
+
   /* --- 磨き真鍮（博物館の手すり・額縁） --- */
   brassPolished(u, v, o, S) {
     const buff = valueNoise(u * 260, v * 14, 260, S);      // 研磨の目
