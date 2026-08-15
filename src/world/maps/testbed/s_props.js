@@ -206,6 +206,18 @@ export function sectionProps(b, cx, cz) {
   b.box({ x: cx, y: 0.014, z: cz, w: W + 4, h: 0.03, d: D,
     mat: 'paving', surface: SURFACE.CONCRETE, collide: false });
 
+  /*
+   * 西側の縦通路。
+   *
+   * 列を 2 から 5 に増やしたとき、通路は前面の 1 本のままだった。
+   * いちばん奥の列は入口から 41m あり、そこまでは台の間を
+   * すり抜けて行くことになる。順路が読めない場所は使われなくなる。
+   * 列の西端に縦の通路を通し、そこから各列へ入る形にする。
+   */
+  const aisleX = cx - W / 2 - 3.2;
+  b.box({ x: aisleX, y: 0.02, z: cz, w: 4.0, h: 0.03, d: D - 2,
+    mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
+
   let rz = cz - D / 2 + 6;
   for (const row of rows) {
     for (let i = 0; i < row.items.length; i++) {
@@ -213,7 +225,14 @@ export function sectionProps(b, cx, cz) {
       const x = cx - (PITCH * (row.items.length - 1)) / 2 + PITCH * i;
       stand(b, x, rz, nm, sub, place, row.accent);
     }
-    // 列の名前
+    // 縦通路から列へ入る枝道
+    b.box({ x: cx - 1.0, y: 0.019, z: rz + PAD / 2 + 1.4, w: W + 6, h: 0.03, d: 2.6,
+      mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
+    /*
+     * 列の名前は縦通路を向ける。
+     * yaw −π/2 の法線は (−1, 0, 0) なので西を向く。
+     * 歩いてくる人の正面に文字が来る。
+     */
     label(b, { x: cx - W / 2 - 1.6, y: 1.9, z: rz, yaw: -Math.PI / 2,
       text: row.name, sub: row.sub, accent: row.accent, w: 3.0 });
     rz += 8;

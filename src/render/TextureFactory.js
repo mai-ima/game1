@@ -939,10 +939,22 @@ const DEFS = {
     const seamX = Math.abs(((u * 3) % 1) - 0.5);
     const seam = 1 - smoothstep(0.0, 0.008, seamX);
     const yellow = fbm(u * 2, v * 2, { octaves: 4, period: 2, seed: S + 29 });   // 経年の黄ばみ
-    const scuff = smoothstep(0.72, 0.96, fbm(u * 10, v * 4, { octaves: 4, period: 10, seed: S + 53 }))
-      * smoothstep(0.45, 0.0, v);                     // 下部ほど汚れる
+    /*
+     * 汚れ。
+     *
+     * もとは fbm(u*10, v*4) に smoothstep(0.45, 0.0, v) を掛けて
+     * 「下部ほど汚れる」を作っていた。だがこれは繰り返すテクスチャなので、
+     * 「下部」は 1 タイル（2.78m）ごとに現れる。
+     * 天井 2.5m の部屋に貼ると、壁の上のほうにも同じ帯が出て、
+     * 28cm ほどの大きな斑になった。撮ると塩化ビニルのクロスではなく
+     * 粗い左官仕上げに見える。
+     *
+     * 高さで変わる汚れは、繰り返すテクスチャには入れられない。
+     * 全面に薄く、細かく散らすだけにする。
+     */
+    const scuff = smoothstep(0.78, 0.99, fbm(u * 34, v * 34, { octaves: 3, period: 34, seed: S + 53 }));
 
-    let l = 0.36 + emb * 0.022 + micro * 0.012 - seam * 0.05 - scuff * 0.055;
+    let l = 0.36 + emb * 0.022 + micro * 0.012 - seam * 0.05 - scuff * 0.018;
     o.r = l * 1.0; o.g = l * (0.985 - yellow * 0.02); o.b = l * (0.945 - yellow * 0.055);
     o.h = emb * 0.5 + micro * 0.2 - seam * 0.8;
     o.rough = clamp01(0.72 + emb * 0.12 + scuff * 0.1);

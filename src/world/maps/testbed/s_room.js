@@ -82,8 +82,16 @@ function room(b, cx, cz, w, d, opt = {}) {
 
   // 建具
   if (door) {
+    /*
+     * 枠は艶消しにする。
+     *
+     * aluminum は ORM の粗さが低く金属度 1 なので、屋内でも環境マップを
+     * そのまま映す。撮ったら開口の両脇が青白く光る硝子の柱になっていて、
+     * 扉というより発光する門に見えた。
+     * 実際の住戸の枠はアルマイト（艶消し）か木。
+     */
     B.door(b, { x: cx, y: 0, z: cz + d / 2, yaw: FACE_S, w: doorW, h: 2.16,
-      mat: 'woodFineDark', frame: 'aluminum', open: 0.9 });
+      mat: 'woodFineDark', frame: 'anodized', open: 0.9 });
   }
   if (hasWindow) {
     // 窓（引き違い。外は空が見える）
@@ -109,7 +117,18 @@ function room(b, cx, cz, w, d, opt = {}) {
   b.light({ x: cx, y: CH - 0.45, z: cz, color: 0xf4efe2, intensity: 0.9, distance: 8 });
 
   if (name) {
-    plate(b, { x: cx, y: 2.28, z: cz, offset: d / 2 + 0.09, yaw: FACE_S, text: name, sub, accent, w: 2.4 });
+    /*
+     * 室名札は扉の脇に貼る。
+     *
+     * 開口の真上に幅 2.4m の板を掛けていたら、廊下から扉へ近づいたとき
+     * 視界の上 3 分の 1 を塞いで、中がまったく見えなくなった。
+     * 実際の室名札も、扉の上ではなく吊元と反対側の壁に付く。
+     * 小さくして（幅 1.1m）、扉の右へ寄せる。
+     */
+    plate(b, {
+      x: cx + doorW / 2 + 0.75, y: 1.72, z: cz, offset: d / 2 + 0.09,
+      yaw: FACE_S, text: name, sub, accent, w: 1.1,
+    });
   }
   return b;
 }
@@ -163,6 +182,45 @@ export function sectionRoom(b, cx, cz) {
   // 廊下（部屋の南側）
   b.box({ x: cx, y: 0.012, z: cz + RD / 2 + 1.6, w: W + 2, h: 0.03, d: 3.0,
     mat: 'floorVinyl', surface: SURFACE.CONCRETE, collide: false });
+
+  /*
+   * 屋根と庇。
+   *
+   * 部屋には天井を張ってあるが、その上に何も無かった。
+   * 外から見ると天端 2.6m の壁が並ぶだけで、建物ではなく擁壁に見える。
+   * 陸屋根とパラペット、それに廊下の庇を掛けて、
+   * 「平屋の共同住宅の外廊下」として読めるようにする。
+   */
+  const RZ0 = cz - RD / 2 - WALL, RZ1 = cz + RD / 2 + 3.2;
+  const roofY = CH + 0.14;
+  b.box({ x: cx, y: roofY + 0.09, z: (RZ0 + RZ1) / 2, w: W + 0.5, h: 0.18, d: RZ1 - RZ0,
+    mat: 'concrete', surface: SURFACE.CONCRETE });
+  b.box({ x: cx, y: roofY + 0.20, z: (RZ0 + RZ1) / 2, w: W + 0.2, h: 0.04, d: RZ1 - RZ0 - 0.3,
+    mat: 'roofMembrane', surface: SURFACE.CONCRETE, collide: false });
+  // パラペット（笠木付き）
+  for (const [ox, oz, ww, dd] of [
+    [0, RZ0 + 0.13, W + 0.5, 0.26], [0, RZ1 - 0.13, W + 0.5, 0.26],
+    [-(W + 0.5) / 2 + 0.13, (RZ0 + RZ1) / 2, 0.26, RZ1 - RZ0],
+    [(W + 0.5) / 2 - 0.13, (RZ0 + RZ1) / 2, 0.26, RZ1 - RZ0],
+  ]) {
+    b.box({ x: cx + ox, y: roofY + 0.45, z: oz, w: ww, h: 0.54, d: dd,
+      mat: 'concreteRaw', surface: SURFACE.CONCRETE });
+    b.box({ x: cx + ox, y: roofY + 0.75, z: oz, w: ww + 0.08, h: 0.07, d: dd + 0.08,
+      mat: 'concrete', surface: SURFACE.CONCRETE, collide: false });
+  }
+  // 庇を支える柱（外廊下の外側）
+  for (let i = 0; i <= N; i++) {
+    const px = cx - W / 2 + i * (W / N);
+    b.box({ x: px, y: (roofY + 0.09) / 2, z: RZ1 - 0.16, w: 0.20, h: roofY + 0.09, d: 0.20,
+      mat: 'concreteRaw', surface: SURFACE.CONCRETE });
+  }
+  // 廊下の手すり
+  P.railing(b, { x1: cx - W / 2, z1: RZ1 - 0.16, x2: cx + W / 2, z2: RZ1 - 0.16, y: 0, height: 1.1 });
+  // 雨樋（縦）
+  for (const s of [-1, 1]) {
+    // 引数は height。h と書くと既定の 6m が出て、平屋に 6m の樋が立つ
+    B.downpipe(b, { x: cx + s * (W / 2 + 0.18), y: 0, z: RZ0 + 0.4, height: roofY + 0.6 });
+  }
 
   const rx = (i) => cx - W / 2 + WALL + RW / 2 + i * (RW + WALL);
   const rz = cz - 1.0;

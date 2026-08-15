@@ -138,7 +138,7 @@ const SECTIONS = [
    * 小物試作場は列を 2 → 5 に増やしたぶん北へ伸ばした。
    * 南へ伸ばすと東西通路を跨いでしまう。
    */
-  { no: '12', name: '小物試作場', en: 'PROP LAB', hue: HUE.yard, at: [-112, -34], size: [32, 50], gate: [-112, -4.6, FACE_S] },
+  { no: '12', name: '小物試作場', en: 'PROP LAB', hue: HUE.yard, at: [-114, -34], size: [37, 50], gate: [-114, -4.6, FACE_S] },
 ];
 
 /** 番号から中心を引く */
@@ -213,7 +213,7 @@ function checkLayout() {
     { name: '枝道（試作場）', r: rect(-16.5, 60, 27, 4.8) },
     { name: '枝道（室内試作場）', r: rect(4.2, -46, 2.4, 4.8) },
     { name: '枝道（射撃場）', r: rect(3.5, 64, 1.0, 4.8) },
-    { name: '枝道（小物試作場）', r: rect(-112, -5.6, 4.8, 5.6) },
+    { name: '枝道（小物試作場）', r: rect(-114, -5.6, 4.8, 5.6) },
   ];
   for (const { s, r } of boxes) {
     if (s.no === '01') continue;                 // 広場は交差点そのもの
@@ -335,7 +335,7 @@ function avenues(b) {
   }
 
   /* 東西通路から北の小物試作場へ入る取り付け道（縁石は付けない） */
-  b.box({ x: -112, y: 0.018, z: -6.0, w: 4.4, h: 0.03, d: 6.4,
+  b.box({ x: -114, y: 0.018, z: -6.0, w: 4.4, h: 0.03, d: 6.4,
     mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
 
   /* ---- 区画の門標 ---- */

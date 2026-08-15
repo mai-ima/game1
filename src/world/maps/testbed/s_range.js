@@ -183,11 +183,30 @@ export function sectionRange(b, x0, cz) {
    * 以前は射線の向きを取り違えていたため、土手が射線の真横にあり、
    * 撃った弾は 100m 先の塀まで飛んでいた。
    */
-  b.box({ x: x0 + LEN + 1.0, y: 2.2, z: cz, w: 2.0, h: 4.4, d: HALF_W * 2,
-    mat: 'sand', surface: SURFACE.DIRT });
-  b.box({ x: x0 + LEN + 1.0, y: 4.5, z: cz, w: 2.6, h: 0.3, d: HALF_W * 2,
+  /*
+   * 土手は 1 枚の箱にしない。
+   *
+   * 高さ 4.4m の板を 1 枚立てただけだと、正面から見ても横から見ても
+   * 「緑がかった塀」にしか見えず、土を盛った物には見えなかった。
+   * 手前を低く、奥を高くした 3 段の台形で法面を作る。
+   * 段の色も砂利→土→草と変えて、盛土の断面らしくする。
+   */
+  const bermSteps = [
+    [0.0, 1.4, 0.0, 'gravel', SURFACE.GRAVEL],
+    [1.2, 1.6, 1.1, 'dirt', SURFACE.DIRT],
+    [2.4, 1.5, 2.2, 'sand', SURFACE.DIRT],
+  ];
+  // 的の先（東）— 本来の的止め
+  for (const [rise, half, back, mat, surf] of bermSteps) {
+    b.box({ x: x0 + LEN + 0.6 + back, y: rise + 0.75, z: cz, w: half * 2, h: 1.5, d: HALF_W * 2,
+      mat, surface: surf });
+  }
+  b.box({ x: x0 + LEN + 3.4, y: 3.95, z: cz, w: 2.2, h: 0.4, d: HALF_W * 2,
     mat: 'sandbag', surface: SURFACE.FABRIC, collide: false });
-  // 北側の側壁（横へ逸れた弾を止める）
-  b.box({ x: x0 + LEN / 2 - 2, y: 1.6, z: cz - HALF_W + 1.0, w: LEN + 8, h: 3.2, d: 1.6,
-    mat: 'sand', surface: SURFACE.DIRT });
+
+  // 北側の側壁（横へ逸れた弾を止める）。こちらも法面にする
+  for (const [rise, half, back, mat, surf] of bermSteps) {
+    b.box({ x: x0 + LEN / 2 - 2, y: rise + 0.75, z: cz - HALF_W + 0.6 - back,
+      w: LEN + 8, h: 1.5, d: half * 2, mat, surface: surf });
+  }
 }

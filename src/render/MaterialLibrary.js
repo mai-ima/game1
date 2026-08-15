@@ -206,8 +206,17 @@ const PRESETS = {
    * 模様が 1 本も残らなかった。屋内は屋外より 2〜3 段暗いのが普通なので、
    * 材質の側を暗く作っておかないと釣り合わない。
    */
-  floorVinyl:      { tex: 'laminate',     repeat: 1.1,  params: { roughness: 1, metalness: 0, color: 0x4e5255 } },
-  floorStone:      { tex: 'terrazzo',     repeat: 2.0,  params: { roughness: 1, metalness: 0, color: 0x56585c } },
+  /*
+   * 屋内の床。
+   *
+   * 半球光は壁で遮られないので、室内の上向きの面には屋外並みの光が入る。
+   * 白飛びを抑えるために暗い色を掛けたのだが、0x4e5255 は下げすぎた。
+   * 下地（laminate）自体の明るさが 0.45 ほどあるところへ 0.31 を掛けるので、
+   * 実効 0.14。撮ったら共用廊下の床が紺色の帯になっていた。
+   * しかも屋外の廊下にも使っており、そこでは暗くする理由が無い。
+   */
+  floorVinyl:      { tex: 'laminate',     repeat: 1.1,  params: { roughness: 1, metalness: 0, color: 0x929698 } },
+  floorStone:      { tex: 'terrazzo',     repeat: 2.0,  params: { roughness: 1, metalness: 0, color: 0x9a9ca0 } },
   /*
    * 陸屋根の防水シート。
    * 折板（metalRoof）を陸屋根に敷いたら、リブが光って
