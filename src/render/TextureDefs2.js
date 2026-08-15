@@ -896,6 +896,42 @@ export const DEFS2 = {
     o.ao = 1;
   },
 
+  /*
+   * --- 長尺塩ビシート（共用廊下・事務所の床） ---
+   *
+   * これまで床には laminate（艶あり樹脂板）を暗く着色して使っていた。
+   * laminate は明度 0.255・粗さ 0.24 で、家具の天板には合うが
+   * 床に敷くと「暗い鏡」になる。屋根の下の外廊下を撮ったら、
+   * 空を映して床が一面の紺色になっていた。
+   * 明るさを色で上げようとしても、色は掛け算なので下地より明るくならない。
+   *
+   * 床は床として焼く。明度 0.38 前後、粗さ 0.62 前後の艶消し。
+   * 1.82m ごとの熱溶接の継ぎ目と、細かい石目の柄を入れる。
+   */
+  vinylSheet(u, v, o, S) {
+    // 石目調の細かい粒（無地だと塩ビに見えない）
+    const fleck = valueNoise(u * 380, v * 380, 380, S);
+    const fleck2 = smoothstep(0.74, 0.93, valueNoise(u * 150, v * 150, 150, S + 5));
+    const vein = fbm(u * 22, v * 22, { octaves: 4, period: 22, seed: S + 11 });
+    /*
+     * 熱溶接の継ぎ目。1 タイル 0.91m なので 2 タイルで 1 本にすると
+     * 実寸 1.82m ごとになる。ここだけわずかに窪んで艶が変わる。
+     */
+    const seamV = Math.abs(((u * 0.5) % 1) - 0.5);
+    const seam = 1 - smoothstep(0.0, 0.006, seamV);
+    // 歩行帯の擦れ（面で薄く。高さで変えると繰り返しの帯になる）
+    const traffic = smoothstep(0.55, 0.95, fbm(u * 3.5, v * 3.5, { octaves: 4, period: 4, seed: S + 37 }));
+    const scuff = smoothstep(0.86, 0.995, ridged(u * 60, v * 22, { octaves: 3, period: 60, seed: S + 61 }));
+
+    const l = 0.375 + fleck * 0.022 + fleck2 * 0.03 + vein * 0.02 - seam * 0.05;
+    o.r = l * 0.99; o.g = l * 1.0; o.b = l * 0.98;
+    o.h = fleck2 * 0.25 + vein * 0.15 - seam * 0.9;
+    // 艶消し。歩行帯だけ少し磨かれて滑らかになる
+    o.rough = clamp01(0.66 + fleck * 0.06 - traffic * 0.12 + scuff * 0.1);
+    o.metal = 0;
+    o.ao = clamp01(0.96 - seam * 0.2);
+  },
+
   /* --- 白物家電の塗装（冷蔵庫・洗濯機・自販機） --- */
   applianceWhite(u, v, o, S) {
     // 粉体塗装のごく浅いゆず肌

@@ -956,8 +956,15 @@ const DEFS = {
 
     let l = 0.36 + emb * 0.022 + micro * 0.012 - seam * 0.05 - scuff * 0.018;
     o.r = l * 1.0; o.g = l * (0.985 - yellow * 0.02); o.b = l * (0.945 - yellow * 0.055);
-    o.h = emb * 0.5 + micro * 0.2 - seam * 0.8;
-    o.rough = clamp01(0.72 + emb * 0.12 + scuff * 0.1);
+    /*
+     * 凹凸の強さ。
+     *
+     * 0.5 では、斜めから光が当たったとき壁一面が
+     * みかんの皮のように波打って見えた。塩ビクロスのエンボスは
+     * 実物で 0.2mm ほどしかない。継ぎ目だけははっきり残す。
+     */
+    o.h = emb * 0.16 + micro * 0.08 - seam * 0.8;
+    o.rough = clamp01(0.78 + emb * 0.08 + scuff * 0.06);
     o.metal = 0;
     o.ao = clamp01(0.92 - seam * 0.25);
   },

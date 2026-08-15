@@ -86,10 +86,18 @@ const PRESETS = {
    *
    * 1 タイル 19cm 角（repeat 5.2）にして、い草 1 本を 4px で焼く。
    * 密度を落とすと寄ったとき縞が消えて黄土色の板になる。
-   * 縞は u 方向に走るので、敷く側で 90 度ずつ回して市松に組む。
+   * 縞は u 方向に走る。敷く側は向きを揃える（回すと寸法まで入れ替わる）。
    */
   tatami:          { tex: 'tatami',       repeat: 5.2,  params: { roughness: 1, metalness: 1 } },
-  tatamiWorn:      { tex: 'tatami',       repeat: 5.2,  params: { roughness: 1, metalness: 1, color: 0xc9b489 } },
+  /*
+   * 灼けた畳。
+   *
+   * 0xc9b489 まで振ったら、下地の tatami 自体が灼けると赤へ寄る作りなので
+   * 掛け合わさって赤茶になり、同じ部屋の中で緑の畳と赤茶の畳が
+   * 市松に並ぶ、ありえない床になった。
+   * 同じ部屋の畳は同じ時期に替えるので、差は僅かでよい。
+   */
+  tatamiWorn:      { tex: 'tatami',       repeat: 5.2,  params: { roughness: 1, metalness: 1, color: 0xe4dcc4 } },
   shojiPaper:      { tex: 'shojiPaper',   repeat: 1.4,  params: { roughness: 1, metalness: 1 } },
   velvet:          { tex: 'velvet',       repeat: 2.0,  params: { roughness: 1, metalness: 1 } },
   brassPolished:   { tex: 'brassPolished', repeat: 2.5, params: { roughness: 1, metalness: 1 } },
@@ -114,6 +122,13 @@ const PRESETS = {
   upholsteryOlive: { tex: 'upholstery',   repeat: 1.4,  params: { roughness: 1, metalness: 1, color: 0x7c7a5e } },
   bedding:         { tex: 'bedding',      repeat: 0.75, params: { roughness: 1, metalness: 1 } },
   beddingBlue:     { tex: 'bedding',      repeat: 0.75, params: { roughness: 1, metalness: 1, color: 0x9aa8bc } },
+  /*
+   * こたつ布団。
+   * carpetRed を使ったら、カーペットの下地が明度 0.15 と暗いところへ
+   * さらに暗い色を掛けることになり、部屋の真ん中が黒い塊になった。
+   * 明るい下地（bedding）に暖色を掛ける。
+   */
+  beddingWarm:     { tex: 'bedding',      repeat: 0.75, params: { roughness: 1, metalness: 1, color: 0xbf8f74 } },
   melamine:        { tex: 'melamine',     repeat: 0.7,  params: { roughness: 1, metalness: 1 } },
   melaminePale:    { tex: 'melamine',     repeat: 0.7,  params: { roughness: 1, metalness: 1, color: 0xd8cdbc } },
   melamineDark:    { tex: 'melamine',     repeat: 0.7,  params: { roughness: 1, metalness: 1, color: 0x7a6450 } },
@@ -215,7 +230,8 @@ const PRESETS = {
    * 実効 0.14。撮ったら共用廊下の床が紺色の帯になっていた。
    * しかも屋外の廊下にも使っており、そこでは暗くする理由が無い。
    */
-  floorVinyl:      { tex: 'laminate',     repeat: 1.1,  params: { roughness: 1, metalness: 0, color: 0x929698 } },
+  floorVinyl:      { tex: 'vinylSheet',   repeat: 1.1,  params: { roughness: 1, metalness: 0 } },
+  floorVinylWarm:  { tex: 'vinylSheet',   repeat: 1.1,  params: { roughness: 1, metalness: 0, color: 0xd8cfbe } },
   floorStone:      { tex: 'terrazzo',     repeat: 2.0,  params: { roughness: 1, metalness: 0, color: 0x9a9ca0 } },
   /*
    * 陸屋根の防水シート。

@@ -35,26 +35,36 @@ const local = (x, z, yaw) => {
 /**
  * 畳を敷く。
  *
- * 1 枚 91 × 182cm。長辺と短辺を交互に組み、隣り合う畳の
- * い草の向きを 90 度変える。この向きの違いが光を受けて
- * 市松に見えるのが畳敷きの見えかたで、
- * 同じ向きで敷き詰めるとただの緑の床になる。
+ * 1 枚 91 × 182cm。長辺は Z 方向で、全部同じ向きに揃える。
+ * い草の筋は 1 枚 4px で焼いてあるので、向きを揃えても畳に見える。
  *
- * @param {object} o {x, z, w, d, y, yaw, edge}
+ * @param {object} o {x, z, w, d, y, edge}
  */
 export function tatamiArea(b, o) {
   const { x, z, w = 3.64, d = 3.64, y = 0, edge = 'melamineDark' } = o;
   const MW = 0.91, ML = 1.82;
   const TH = 0.055;                     // 畳の厚み（縁を立たせるため薄めに）
 
-  // 下地（畳の隙間から黒が覗く）
-  b.box({ x, y: y + TH / 2, z, w, h: TH, d, mat: 'woodDark', surface: SURFACE.WOOD, collide: false });
+  /*
+   * 下地。
+   * 隙間から覗くだけなので、濃すぎると畳の目地が黒い格子に見える。
+   * 縁と同じ暗さに合わせる。
+   */
+  b.box({ x, y: y + TH / 2, z, w, h: TH, d, mat: 'melamineDark', surface: SURFACE.WOOD, collide: false });
 
   /*
-   * 敷きかた。
-   * 縦に 2 枚並べた列と、横に 2 枚重ねた列を交互にする。
-   * 実際の「田の字」ではないが、向きが交互に入るので
-   * 遠目には正しい市松に見える。
+   * 向きは変えない。
+   *
+   * はじめは 1 枚ごとに yaw を 90 度振って、い草の向きを交互にしていた。
+   * だが b.box の yaw は箱ごと回すので、寸法まで入れ替わる。
+   * 0.955 × 2.21 の枠に 2.20 × 0.94 の畳を置くことになり、
+   * 半分の畳が枠から 60cm はみ出し、枠のほうは下地の濃茶が
+   * むき出しになった。撮ったら緑と赤茶が市松に並ぶ床になっていた。
+   *
+   * 畳の向きを交互にするには、寸法の合う敷き方（田の字など）を
+   * 部屋の寸法ごとに組む必要がある。任意の寸法では成立しない。
+   * ここは全部同じ向きに揃え、差は色の僅かな振れだけにする。
+   * い草の筋は 1 枚 4px で焼いてあるので、これでも畳には見える。
    */
   const cols = Math.max(1, Math.round(w / MW));
   const colW = w / cols;
@@ -65,24 +75,13 @@ export function tatamiArea(b, o) {
     const rowD = d / rows;
     for (let r = 0; r < rows; r++) {
       const cz = z - d / 2 + rowD * (r + 0.5);
-      // 1 枚ごとに 90 度回して、い草の向きを変える
-      const turn = ((c + r) % 2) === 0;
-      const mat = ((c * 3 + r * 5) % 4) === 0 ? 'tatamiWorn' : 'tatami';
+      const mat = ((c * 3 + r * 5) % 3) === 0 ? 'tatamiWorn' : 'tatami';
       b.box({
         x: cx, y: y + TH + 0.008, z: cz,
         w: colW - 0.014, h: 0.018, d: rowD - 0.014,
-        yaw: turn ? 0 : Math.PI / 2,
         mat, surface: SURFACE.FABRIC, collide: false,
       });
-      /*
-       * 縁は長辺の 2 本だけ。短辺には付かない。
-       *
-       * 畳は 1 枚 91 × 182cm で、長辺は必ず Z 方向。
-       * turn はい草の向き（テクスチャ）を変えるだけで、
-       * 板そのものの縦横は変わらない。
-       * turn に合わせて縁も回していたので、
-       * 半分の畳で短辺に縁が付いていた。
-       */
+      // 縁は長辺（Z 方向）の 2 本だけ。短辺には付かない
       for (const s of [-1, 1]) {
         b.box({
           x: cx + s * (colW / 2 - 0.03), y: y + TH + 0.010, z: cz,
@@ -112,29 +111,50 @@ export function lowTable(b, o) {
   const at = local(x, z, yaw);
 
   if (kotatsu) {
-    // 掛け布団（天板の下から四方へ垂れる）
-    b.box({ x, y: y + 0.14, z, w: w + 0.62, h: 0.28, d: d + 0.62, yaw,
-      mat: 'bedding', surface: SURFACE.FABRIC, collide: false });
-    b.box({ x, y: y + 0.30, z, w: w + 0.50, h: 0.06, d: d + 0.50, yaw,
-      mat: 'bedding', surface: SURFACE.FABRIC, collide: false });
+    /*
+     * 掛け布団。
+     *
+     * 角柱を 2 段重ねただけだと、面が垂直に落ちて上面が平らなので、
+     * 布団ではなく発泡マットに見えた。
+     * 裾へ向かって広がる 4 段の台形にして、布のたわみを作る。
+     * 色も寝具の青白ではなく、こたつ布団らしい暖色の織物にする。
+     */
+    const tiers = [[0.05, 0.66, 0.10], [0.15, 0.60, 0.12], [0.26, 0.50, 0.09], [0.33, 0.40, 0.05]];
+    for (const [oy, spread, th] of tiers) {
+      b.box({ x, y: y + oy, z, w: w + spread, h: th, d: d + spread, yaw,
+        mat: 'beddingWarm', surface: SURFACE.FABRIC, collide: false });
+    }
+    // 布団の下から覗く天板の支え
+    b.box({ x, y: y + 0.36, z, w: w + 0.06, h: 0.03, d: d + 0.06, yaw,
+      mat: 'woodFine', surface: SURFACE.WOOD, collide: false });
   }
-  // 天板（縁を面取りしたように 2 段）
-  b.box({ x, y: y + h - 0.018, z, w, h: 0.036, d, yaw, mat, surface: SURFACE.WOOD, collide: false });
-  b.box({ x, y: y + h - 0.048, z, w: w - 0.05, h: 0.026, d: d - 0.05, yaw,
+  /*
+   * 天板。こたつのときは布団の上へ載るので、少し持ち上げる。
+   * 布団と同じ高さに置くと、板が布団に埋まる。
+   */
+  const topY = kotatsu ? y + 0.40 : y + h - 0.018;
+  b.box({ x, y: topY, z, w, h: 0.036, d, yaw, mat, surface: SURFACE.WOOD, collide: false });
+  b.box({ x, y: topY - 0.030, z, w: w - 0.05, h: 0.026, d: d - 0.05, yaw,
     mat, surface: SURFACE.WOOD, collide: false });
-  // 脚（内側に寄せる）
-  for (const lx of [-w / 2 + 0.11, w / 2 - 0.11]) {
-    for (const lz of [-d / 2 + 0.10, d / 2 - 0.10]) {
-      const [px, pz] = at(lx, lz);
-      b.box({ x: px, y: y + (h - 0.07) / 2, z: pz, w: 0.052, h: h - 0.07, d: 0.052, yaw,
+
+  /*
+   * 脚と貫は、こたつのときは布団に隠れるので出さない。
+   * 出すと布団を突き抜けた棒になる。
+   */
+  if (!kotatsu) {
+    for (const lx of [-w / 2 + 0.11, w / 2 - 0.11]) {
+      for (const lz of [-d / 2 + 0.10, d / 2 - 0.10]) {
+        const [px, pz] = at(lx, lz);
+        b.box({ x: px, y: y + (h - 0.07) / 2, z: pz, w: 0.052, h: h - 0.07, d: 0.052, yaw,
+          mat, surface: SURFACE.WOOD, collide: false });
+      }
+    }
+    // 貫（脚を繋ぐ横木。無いと 4 本の棒が浮いて見える）
+    for (const s of [-1, 1]) {
+      const [ax, az] = at(0, s * (d / 2 - 0.10));
+      b.box({ x: ax, y: y + 0.11, z: az, w: w - 0.24, h: 0.028, d: 0.022, yaw,
         mat, surface: SURFACE.WOOD, collide: false });
     }
-  }
-  // 貫（脚を繋ぐ横木。無いと 4 本の棒が浮いて見える）
-  for (const s of [-1, 1]) {
-    const [ax, az] = at(0, s * (d / 2 - 0.10));
-    b.box({ x: ax, y: y + 0.11, z: az, w: w - 0.24, h: 0.028, d: 0.022, yaw,
-      mat, surface: SURFACE.WOOD, collide: false });
   }
   return b;
 }

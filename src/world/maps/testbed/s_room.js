@@ -97,7 +97,13 @@ function room(b, cx, cz, w, d, opt = {}) {
     // 窓（引き違い。外は空が見える）
     const g = new THREE.BoxGeometry(winW - 0.06, 1.14, 0.03);
     g.translate(cx, 1.55, cz - d / 2);
-    b.addExtra(new THREE.Mesh(g, b.mats.windowGlass({ opacity: 0.5 })));
+    /*
+     * 室内から見る窓。
+     * 既定の windowGlass は色 0x1b2730 で、外から空を映すためのもの。
+     * 中から見ると外がまったく見えず、黒い板が嵌まっているだけになる。
+     * 明るくして、昼の外が透けるようにする。
+     */
+    b.addExtra(new THREE.Mesh(g, b.mats.windowGlass({ color: 0xa8bccc, opacity: 0.30 })));
     // 方立と窓枠
     b.box({ x: cx, y: 1.55, z: cz - d / 2, w: 0.05, h: 1.18, d: 0.06,
       mat: 'anodized', surface: SURFACE.METAL, collide: false });
