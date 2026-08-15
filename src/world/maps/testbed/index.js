@@ -13,6 +13,7 @@ import { sectionSandbox } from './s_sandbox.js';
 import { sectionEdge } from './s_edge.js';
 import { sectionTerrain } from './s_terrain.js';
 import { sectionBuildLab } from './s_build.js';
+import { sectionProps } from './s_props.js';
 
 /**
  * マップ 0: TESTBED（テストベッド）
@@ -29,6 +30,7 @@ import { sectionBuildLab } from './s_build.js';
  *   試作場   … 何も置いていない平地。思い付いたものをまず組む場所
  *   地形試験場… 斜面・掘り込み・盛土・地面の材質を歩いて確かめる
  *   建築試作場… 建物を 1 棟ずつ台に載せ、四周と屋上から作りを詰める
+ *   小物試作場… 小物を 1 点ずつ台に載せ、目盛と並べて寸法と作りを詰める
  *
  * 作りの原則は 3 つ。
  *   1. 十字の通路から、すべての区画へ行けること
@@ -41,7 +43,7 @@ export const MAP_INFO = {
   name: 'TESTBED',
   nameJa: 'テストベッド',
   desc: '検証用の施設。博物館・資材置き場・建物街・建築試作場・実験場・射撃場・ギミック試験場・試作場を十字の通路でつないである。対戦もできる。',
-  size: '検証用（184 × 226m）',
+  size: '検証用（228 × 226m）',
   players: '2〜12人',
 
   /*
@@ -70,14 +72,19 @@ export const MAP_INFO = {
     dust: 0xdcd6c8, dustMix: 0.16, hazeGain: 1.04,
     distance: 520, scaleHeight: 130, max: 0.92,
   },
-  bounds: { min: { x: -94, z: -144 }, max: { x: 94, z: 86 } },
+  bounds: { min: { x: -138, z: -144 }, max: { x: 94, z: 86 } },
   viewDistance: 460,
   /** 一覧で「これは検証用」と分かるようにする印 */
   utility: true,
 };
 
 /* 敷地 */
-const WEST = -92, EAST = 92;
+/*
+ * 西へ 44m 広げてある。
+ * 小物試作場は 1 点ごとに 2.9m 角の台を 8 列並べるので、
+ * 既存の区画の隙間には入らない。
+ */
+const WEST = -136, EAST = 92;
 /*
  * 北へ 62m 広げてある。
  * 建築試作場は 1 棟ごとに 24m 角の台を要るので、
@@ -109,6 +116,7 @@ const SECTIONS = [
   { no: '09', name: '射撃場', en: 'RANGE', hue: HUE.range, gate: [6.4, 52, -Math.PI / 2] },
   { no: '10', name: '地形試験場', en: 'TERRAIN', hue: HUE.lab, gate: [64, 4.6, FACE_N] },
   { no: '11', name: '建築試作場', en: 'BUILDING LAB', hue: HUE.town, gate: [-6.4, -78, -Math.PI / 2] },
+  { no: '12', name: '小物試作場', en: 'PROP LAB', hue: HUE.yard, gate: [-92, -4.6, FACE_S] },
 ];
 
 export function buildTestbed(b) {
@@ -136,6 +144,7 @@ export function buildTestbed(b) {
   sectionRange(b, -12, 64);          // x -12..79   z  53..75
   sectionTerrain(b, 74, 34);         // x  61..87   z  19..49
   sectionBuildLab(b, 0, -112);       // x -84..84  z -140..-84
+  sectionProps(b, -112, -20);        // x -130..-94  z -33..-7
 
   /* ---- スポーンと目標（対戦にも使えるように） ---- */
   spawnPad(b, -84, -66, 'B');

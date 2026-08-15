@@ -1,6 +1,16 @@
 import * as THREE from 'three';
 import { SURFACE } from './Physics.js';
 
+/*
+ * 系統ごとに分けたファイルを、ここから再輸出する。
+ *
+ * このファイルは既に 2400 行あり、街路・室内・工業の小物を
+ * 足していくと 1 ファイルで手に負えなくなる。
+ * 呼び出し側は `import * as P from '../Props.js'` のままでよいよう、
+ * 名前空間はここに集約しておく。
+ */
+export * from './props/street.js';
+
 /**
  * レベルを彩る小物（プロップ）のライブラリ。
  * すべて MapBuilder のバッチに積むため、ドローコールは増えない。

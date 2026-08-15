@@ -285,6 +285,21 @@ const PRESETS = {
 
   /* ---- 建材・什器（続き） ---- */
   meshScreen:      { tex: 'meshScreen',   repeat: 2.2,  params: { roughness: 1, metalness: 1 } },
+
+  /* ---- 街路の小物 ---- */
+  /*
+   * どれも既存のテクスチャの色違い。
+   * seed を振らないので焼き直しは起きず、テクスチャ枚数は増えない。
+   */
+  // 車止めや標識の反射帯。夜でも輪郭が読めるよう、わずかに発光させる
+  reflectorRed:    { tex: 'plasticGloss', repeat: 3.0, params: { roughness: 1, metalness: 0, color: 0xb8342a, emissive: 0x3a0d09, emissiveIntensity: 1 } },
+  reflectorWhite:  { tex: 'plasticGloss', repeat: 3.0, params: { roughness: 1, metalness: 0, color: 0xd8d4cc, emissive: 0x2a2a28, emissiveIntensity: 1 } },
+  plasticOrange:   { tex: 'plasticGloss', repeat: 2.5, params: { roughness: 1, metalness: 0, color: 0xc8641e } },
+  // ゴミ集積所の網。菱形の抜けがあるので cutout を使う
+  netBlue:         { tex: 'meshScreen',   repeat: 3.2, params: { roughness: 1, metalness: 0, color: 0x3d5c8c }, alphaTest: 0.42 },
+  netGrey:         { tex: 'meshScreen',   repeat: 3.2, params: { roughness: 1, metalness: 0.3, color: 0x8e9296 }, alphaTest: 0.42 },
+  // 半透明のゴミ袋
+  trashBag:        { tex: 'plasticMatte', repeat: 1.4, params: { roughness: 1, metalness: 0, color: 0xbcc0b8 } },
   scaffoldPlank:   { tex: 'scaffoldPlank', repeat: 0.7, params: { roughness: 1, metalness: 1 } },
   corrugatedPlastic: { tex: 'corrugatedPlastic', repeat: 0.6, params: { roughness: 1, metalness: 1 } },
   awningFabric:    { tex: 'awningFabric', repeat: 0.55, params: { roughness: 1, metalness: 1 } },
