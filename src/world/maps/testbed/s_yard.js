@@ -135,7 +135,12 @@ export function sectionYard(b, cx, cz) {
         mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
     }
     street[i][2](x, zS);
-    plate(b, { x, y: 0.42, z: zS + 1.95, yaw: FACE_N,
+    /*
+     * 小物はどれも北を向けてあるので、見る人は台の北側に立つ。
+     * 銘板を南側（zS + 1.95）に置いて北を向けていたため、
+     * 台の中を向いた板になっていた。
+     */
+    plate(b, { x, y: 0.42, z: zS, offset: 1.95, yaw: FACE_N,
       text: street[i][0], sub: street[i][1], accent: HUE.yard, w: 3.2 });
   }
   label(b, { x: cx - 26, y: 2.1, z: zS, yaw: Math.PI / 2,
@@ -197,7 +202,12 @@ export function sectionMaterials(b, cx, cz) {
         mat: name, surface: SURFACE.CONCRETE, collide: false });
       const sph = new THREE.SphereGeometry(0.2, 18, 12);
       b.mesh(name, sph, { x: x + 0.34, y: 0.59, z: z - 0.46 });
-      plate(b, { x, y: 0.22, z: z - 0.76, yaw: FACE_S,
+      /*
+       * 曲面の見本（円柱と球）を見本板の北側に置いてあるので、
+       * 見る人は北側に立つ。銘板も北側で北を向ける。
+       * 北側に置いて南を向けていたため、見本板の中を向いていた。
+       */
+      plate(b, { x, y: 0.22, z, offset: 0.76, yaw: FACE_N,
         text: MATERIAL_JA[name] || name, sub: name, accent: HUE.mat, w: PITCH - 0.24 });
     }
   }

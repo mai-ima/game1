@@ -65,7 +65,8 @@ export function sectionBuildLab(b, cx, cz) {
       mat: 'concreteFloor', surface: SURFACE.CONCRETE, collide: false });
     b.box({ x, y: 0.075, z: padZ, w: 24.4, h: 0.03, d: 24.4,
       mat: 'hazardStripe', surface: SURFACE.CONCRETE, collide: false });
-    plate(b, { x, y: 0.9, z: padZ + 12.4, yaw: FACE_N,
+    // 建物はどれも南（FACE_S）を向けてあるので、見る人は台の南側に立つ
+    plate(b, { x, y: 0.9, z: padZ, offset: 12.4, yaw: FACE_S,
       text: pads[i][0], sub: pads[i][1], accent: HUE.town, w: 2.6 });
   }
 
@@ -115,7 +116,7 @@ export function sectionBuildLab(b, cx, cz) {
       mat: 'concreteFloor', surface: SURFACE.CONCRETE, collide: false });
     b.box({ x: cx + bx, y: 0.075, z: backZ, w: bw + 0.4, h: 0.03, d: bd + 0.4,
       mat: 'hazardStripe', surface: SURFACE.CONCRETE, collide: false });
-    plate(b, { x: cx + bx, y: 0.9, z: backZ + bd / 2 + 0.4, yaw: FACE_N,
+    plate(b, { x: cx + bx, y: 0.9, z: backZ, offset: bd / 2 + 0.4, yaw: FACE_S,
       text: nm, sub: en, accent: HUE.lab, w: 2.6 });
   }
 
@@ -183,7 +184,8 @@ function detailWall(b, cx, cz) {
   for (let i = 0; i < items.length; i++) {
     const x = cx - W / 2 + pitch * (i + 0.5);
     items[i][2](x);
-    plate(b, { x, y: 0.42, z: cz + 0.85, yaw: FACE_N,
+    // 部品はすべて南を向けてあるので、銘板も南側で南を向ける
+    plate(b, { x, y: 0.42, z: cz, offset: 1.4, yaw: FACE_S,
       text: items[i][0], sub: items[i][1], accent: HUE.mat, w: Math.min(2.4, pitch - 0.6) });
   }
   label(b, { x: cx - W / 2 - 2.4, y: 2.4, z: cz + 2.6, yaw: FACE_N,

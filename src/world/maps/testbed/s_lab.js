@@ -26,7 +26,13 @@ export function sectionLab(b, cx, cz) {
     const [hgt, name, mat] = stands[i];
     const x = cx - 17.4 + i * 1.7;
     b.box({ x, y: hgt / 2, z: zBase, w: 0.5, h: hgt, d: 0.22, yaw: FACE_N, mat, surface: SURFACE.METAL });
-    plate(b, { x, y: hgt - 0.22, z: zBase + 0.12, yaw: FACE_N, text: `${hgt.toFixed(2)} m`, sub: name, accent: HUE.lab, w: 1.4 });
+    /*
+     * 銘板は入口側（南）へ出す。
+     * 実験場は南から入って北へ進む造りで、床の銘板もすべて +Z 側にある。
+     * ここだけ北を向いていたので、支柱の中を向いた板になっていた。
+     */
+    plate(b, { x, y: hgt - 0.22, z: zBase, offset: 0.12, yaw: FACE_S,
+      text: `${hgt.toFixed(2)} m`, sub: name, accent: HUE.lab, w: 1.4 });
   }
   b.box({ x: cx - 11.5, y: 0.5, z: zBase, w: 1, h: 1, d: 1, mat: 'hazardStripe', surface: SURFACE.METAL });
   floorPlate(b, { x: cx - 11.5, z: zBase + 1.1, text: '1 m³', accent: HUE.lab, w: 1.5 });
@@ -35,11 +41,13 @@ export function sectionLab(b, cx, cz) {
   b.wallWithGap({ x1: cx - 8, z1: zBase, x2: cx - 2, z2: zBase, h: 3.0, thickness: 0.24,
     gapStart: 2.5, gapWidth: 0.9, gapTop: 2.0, mat: 'plaster', surface: SURFACE.CONCRETE });
   B.door(b, { x: cx - 5.05, y: 0, z: zBase, yaw: FACE_N, w: 0.9, h: 2.0, frame: 'plaster' });
-  plate(b, { x: cx - 5.05, y: 2.55, z: zBase - 0.14, yaw: FACE_N, text: '出入口', sub: 'H2.00 × W0.90', accent: HUE.lab, w: 2.0 });
+  plate(b, { x: cx - 5.05, y: 2.55, z: zBase, offset: 0.14, yaw: FACE_S,
+    text: '出入口', sub: 'H2.00 × W0.90', accent: HUE.lab, w: 2.0 });
   b.wallWithGap({ x1: cx - 1.5, z1: zBase, x2: cx + 3.5, z2: zBase, h: 3.0, thickness: 0.24,
     gapStart: 1.7, gapWidth: 1.5, gapBottom: 0.9, gapTop: 2.1, mat: 'plaster', surface: SURFACE.CONCRETE });
   B.windowUnit(b, { x: cx + 0.95, y: 1.5, z: zBase, yaw: FACE_N, w: 1.5, h: 1.2 });
-  plate(b, { x: cx + 0.95, y: 2.55, z: zBase - 0.14, yaw: FACE_N, text: '窓', sub: '腰 0.90 / H1.20', accent: HUE.lab, w: 2.2 });
+  plate(b, { x: cx + 0.95, y: 2.55, z: zBase, offset: 0.14, yaw: FACE_S,
+    text: '窓', sub: '腰 0.90 / H1.20', accent: HUE.lab, w: 2.2 });
 
   // 標準階段
   b.stairs({ x: cx + 9, y: 0, z: zBase + 1.4, width: 1.5, rise: 0.18, run: 0.28, steps: 12, yaw: FACE_S, mat: 'concrete' });
@@ -91,7 +99,7 @@ export function sectionLab(b, cx, cz) {
     const hgt = [1.0, 1.4, 1.8, 2.2, 2.6][i];
     const x = cx - 18 + i * 3.0;
     b.box({ x, y: hgt / 2, z: zBack, w: 2.4, h: hgt, d: 1.2, mat: 'brickPale', surface: SURFACE.CONCRETE });
-    plate(b, { x, y: Math.min(hgt - 0.24, 1.15), z: zBack + 0.63, yaw: FACE_S,
+    plate(b, { x, y: Math.min(hgt - 0.24, 1.15), z: zBack, offset: 0.63, yaw: FACE_S,
       text: `${hgt.toFixed(1)} m`, accent: HUE.lab, w: 2.0 });
   }
   floorPlate(b, { x: cx - 12, z: zBack + 1.8, text: 'よじ登り', accent: HUE.lab, w: 2.6 });
@@ -100,7 +108,8 @@ export function sectionLab(b, cx, cz) {
     const hgt = [2, 4, 6, 9, 13][i];
     const x = cx + 2 + i * 3.2;
     b.box({ x, y: hgt / 2, z: zBack - 1.5, w: 2.8, h: hgt, d: 2.8, mat: 'concrete', surface: SURFACE.CONCRETE });
-    plate(b, { x, y: 1.2, z: zBack - 0.09, yaw: FACE_S, text: `${hgt} m`, accent: HUE.lab, w: 2.3 });
+    plate(b, { x, y: 1.2, z: zBack - 1.5, offset: 1.41, yaw: FACE_S,
+      text: `${hgt} m`, accent: HUE.lab, w: 2.3 });
     if (i > 0) {
       b.box({ x: x - 1.6, y: ([2, 4, 6, 9, 13][i - 1] + hgt) / 2 - 0.15, z: zBack - 1.5, w: 0.9, h: 0.3, d: 2.8,
         mat: 'diamondPlate', surface: SURFACE.METAL });

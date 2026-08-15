@@ -99,52 +99,74 @@ const AVE_N = -84;           // 南北通路の北端（この先は建築試作
 
 /**
  * 区画の一覧。
- * 位置・大きさ・門標をここで一元管理する。
+ *
+ * 位置・実寸・門標をここで一元管理する。
  * 新しい区画を足すときはこの表に 1 行足す。
  *
- *   gate … 門標を立てる位置と向き（通路のどこから入るか）
+ *   at   … 区画の中心
+ *   size … 区画が実際に使う広さ（敷地の舗装や台を含む外形）
+ *   gate … 門標を立てる位置と向き（yaw は「入ってくる人がいる側」）
+ *
+ * 実寸を表に持たせた理由。
+ *
+ * 以前は実寸をコメントにだけ書いていて、「余白 4m 以上」という約束も
+ * 人が守るしかなかった。守れていなかった。
+ * 室内試作場は南北通路の真上に建っていて、通路の縁石（0.18m 角、
+ * 長さ 79.8m）が水回りと居室の床を貫通していた。射撃場も同じく
+ * 射線を通路が横切っていた。どちらも歩いて見つかった。
+ *
+ * 表にしたので、下の checkLayout() が重なりを実行時に見つけて出す。
  */
 const SECTIONS = [
-  { no: '01', name: '中央広場', en: 'HUB', hue: HUE.hub, gate: null },
-  { no: '02', name: '室内試作場', en: 'INTERIOR LAB', hue: HUE.mat, gate: [0, -14, FACE_S] },
-  { no: '03', name: '実験場', en: 'MOVEMENT LAB', hue: HUE.lab, gate: [-44, -4.6, FACE_S] },
-  { no: '04', name: 'ギミック試験場', en: 'MOVING PARTS', hue: HUE.gizmo, gate: [44, -4.6, FACE_S] },
-  { no: '05', name: 'マテリアル見本', en: 'MATERIALS', hue: HUE.mat, gate: [-20, -4.6, FACE_S] },
-  { no: '06', name: '完成建物の展示', en: 'BUILDINGS', hue: HUE.town, gate: [-40, 4.6, FACE_N] },
-  { no: '07', name: '完成小物の展示', en: 'PROPS', hue: HUE.yard, gate: [34, 4.6, FACE_N] },
-  { no: '08', name: '試作場', en: 'SANDBOX', hue: HUE.sandbox, gate: [-6.4, 60, Math.PI / 2] },
-  { no: '09', name: '射撃場', en: 'RANGE', hue: HUE.range, gate: [6.4, 52, -Math.PI / 2] },
-  { no: '10', name: '地形試験場', en: 'TERRAIN', hue: HUE.lab, gate: [64, 4.6, FACE_N] },
-  { no: '11', name: '建築試作場', en: 'BUILDING LAB', hue: HUE.town, gate: [-6.4, -78, -Math.PI / 2] },
-  { no: '12', name: '小物試作場', en: 'PROP LAB', hue: HUE.yard, gate: [-92, -4.6, FACE_S] },
+  /*
+   * 中央広場は舗装が半径 13m まで広がるが、当たるものは
+   * 道標（±8.5）・ベンチ（9.5）・植木鉢（10.5）までなので、
+   * 実質の外形は半径 11m として扱う。
+   */
+  { no: '01', name: '中央広場', en: 'HUB', hue: HUE.hub, at: [0, 0], size: [22, 22], gate: null },
+  { no: '02', name: '室内試作場', en: 'INTERIOR LAB', hue: HUE.mat, at: [19, -46], size: [27, 13], gate: [5, -46, -Math.PI / 2] },
+  { no: '03', name: '実験場', en: 'MOVEMENT LAB', hue: HUE.lab, at: [-58, -34], size: [44, 38], gate: [-44, -4.6, FACE_S] },
+  { no: '04', name: 'ギミック試験場', en: 'MOVING PARTS', hue: HUE.gizmo, at: [58, -34], size: [46, 34], gate: [44, -4.6, FACE_S] },
+  { no: '05', name: 'マテリアル見本', en: 'MATERIALS', hue: HUE.mat, at: [-24, -22], size: [21, 25], gate: [-24, -4.6, FACE_S] },
+  { no: '06', name: '完成建物の展示', en: 'BUILDINGS', hue: HUE.town, at: [-52, 26], size: [62, 34], gate: [-40, 4.6, FACE_N] },
+  { no: '07', name: '完成小物の展示', en: 'PROPS', hue: HUE.yard, at: [37, 25], size: [50, 30], gate: [37, 4.6, FACE_N] },
+  { no: '08', name: '試作場', en: 'SANDBOX', hue: HUE.sandbox, at: [-50, 64], size: [40, 30], gate: [-6.4, 60, Math.PI / 2] },
+  { no: '09', name: '射撃場', en: 'RANGE', hue: HUE.range, at: [47, 64], size: [86, 23], gate: [4, 64, -Math.PI / 2] },
+  { no: '10', name: '地形試験場', en: 'TERRAIN', hue: HUE.lab, at: [76, 34], size: [26, 30], gate: [66, 4.6, FACE_N] },
+  { no: '11', name: '建築試作場', en: 'BUILDING LAB', hue: HUE.town, at: [0, -112], size: [168, 56], gate: [-6.4, -78, -Math.PI / 2] },
+  /*
+   * 小物試作場は列を 2 → 5 に増やしたぶん北へ伸ばした。
+   * 南へ伸ばすと東西通路を跨いでしまう。
+   */
+  { no: '12', name: '小物試作場', en: 'PROP LAB', hue: HUE.yard, at: [-112, -34], size: [32, 50], gate: [-112, -4.6, FACE_S] },
 ];
+
+/** 番号から中心を引く */
+const AT = (no) => SECTIONS.find((s) => s.no === no).at;
 
 export function buildTestbed(b) {
   const rand = mulberry32(20250808);
 
+  checkLayout();
   ground(b);
   avenues(b);
-  hub(b, 0, 0);
+  hub(b, ...AT('01'));
 
+  sectionRoom(b, ...AT('02'));
+  sectionLab(b, ...AT('03'));
+  sectionGizmos(b, ...AT('04'));
+  sectionMaterials(b, ...AT('05'));
+  sectionTown(b, ...AT('06'));
+  sectionYard(b, ...AT('07'));
+  sectionSandbox(b, ...AT('08'));
   /*
-   * 区画の配置。
-   * 各区画の実寸（下のコメント）が重ならないよう、余白 4m 以上を空けてある。
-   *   室内試作場 32 × 22      実験場     44 × 38
-   *   ギミック   46 × 34      建物街     62 × 34
-   *   資材置き場 50 × 30      マテリアル 21 × 25
-   *   試作場     40 × 30      射撃場     91 × 22
+   * 射撃場だけは「射座の位置」を渡す（区画の中心ではない）。
+   * 表の中心 47 に対し、射座は西端の 10。
    */
-  sectionRoom(b, 0, -46);            // x -16..16   z -58..-36
-  sectionLab(b, -58, -34);           // x -80..-36  z -53..-15
-  sectionGizmos(b, 58, -34);         // x  35..81   z -51..-17
-  sectionMaterials(b, -20, -17);     // x -30..-9   z -29..-4
-  sectionTown(b, -52, 26);           // x -83..-21  z   9..43
-  sectionYard(b, 34, 24);            // x   9..59   z   9..39
-  sectionSandbox(b, -50, 64);        // x -70..-30  z  49..79
-  sectionRange(b, -12, 64);          // x -12..79   z  53..75
-  sectionTerrain(b, 74, 34);         // x  61..87   z  19..49
-  sectionBuildLab(b, 0, -112);       // x -84..84  z -140..-84
-  sectionProps(b, -112, -20);        // x -130..-94  z -33..-7
+  sectionRange(b, 10, AT('09')[1]);
+  sectionTerrain(b, ...AT('10'));
+  sectionBuildLab(b, ...AT('11'));
+  sectionProps(b, ...AT('12'));
 
   /* ---- スポーンと目標（対戦にも使えるように） ---- */
   spawnPad(b, -84, -66, 'B');
@@ -152,6 +174,56 @@ export function buildTestbed(b) {
   b.objective('A', -50, 0, 8, 5.0);
   b.objective('B', 0, 0, 0, 5.0);
   b.objective('C', 54, 0, -8, 5.0);
+}
+
+/* ================================================================= *
+ *  区画割りの検査
+ * ================================================================= */
+
+/**
+ * 区画どうし、および区画と通路の重なりを調べる。
+ *
+ * 「余白 4m 以上」を人が守る約束から、実行時に効く検査へ変える。
+ * 見つけても組み立ては止めない（作りかけを見たいことがある）。
+ * 警告は tools/audit.mjs が拾って一覧にする。
+ */
+function checkLayout() {
+  const rect = (cx, cz, w, d) => ({ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2 });
+  const hit = (a, c) => a.x0 < c.x1 && c.x0 < a.x1 && a.z0 < c.z1 && c.z0 < a.z1;
+  const over = (a, c) => `${Math.min(a.x1, c.x1) - Math.max(a.x0, c.x0)} × ${Math.min(a.z1, c.z1) - Math.max(a.z0, c.z0)}m`;
+
+  const boxes = SECTIONS.map((s) => ({ s, r: rect(s.at[0], s.at[1], s.size[0], s.size[1]) }));
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      if (hit(boxes[i].r, boxes[j].r)) {
+        console.warn(`[テストベッド] 区画が重なっている: ${boxes[i].s.no} ${boxes[i].s.name}`
+          + ` と ${boxes[j].s.no} ${boxes[j].s.name}（${over(boxes[i].r, boxes[j].r)}）`);
+      }
+    }
+  }
+
+  /*
+   * 通路は縁石まで含めて見る。
+   * 通路本体を避けていても縁石（0.18m 角の連続コライダ）が
+   * 区画へ入り込むと、部屋の床から見えない段差が生える。
+   */
+  const routes = [
+    { name: '東西通路', r: rect(0, 0, EAST - WEST - 6, (AISLE_HW + 0.2) * 2) },
+    { name: '南北通路', r: rect(0, (SOUTH - 3 + AVE_N) / 2, (AVE_HW + 0.2) * 2, SOUTH - AVE_N - 3) },
+    { name: '枝道（試作場）', r: rect(-16.5, 60, 27, 4.8) },
+    { name: '枝道（室内試作場）', r: rect(4.2, -46, 2.4, 4.8) },
+    { name: '枝道（射撃場）', r: rect(3.5, 64, 1.0, 4.8) },
+    { name: '枝道（小物試作場）', r: rect(-112, -5.6, 4.8, 5.6) },
+  ];
+  for (const { s, r } of boxes) {
+    if (s.no === '01') continue;                 // 広場は交差点そのもの
+    for (const rt of routes) {
+      if (hit(r, rt.r)) {
+        console.warn(`[テストベッド] ${rt.name}が区画を横切っている: `
+          + `${s.no} ${s.name}（${over(r, rt.r)}）`);
+      }
+    }
+  }
 }
 
 /* ================================================================= *
@@ -211,8 +283,39 @@ function avenues(b) {
     if (Math.abs(z) < AISLE_HW + 3) continue;
     b.box({ x: 0, y: 0.026, z: z + 1.75, w: 0.13, h: 0.03, d: 3.5, mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
   }
+  /* ---- 枝道 ---- */
+  /*
+   * 南北通路から東西へ分かれる取り付け道。
+   * 縁石は区画の手前で止める。区画の中まで伸ばすと、
+   * 展示物の足元に見えない 18cm の段差が生えることになる。
+   */
+  const spurs = [
+    { z: 60, x0: -30, x1: -AVE_HW, w: 4.4 },     // 西の試作場へ
+    { z: -46, x0: AVE_HW, x1: 5.4, w: 4.4 },     // 東の室内試作場へ
+    { z: 64, x0: AVE_HW, x1: 4.0, w: 4.4 },      // 東の射撃場へ
+  ];
+
+  /*
+   * 南北通路の縁石。
+   *
+   * 枝道の取り付け口では切る。実際の交差点も縁石を切って
+   * 車も人も曲がれるようにしてある。切らずに通すと、
+   * 曲がるたびに 18cm の段差を越えることになる。
+   */
+  const cuts = [[-AISLE_HW - 1.2, AISLE_HW + 1.2]];
+  for (const sp of spurs) cuts.push([sp.z - sp.w / 2 - 0.6, sp.z + sp.w / 2 + 0.6]);
+  cuts.sort((p, q) => p[0] - q[0]);
+  const runs = [];
+  let cur = AVE_N;
+  for (const [c0, c1] of cuts) {
+    if (c0 > cur) runs.push([cur, Math.min(c0, SOUTH - 3)]);
+    cur = Math.max(cur, c1);
+  }
+  if (cur < SOUTH - 3) runs.push([cur, SOUTH - 3]);
+
   for (const s of [-1, 1]) {
-    for (const [z0, z1] of [[AVE_N, -AISLE_HW - 1.2], [AISLE_HW + 1.2, SOUTH - 3]]) {
+    for (const [z0, z1] of runs) {
+      if (z1 - z0 < 0.4) continue;
       b.box({ x: s * (AVE_HW + 0.09), y: 0.09, z: (z0 + z1) / 2, w: 0.18, h: 0.18, d: z1 - z0,
         mat: 'concrete', surface: SURFACE.CONCRETE });
       b.box({ x: s * (AVE_HW + 1.4), y: 0.10, z: (z0 + z1) / 2, w: 2.4, h: 0.03, d: z1 - z0,
@@ -220,16 +323,20 @@ function avenues(b) {
     }
   }
 
-  /* ---- 枝道（南北通路から西の試作場へ） ---- */
-  {
-    const z = 60, x0 = -30, x1 = -AVE_HW;
-    b.box({ x: (x0 + x1) / 2, y: 0.018, z, w: x1 - x0, h: 0.03, d: 4.4,
+  for (const sp of spurs) {
+    const cxm = (sp.x0 + sp.x1) / 2, len = sp.x1 - sp.x0;
+    if (len <= 0.2) continue;
+    b.box({ x: cxm, y: 0.018, z: sp.z, w: len, h: 0.03, d: sp.w,
       mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
     for (const s2 of [-1, 1]) {
-      b.box({ x: (x0 + x1) / 2, y: 0.09, z: z + s2 * 2.29, w: x1 - x0, h: 0.18, d: 0.18,
+      b.box({ x: cxm, y: 0.09, z: sp.z + s2 * (sp.w / 2 + 0.09), w: len, h: 0.18, d: 0.18,
         mat: 'concrete', surface: SURFACE.CONCRETE });
     }
   }
+
+  /* 東西通路から北の小物試作場へ入る取り付け道（縁石は付けない） */
+  b.box({ x: -112, y: 0.018, z: -6.0, w: 4.4, h: 0.03, d: 6.4,
+    mat: 'asphalt', surface: SURFACE.CONCRETE, collide: false });
 
   /* ---- 区画の門標 ---- */
   for (const s of SECTIONS) {
@@ -317,19 +424,43 @@ function hub(b, cx, cz) {
   }
 
   /*
-   * 各区画への道標。
-   * 十字路の四隅に立て、その方角に何があるかを並べる。
-   */
-  /*
    * 方角の道標。
    * 十字路の四隅に立て、その先に何があるかを並べる。
    * 腕木は柱の片側へ張り出し、進む方向を指す形にする。
+   *
+   * 中身は区画表から作る。
+   * 手で書いていた頃は「02 博物館」「06 建物街」「07 資材置き場」と、
+   * とうに無くなった区画名が残っていた。
+   * 表を直せば道標も直るようにして、食い違いを起こさなくする。
    */
+  const COMPASS = [
+    [-1, -1, '北西'], [0, -1, '北'], [1, -1, '北東'],
+    [-1, 0, '西'], [1, 0, '東'],
+    [-1, 1, '南西'], [0, 1, '南'], [1, 1, '南東'],
+  ];
+  /** 中心から見た方角と距離を文にする */
+  const bearing = (ax, az) => {
+    const dx = ax - cx, dz = az - cz;
+    const dist = Math.round(Math.hypot(dx, dz) / 5) * 5;
+    // 45 度ずつの 8 方位へ丸める
+    const t = 0.4142;                       // tan(22.5°)
+    const sx = Math.abs(dz) > Math.abs(dx) / t ? 0 : Math.sign(dx);
+    const sz = Math.abs(dx) > Math.abs(dz) / t ? 0 : Math.sign(dz);
+    const c = COMPASS.find((k) => k[0] === sx && k[1] === sz);
+    return `${c ? c[2] : ''}へ ${dist}m`;
+  };
+  // 象限ごとに、その向きにある区画を近い順で拾う
+  const quad = (fx, fz) => SECTIONS
+    .filter((s) => s.no !== '01' && Math.sign(s.at[0] - cx) !== -fx && Math.sign(s.at[1] - cz) !== -fz)
+    .sort((p, q) => Math.hypot(p.at[0] - cx, p.at[1] - cz) - Math.hypot(q.at[0] - cx, q.at[1] - cz))
+    .slice(0, 3)
+    .map((s) => [`${s.no} ${s.name}`, bearing(s.at[0], s.at[1])]);
+
   const posts = [
-    [-8.5, -8.5, -Math.PI / 2, [['02 博物館', '北へ 20m'], ['03 実験場', '北西へ 45m'], ['05 マテリアル見本', '北へ 12m']]],
-    [8.5, -8.5, Math.PI / 2, [['04 ギミック試験場', '北東へ 45m'], ['02 博物館', '北へ 20m']]],
-    [-8.5, 8.5, -Math.PI / 2, [['06 建物街', '南西へ 30m'], ['08 試作場', '南へ 55m']]],
-    [8.5, 8.5, Math.PI / 2, [['07 資材置き場', '南東へ 25m'], ['09 射撃場', '南へ 50m']]],
+    [-8.5, -8.5, -Math.PI / 2, quad(-1, -1)],
+    [8.5, -8.5, Math.PI / 2, quad(1, -1)],
+    [-8.5, 8.5, -Math.PI / 2, quad(-1, 1)],
+    [8.5, 8.5, Math.PI / 2, quad(1, 1)],
   ];
   for (const [ox, oz, yaw, lines] of posts) {
     const x = cx + ox, z = cz + oz;

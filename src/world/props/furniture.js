@@ -351,26 +351,28 @@ export function framedPicture(b, o) {
   const at = local(x, z, yaw);
   const F = Math.max(0.022, Math.min(w, h) * 0.075);
 
-  // 額の外枠（4 本）
+  /*
+   * 額の外枠 4 本。
+   *
+   * 縦framework は左右へ、横framework は上下へ。
+   * 中心は 4 本とも壁から 1.4cm 出た同じ面に載るので、
+   * z は at(0, 0.014) で 1 度だけ求めて使い回す。
+   * ここを at() を通さない生の x と混ぜて書いていたため、
+   * 斜めに掛けた額だけ枠が飛んでいた。
+   */
+  const [fx, fz] = at(0, 0.014);
   for (const s of [-1, 1]) {
     const [px, pz] = at(s * (w / 2 - F / 2), 0.014);
     b.box({ x: px, y, z: pz, w: F, h, d: 0.028, yaw, mat: frame, surface: SURFACE.WOOD, collide: false });
-    b.box({ x, y: y + s * (h / 2 - F / 2), z: at(0, 0.014)[1], w, h: F, d: 0.028, yaw,
+    b.box({ x: fx, y: y + s * (h / 2 - F / 2), z: fz, w, h: F, d: 0.028, yaw,
       mat: frame, surface: SURFACE.WOOD, collide: false });
   }
-  {
-    const [px, pz] = at(0, 0.014);
-    b.box({ x: px, y: y + (h / 2 - F / 2), z: pz, w, h: F, d: 0.028, yaw,
-      mat: frame, surface: SURFACE.WOOD, collide: false });
-    b.box({ x: px, y: y - (h / 2 - F / 2), z: pz, w, h: F, d: 0.028, yaw,
-      mat: frame, surface: SURFACE.WOOD, collide: false });
-    // 台紙と絵
-    b.box({ x: px, y, z: pz, w: w - F * 1.6, h: h - F * 1.6, d: 0.006, yaw,
-      mat: 'paperPrint', surface: SURFACE.WOOD, collide: false });
-    const [ax, az] = at(0, 0.018);
-    b.box({ x: ax, y, z: az, w: w - F * 3.0, h: h - F * 3.0, d: 0.004, yaw,
-      mat: art, surface: SURFACE.WOOD, collide: false });
-  }
+  // 台紙と絵
+  b.box({ x: fx, y, z: fz, w: w - F * 1.6, h: h - F * 1.6, d: 0.006, yaw,
+    mat: 'paperPrint', surface: SURFACE.WOOD, collide: false });
+  const [ax, az] = at(0, 0.018);
+  b.box({ x: ax, y, z: az, w: w - F * 3.0, h: h - F * 3.0, d: 0.004, yaw,
+    mat: art, surface: SURFACE.WOOD, collide: false });
   return b;
 }
 
