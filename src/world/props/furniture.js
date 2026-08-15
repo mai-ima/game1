@@ -74,15 +74,19 @@ export function tatamiArea(b, o) {
         yaw: turn ? 0 : Math.PI / 2,
         mat, surface: SURFACE.FABRIC, collide: false,
       });
-      // 縁（長辺の 2 本だけ。短辺には縁が付かない）
-      const ex = turn ? colW - 0.014 : 0.045;
-      const ed = turn ? 0.045 : rowD - 0.014;
+      /*
+       * 縁は長辺の 2 本だけ。短辺には付かない。
+       *
+       * 畳は 1 枚 91 × 182cm で、長辺は必ず Z 方向。
+       * turn はい草の向き（テクスチャ）を変えるだけで、
+       * 板そのものの縦横は変わらない。
+       * turn に合わせて縁も回していたので、
+       * 半分の畳で短辺に縁が付いていた。
+       */
       for (const s of [-1, 1]) {
         b.box({
-          x: cx + (turn ? 0 : s * (colW / 2 - 0.03)),
-          y: y + TH + 0.010,
-          z: cz + (turn ? s * (rowD / 2 - 0.03) : 0),
-          w: ex, h: 0.016, d: ed,
+          x: cx + s * (colW / 2 - 0.03), y: y + TH + 0.010, z: cz,
+          w: 0.045, h: 0.016, d: rowD - 0.014,
           mat: edge, surface: SURFACE.FABRIC, collide: false,
         });
       }
@@ -303,10 +307,16 @@ export function switchPlate(b, o) {
       // 押し板（下側がわずかに出る＝消灯の状態）
       b.box({ x: sx, y, z: sz, w: W / gangs - 0.010, h: H - 0.026, d: 0.008, yaw, rx: 0.06,
         mat: 'plasticGloss', surface: SURFACE.METAL, collide: false });
-      // ほたる（消灯時に光る小窓）
+      /*
+       * ほたる（消灯時に光る小窓）。
+       * 'emissive' はプリセットではなくメソッドなので、
+       * b.box の mat に渡すとバッチの解決時に例外になる。
+       * 光るものは独立したメッシュで置く。
+       */
       const [nx2, nz2] = at(ox, 0.017);
-      b.box({ x: nx2, y: y - 0.030, z: nz2, w: 0.010, h: 0.005, d: 0.003, yaw,
-        mat: 'emissive', surface: SURFACE.GLASS, collide: false });
+      const gh = new THREE.BoxGeometry(0.010, 0.005, 0.003);
+      gh.rotateY(yaw); gh.translate(nx2, y - 0.030, nz2);
+      b.addExtra(new THREE.Mesh(gh, b.mats.emissive(0x7fd08a, 0.8)));
     }
   } else {
     // 差込口 2 口（縦長の穴を 2 対）
@@ -572,16 +582,21 @@ export function floorLamp(b, o) {
     mat: 'darkSteel', surface: SURFACE.METAL, collide: false });
   b.cylinder({ x, y: y + 0.022, z, radius: 0.028, height: h - 0.30, segments: 10,
     mat: 'brushedMetal', surface: SURFACE.METAL, collide: false });
-  // シェード（上が細い円錐台。円柱 2 段で近似）
+  /*
+   * シェード（上が細い円錐台）。
+   * 内側にもう 1 枚、白い面を少しだけ小さく入れる。
+   * 鏡像にして法線を裏返す手もあるが、面の向きと三角形の巻きが
+   * 同時に反転して打ち消し合うので、素直に別の筒を入れる。
+   */
   const sy = y + h - 0.28;
   b.mesh('curtainFabric', new THREE.CylinderGeometry(0.13, 0.20, 0.26, 18, 1, true),
     { x, y: sy + 0.13, z });
-  // 内側（明るい面。開口から覗く）
-  b.mesh('whitePaint', new THREE.CylinderGeometry(0.128, 0.198, 0.255, 18, 1, true),
-    { x, y: sy + 0.13, z, sx: -1 });
+  b.mesh('whitePaint', new THREE.CylinderGeometry(0.125, 0.195, 0.25, 18, 1, true),
+    { x, y: sy + 0.13, z });
   if (lit) {
-    b.cylinder({ x, y: sy + 0.05, z, radius: 0.05, height: 0.10, segments: 10,
-      mat: 'emissive', surface: SURFACE.GLASS, collide: false });
+    const gb = new THREE.CylinderGeometry(0.05, 0.05, 0.10, 10);
+    gb.translate(x, sy + 0.10, z);
+    b.addExtra(new THREE.Mesh(gb, b.mats.emissive(0xffd9a4, 2.2)));
     b.light({ x, y: sy + 0.10, z, color: 0xffd9a4, intensity: 0.85, distance: 4.2 });
   }
   return b;
@@ -598,8 +613,15 @@ export function standingMirror(b, o) {
   const [px, pz] = at(0, 0.024);
   const g = new THREE.BoxGeometry(w, h, 0.008);
   g.rotateX(tilt); g.rotateY(yaw); g.translate(px, y + h / 2, pz);
-  const mm = b.mats.chrome();
-  b.addExtra(new THREE.Mesh(g, mm));
+  /*
+   * 鏡面。
+   * プリセットはメソッドにはなっていないので get() で取る。
+   * b.mats.chrome() と書いていて、マップの組み立てが
+   * ここで例外を投げて止まっていた（画面は読み込み中のまま）。
+   * メソッドとして生えているのは label / windowGlass / glass など、
+   * 手で書いた数個だけ。
+   */
+  b.addExtra(new THREE.Mesh(g, b.mats.get('chrome', { roughness: 0.04, metalness: 1.0 })));
   // 突っ張りの脚
   const [lx, lz] = at(0, -0.18);
   b.box({ x: lx, y: y + 0.30, z: lz, w: 0.05, h: 0.60, d: 0.03, yaw, rx: 0.36,
@@ -788,8 +810,9 @@ export function rangeHood(b, o) {
     mat: 'plasticGrey', surface: SURFACE.METAL, collide: false });
   // 照明（下向き。台所は必ずここが点いている）
   const [lx, lz] = at(0, d / 2 - 0.10);
-  b.box({ x: lx, y: y - 0.030, z: lz, w: w * 0.42, h: 0.010, d: 0.075, yaw,
-    mat: 'emissive', surface: SURFACE.GLASS, collide: false });
+  const gl = new THREE.BoxGeometry(w * 0.42, 0.010, 0.075);
+  gl.rotateY(yaw); gl.translate(lx, y - 0.030, lz);
+  b.addExtra(new THREE.Mesh(gl, b.mats.emissive(0xfff0d2, 1.8)));
   b.light({ x: lx, y: y - 0.12, z: lz, color: 0xfff0d2, intensity: 0.55, distance: 2.6 });
   return b;
 }
@@ -807,7 +830,13 @@ export function rangeHood(b, o) {
  * @param {object} o {x, y（天板の高さ）, z, yaw, seed}
  */
 export function deskSetup(b, o) {
-  const { x, y = 0.74, z, yaw = 0, seed = 2, tower = true } = o;
+  /*
+   * y は天板の高さ。本体は床に置くので、床の高さも要る。
+   * 既定は天板から机の高さぶん下（0.72m）。
+   * ここを 0 決め打ちにしていたので、台の上に載せると
+   * 本体だけ台を突き抜けて地面に立っていた。
+   */
+  const { x, y = 0.72, z, yaw = 0, seed = 2, tower = true, floorY = y - 0.72 } = o;
   const at = local(x, z, yaw);
   let s = seed * 6971 + 7;
   const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
@@ -849,13 +878,14 @@ export function deskSetup(b, o) {
   // 本体（床置き）
   if (tower) {
     const [tx, tz] = at(0.42, -0.10);
-    b.box({ x: tx, y: 0.20, z: tz, w: 0.19, h: 0.40, d: 0.42, yaw,
+    b.box({ x: tx, y: floorY + 0.20, z: tz, w: 0.19, h: 0.40, d: 0.42, yaw,
       mat: 'applianceGrey', surface: SURFACE.METAL, collide: false });
     const [fx2, fz2] = at(0.42 - 0.10, -0.10);
-    b.box({ x: fx2, y: 0.20, z: fz2, w: 0.012, h: 0.36, d: 0.38, yaw,
+    b.box({ x: fx2, y: floorY + 0.20, z: fz2, w: 0.012, h: 0.36, d: 0.38, yaw,
       mat: 'perforatedMetal', surface: SURFACE.METAL, collide: false });
-    b.box({ x: fx2, y: 0.35, z: fz2, w: 0.014, h: 0.010, d: 0.010, yaw,
-      mat: 'emissive', surface: SURFACE.GLASS, collide: false });
+    const gi = new THREE.BoxGeometry(0.014, 0.010, 0.010);
+    gi.rotateY(yaw); gi.translate(fx2, floorY + 0.35, fz2);
+    b.addExtra(new THREE.Mesh(gi, b.mats.emissive(0x6ec8ff, 1.4)));
   }
   return b;
 }

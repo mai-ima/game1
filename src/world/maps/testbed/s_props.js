@@ -175,7 +175,7 @@ export function sectionProps(b, cx, cz) {
         ['冷蔵庫', 'FRIDGE', (x, y, z) => P.fridge(b, { x, y, z, yaw: FACE_S })],
         ['机まわり', 'DESK', (x, y, z) => {
           P.desk(b, { x, y, z: z - 0.1, yaw: FACE_S });
-          P.deskSetup(b, { x, y: y + 0.74, z: z - 0.1, yaw: FACE_S });
+          P.deskSetup(b, { x, y: y + 0.72, z: z - 0.1, yaw: FACE_S, floorY: y });
           P.officeChair(b, { x, y, z: z + 0.75, yaw: FACE_N });
         }],
       ],
