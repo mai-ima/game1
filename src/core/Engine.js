@@ -45,29 +45,42 @@ installAtmosphere();
 /*
  * texSize / texBudget は「材質テクスチャの一辺」と「焼いてよい総量（MB）」。
  *
- * これまで texSize はどこからも読まれておらず、どの段でも 512 だった。
- * 設定画面が「高解像度テクスチャ」と説明しているのに、実際は
- * 最低画質と同じ絵を出していたことになる。
+ * ■ ここを大きくしてはいけない理由（実測して戻した経緯）
  *
- * 総量は一辺の 2 乗で効く。このマップは 63 種類の材質を使うので
- *   512 → 265MB / 768 → 598MB / 1024 → 1064MB
- * になる。段ごとに上限を決め、超えそうなら工房が自分で半分に落とす。
+ * 一度 高=768 / 最高=1024 まで上げたが、Chrome が読み込み直後に
+ * 落ちるようになった。原因は数え方を間違えていたこと。
+ *
+ * DataTexture は元データ（Uint8ClampedArray）を抱えたまま生き続ける。
+ * つまり 1 枚につき「JS ヒープ」と「GPU」の両方に同じ量が乗る。
+ * 工房が数えていたのは GPU 側だけだったので、
+ * 「601MB に収まっている」という表示のまま実際は 1GB を超えていた。
+ * 工房の勘定はヒープ側も含むよう直したので、
+ * texBudget は「実際に消費する合計 MB」として読める。
+ *
+ * このマップは 66 種類の材質を使う。実消費は（実測）
+ *   512px  → ヒープ 208MB + VRAM 265MB = 473MB
+ *   768px  → ヒープ 468MB + VRAM 596MB = 1064MB   ← 落ちる
+ *   1024px → ヒープ 832MB + VRAM 1060MB = 1892MB
+ * 512 でも既に余裕は無い。上げるなら解像度ではなく、
+ * まず材質の種類を減らすか、焼いたあとに元データを手放す仕組みが要る。
  *
  * superSample は「等倍の画面でも、これだけ大きく描いてから縮める」倍率。
+ * こちらは描画バッファだけの話なので、最高画質にだけ控えめに入れる。
  * 詳しくは _targetPixelRatio を参照。
  */
 export const QUALITY = {
-  low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  texBudget: 300, bloomScale: 0.5,  minScale: 0.85, maxLights: 4, dropRoughIBL: true, cloudOctaves: 3 },
-  medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  texBudget: 380, bloomScale: 0.5,  minScale: 0.85, maxLights: 6, cloudOctaves: 4 },
-  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 768,  texBudget: 700, bloomScale: 0.75, minScale: 0.85, maxLights: 8, cloudOctaves: 4, superSample: 1.25 },
+  low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512, texBudget: 520, bloomScale: 0.5,  minScale: 0.85, maxLights: 4, dropRoughIBL: true, cloudOctaves: 3 },
+  medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512, texBudget: 560, bloomScale: 0.5,  minScale: 0.85, maxLights: 6, cloudOctaves: 4 },
+  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 512, texBudget: 620, bloomScale: 0.75, minScale: 0.85, maxLights: 8, cloudOctaves: 4 },
   /*
    * 最高はクオリティ最優先。
    * 動的解像度で解像度を落とさず（minScale 1.0）、環境遮蔽も
    * 半解像度ではなく等倍で掛ける。フレームレートより絵を優先する段。
-   * 等倍の画面でも 1.5 倍で描いてから縮める（SSAA）。
+   * 等倍の画面でも 1.25 倍で描いてから縮める（SSAA）。
+   * 描画バッファは増えるが、テクスチャほどの量にはならない。
    */
-  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 4096, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 100, texSize: 1024, texBudget: 1200, bloomScale: 1.0, minScale: 1.0,
-            gtaoScale: 1.0, gtaoSamples: 16, maxLights: 12, superSample: 1.5 },
+  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 4096, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 100, texSize: 512, texBudget: 620, bloomScale: 1.0, minScale: 1.0,
+            gtaoScale: 1.0, gtaoSamples: 16, maxLights: 12, superSample: 1.25 },
 
   /*
    * 内蔵 GPU 専用（Intel UHD / 第 10 世代 Core i5 相当）。
