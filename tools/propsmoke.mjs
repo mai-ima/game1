@@ -28,10 +28,33 @@ import * as B from '../src/world/Buildings.js';
 const problems = [];
 let calls = 0;
 
-/** 材質名が実在するか確かめる */
-function checkMat(where, name) {
+/**
+ * 材質名が実在するか確かめる。
+ *
+ * 入口が 3 通りあり、名前ごとに使える入口が違う。
+ *   PRESETS（テクスチャ付き）… mats.get(name)
+ *   SOLIDS （単色）          … mats.solid(name)
+ *   手書きのもの             … mats.label / windowGlass / glass / emissive
+ *
+ * b.box の mat: に渡すぶんには PRESETS / SOLIDS のどちらでも通る。
+ * MapBuilder の _finalizeBatch が PRESETS に無ければ solid() へ回すため。
+ * だが mats.get('chrome') は通らない。chrome は SOLIDS 側だから。
+ *
+ * 最初この検査を「どちらかにあれば良し」にしていたので、
+ * まさにその mats.get('chrome') を見逃した。入口ごとに分けて見る。
+ *
+ * @param {'batch'|'get'|'solid'} via どの入口から引くか
+ */
+function checkMat(where, name, via = 'batch') {
   if (name == null) return;
-  if (!(name in PRESETS) && !(name in SOLIDS)) {
+  const inP = name in PRESETS, inS = name in SOLIDS;
+  if (via === 'get' && !inP) {
+    problems.push(`${where}: mats.get に渡せない '${name}'`
+      + (inS ? '（単色なので mats.solid を使う）' : '（そんな材質は無い）'));
+  } else if (via === 'solid' && !inS) {
+    problems.push(`${where}: mats.solid に渡せない '${name}'`
+      + (inP ? '（テクスチャ付きなので mats.get を使う）' : '（そんな材質は無い）'));
+  } else if (via === 'batch' && !inP && !inS) {
     problems.push(`${where}: 未定義の材質 '${name}'`);
   }
 }
@@ -75,12 +98,12 @@ function makeStub(where) {
        * 手で書いてあるメソッドだけを生やす。
        * プリセット名をメソッドとして呼ぶ間違いを、ここで落とす。
        */
-      get(name, opt = {}) { checkMat(`${where} mats.get`, name); return dummyMat(); },
+      get(name, opt = {}) { checkMat(`${where} mats.get`, name, 'get'); return dummyMat(); },
       label(text, opt = {}) { return dummyMat(); },
       signboard(text, opt = {}) { return dummyMat(); },
       windowGlass(opt = {}) { return dummyMat(); },
       glass(opt = {}) { return dummyMat(); },
-      solid(name, opt = {}) { checkMat(`${where} mats.solid`, name); return dummyMat(); },
+      solid(name, opt = {}) { checkMat(`${where} mats.solid`, name, 'solid'); return dummyMat(); },
       emissive(opt = {}) { return dummyMat(); },
     },
     box(o) {

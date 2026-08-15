@@ -52,58 +52,84 @@ export function sectionRange(b, x0, cz) {
     text: '射座', sub: 'FIRING LINE', accent: HUE.range, w: 3.0 });
 
   /* ================= 距離ごとの的 ================= */
-  for (const m of [5, 10, 25, 50, 75]) {
+  /*
+   * 距離ごとにレーンを分ける。
+   *
+   * 5 枚を射線の中心に一列で置いたら、遠い的が手前の的の陰に入った。
+   * 正対はしているのに撃てない。実測でも 5m の的以外は
+   * すべて「途中で遮られる」と出た。
+   * 実際の射撃場も距離ごとにレーンを切ってあるので、それに倣う。
+   */
+  const DIST = [5, 10, 25, 50, 75];
+  const LANE = 2.2;
+  const laneZ = (i) => cz + (i - (DIST.length - 1) / 2) * LANE;
+
+  for (let i = 0; i < DIST.length; i++) {
+    const m = DIST[i];
     const x = x0 + m;
+    const lz = laneZ(i);                 // このレーンの中心
 
     /*
      * 的。厚みを X に取り、幅を Z に取る。
-     * 輪と中心は射座側（西）へ 2cm ずつせり出させて、
+     * 輪と中心は射座側（西）へ 2〜5cm せり出させて、
      * 板の面と Z ファイティングを起こさないようにする。
      */
-    b.box({ x, y: 1.15, z: cz, w: 0.05, h: 1.5, d: 0.7,
+    b.box({ x, y: 1.15, z: lz, w: 0.05, h: 1.5, d: 0.7,
       mat: 'plywood', surface: SURFACE.WOOD, penetration: 0.6 });
-    b.box({ x: x - 0.032, y: 1.35, z: cz, w: 0.02, h: 0.44, d: 0.44,
+    b.box({ x: x - 0.032, y: 1.35, z: lz, w: 0.02, h: 0.44, d: 0.44,
       mat: 'lineWhite', surface: SURFACE.WOOD, collide: false });
 
     /*
      * 中心の赤。ここだけ独立したメッシュにして印を付ける。
      * tools/aimcheck.mjs が印を拾い、射座からのレイと板の法線の
-     * 成す角を測る。向きの取り違えを目でなく数字で捕まえるため。
+     * 成す角、および射線が通っているかを測る。
      */
     {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.17, 0.17), b.mats.get('plasticGlossRed'));
-      mesh.position.set(x - 0.052, 1.35, cz);
+      mesh.position.set(x - 0.052, 1.35, lz);
       /*
-       * 狙う点は userData にも書く。
-       * ジオメトリ側へ平行移動を焼くとメッシュの position は原点のままで、
-       * getWorldPosition が (0,0,0) を返す。実際それで
-       * 5 枚とも「距離 64.5m・97 度ずれ」と同じ値が出て、
+       * 狙う点と、そのレーンの射座を userData に書く。
+       *
+       * 座標を書くのは、ジオメトリ側へ平行移動を焼くと
+       * メッシュの position が原点のままになり、
+       * getWorldPosition では狙う点が取れないから。
+       * 実際それで 5 枚とも「距離 64.5m・97 度ずれ」と同じ値が出て、
        * 検査そのものが役に立っていなかった。
        */
-      mesh.userData.aimTarget = { name: `${m} m`, x: x - 0.052, y: 1.35, z: cz, nx: -1, nz: 0 };
+      mesh.userData.aimTarget = {
+        name: `${m} m`, x: x - 0.052, y: 1.35, z: lz, nx: -1, nz: 0,
+        from: [x0 - 2, 1.5, lz],
+      };
       b.addExtra(mesh);
     }
 
     // 的枠（左右の柱）
     for (const s of [-1, 1]) {
-      b.box({ x, y: 0.7, z: cz + s * 0.4, w: 0.07, h: 1.4, d: 0.07,
+      b.box({ x, y: 0.7, z: lz + s * 0.4, w: 0.07, h: 1.4, d: 0.07,
         mat: 'galvanized', surface: SURFACE.METAL, collide: false });
     }
 
     /*
-     * 距離標。的の手前（射座側）2m に立て、射座を向ける。
+     * 距離標。的の手前 2m、レーンの境（中心から 1.05m）に立てて射座を向ける。
      * 以前は的の 2.6m 奥に立てていたので、的の陰に入って読めなかった。
-     * 射線を塞がないよう、レーンの外（北へ 2.6m）へ寄せる。
+     * レーンの中に入れると自分の射線を塞ぐ。
      */
-    measurePole(b, { x: x - 2.0, z: cz - 2.6, height: 3 });
-    plate(b, { x: x - 2.0, y: 2.5, z: cz - 2.6, offset: 0.12, yaw: FACE_W,
+    const poleZ = lz - LANE / 2 + 0.05;
+    measurePole(b, { x: x - 2.0, z: poleZ, height: 3 });
+    plate(b, { x: x - 2.0, y: 2.5, z: poleZ, offset: 0.12, yaw: FACE_W,
       text: `${m} m`, accent: HUE.range, w: 2.0 });
 
-    // 足元の距離帯（射線を横切る白線。走りながらでも読める）
-    b.box({ x, y: 0.02, z: cz, w: 0.7, h: 0.03, d: 8.0,
+    // 足元の距離帯（そのレーンだけを横切る白線）
+    b.box({ x, y: 0.02, z: lz, w: 0.7, h: 0.03, d: LANE - 0.2,
       mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
     // 床の銘板は射線に沿って歩く向きに寝かせる
-    floorPlate(b, { x: x - 1.2, z: cz + 2.9, text: `${m} m`, accent: HUE.range, w: 2.0, yaw: Math.PI / 2 });
+    floorPlate(b, { x: x - 1.2, z: lz, text: `${m} m`, accent: HUE.range, w: 1.8, yaw: Math.PI / 2 });
+
+    /* レーンの境の破線（どのレーンがどの距離か、足元で判る） */
+    for (let t = 1; t < m; t += 4) {
+      b.box({ x: x0 + t, y: 0.021, z: lz - LANE / 2, w: 1.6, h: 0.03, d: 0.10,
+        mat: 'lineWhite', surface: SURFACE.CONCRETE, collide: false });
+    }
   }
 
   /* ================= 貫通の壁 ================= */

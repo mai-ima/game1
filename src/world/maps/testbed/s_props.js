@@ -1,6 +1,6 @@
 import * as P from '../../Props.js';
 import { SURFACE } from '../../Physics.js';
-import { plate, label, HUE, FACE_S } from './common.js';
+import { plate, label, HUE, FACE_S, FACE_N } from './common.js';
 
 /**
  * 小物試作場。

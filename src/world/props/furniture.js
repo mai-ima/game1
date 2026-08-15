@@ -615,13 +615,21 @@ export function standingMirror(b, o) {
   g.rotateX(tilt); g.rotateY(yaw); g.translate(px, y + h / 2, pz);
   /*
    * 鏡面。
-   * プリセットはメソッドにはなっていないので get() で取る。
-   * b.mats.chrome() と書いていて、マップの組み立てが
-   * ここで例外を投げて止まっていた（画面は読み込み中のまま）。
-   * メソッドとして生えているのは label / windowGlass / glass など、
-   * 手で書いた数個だけ。
+   *
+   * 材質の取り方は 3 通りあって、名前ごとに入口が違う。
+   *   PRESETS（テクスチャ付き）… mats.get(name)
+   *   SOLIDS （単色）          … mats.solid(name)
+   *   手書きのもの             … mats.label / windowGlass / glass / emissive
+   *
+   * chrome は SOLIDS 側。ここを 2 度間違えた。
+   * 1 度目は b.mats.chrome()、2 度目は b.mats.get('chrome')。
+   * どちらもマップの組み立てが例外で止まり、画面は読み込み中のまま。
+   *
+   * なお b.box の mat: に渡すぶんには両方通る。
+   * MapBuilder の _finalizeBatch が PRESETS に無ければ solid() へ回すため。
+   * 直接取るときだけ気を付ける。
    */
-  b.addExtra(new THREE.Mesh(g, b.mats.get('chrome', { roughness: 0.04, metalness: 1.0 })));
+  b.addExtra(new THREE.Mesh(g, b.mats.solid('chrome', { roughness: 0.04 })));
   // 突っ張りの脚
   const [lx, lz] = at(0, -0.18);
   b.box({ x: lx, y: y + 0.30, z: lz, w: 0.05, h: 0.60, d: 0.03, yaw, rx: 0.36,
