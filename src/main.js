@@ -56,8 +56,19 @@ async function main() {
    * 工房を作るときにしか渡せない（途中で変えると全部焼き直しになる）。
    */
   const q0 = QUALITY[engine.quality] || {};
+  /*
+   * 検証用に、テクスチャの一辺を URL から下げられるようにする（?texsize=64）。
+   *
+   * 当たり判定や動線の検査に絵は要らない。それでも工房は毎回
+   * 512px を全材質ぶん焼くので、ソフトウェア描画では読み込みだけで数分かかる。
+   * 1 周が数分だと、直して確かめる回数が現実的な数に収まらない。
+   * 64px にすると同じ手順が数十秒で終わる。
+   * 見た目を見るときは付けないこと。
+   */
+  const texOverride = parseInt(qs.get('texsize') || '', 10);
   const mats = new MaterialLibrary(engine.renderer, {
-    texSize: q0.texSize, texBudget: q0.texBudget,
+    texSize: Number.isFinite(texOverride) ? texOverride : q0.texSize,
+    texBudget: q0.texBudget,
   });
   /*
    * マテリアルを 1 つも作る前に決めておく。

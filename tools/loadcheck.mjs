@@ -24,13 +24,19 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 320, height: 200 } });
 
+/*
+ * 例外はためずに、出た瞬間に書く。
+ * 最後にまとめて出す作りにしていたら、途中で待ち時間を超えて
+ * 落ちたときに 1 行も残らず、何が起きたのか判らなかった。
+ */
 const errs = [];
-page.on('pageerror', (e) => errs.push('例外: ' + e.message.split('\n')[0]));
+const say = (s) => { errs.push(s); console.log(s); };
+page.on('pageerror', (e) => say('例外: ' + e.message.split('\n')[0]));
 page.on('console', (m) => {
   const t = m.text();
-  if (m.type() === 'error' && !t.includes('404')) errs.push('コンソール: ' + t.slice(0, 220));
+  if (m.type() === 'error' && !t.includes('404')) say('コンソール: ' + t.slice(0, 220));
   // マップ側の警告（区画の重なりなど）は必ず出す
-  if (/テストベッド|警告|warn/i.test(t)) console.log('  ' + t.slice(0, 220));
+  else if (/テストベッド|警告|warn/i.test(t)) console.log('  ' + t.slice(0, 220));
 });
 
 const t0 = Date.now();
