@@ -462,8 +462,22 @@ export class MaterialLibrary {
   /**
    * @param {THREE.WebGLRenderer} renderer
    */
-  constructor(renderer) {
-    this.tf = new TextureFactory(renderer);
+  /**
+   * @param {THREE.WebGLRenderer} renderer
+   * @param {object} opt {texSize, texBudget} 画質設定から渡す
+   */
+  constructor(renderer, opt = {}) {
+    this.tf = new TextureFactory(renderer, { budget: opt.texBudget });
+    /**
+     * 材質テクスチャの一辺。
+     *
+     * これまでどこからも設定されず 512 固定だった。画質設定は
+     * 「高解像度テクスチャ」と説明していたのに、最高画質でも
+     * 最低画質と同じ絵を出していたことになる。
+     * 工房は総量に上限を持っているので、大きくしすぎても
+     * 落ちるのではなく自動で半分に落ちる。
+     */
+    this.texSize = opt.texSize || 512;
     this.cache = new Map();
     this.envIntensity = 1.0;
     this.envMap = null;
@@ -563,7 +577,7 @@ export class MaterialLibrary {
     const p = PRESETS[name];
     if (!p) throw new Error(`未定義のマテリアルプリセット: ${name}`);
 
-    const set = this.tf.get(p.tex, { size: opt.size || 512, seed: p.seed ?? 1234 });
+    const set = this.tf.get(p.tex, { size: opt.size || this.texSize, seed: p.seed ?? 1234 });
     // repeat / size は生成用パラメータなのでマテリアルには渡さない
     const { repeat, size, ...rest } = opt;
 

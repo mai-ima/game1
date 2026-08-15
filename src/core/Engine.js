@@ -42,17 +42,32 @@ import { LightPool } from '../render/LightPool.js';
  */
 installAtmosphere();
 
+/*
+ * texSize / texBudget は「材質テクスチャの一辺」と「焼いてよい総量（MB）」。
+ *
+ * これまで texSize はどこからも読まれておらず、どの段でも 512 だった。
+ * 設定画面が「高解像度テクスチャ」と説明しているのに、実際は
+ * 最低画質と同じ絵を出していたことになる。
+ *
+ * 総量は一辺の 2 乗で効く。このマップは 63 種類の材質を使うので
+ *   512 → 265MB / 768 → 598MB / 1024 → 1064MB
+ * になる。段ごとに上限を決め、超えそうなら工房が自分で半分に落とす。
+ *
+ * superSample は「等倍の画面でも、これだけ大きく描いてから縮める」倍率。
+ * 詳しくは _targetPixelRatio を参照。
+ */
 export const QUALITY = {
-  low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 4, dropRoughIBL: true, cloudOctaves: 3 },
-  medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  bloomScale: 0.5,  minScale: 0.85, maxLights: 6, cloudOctaves: 4 },
-  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 1024, bloomScale: 0.75, minScale: 0.85, maxLights: 8, cloudOctaves: 4 },
+  low:    { pixelRatio: 1.0,  shadows: true,  shadowMap: 1536, gtao: false, bloom: true, aa: 'fxaa', aniso: 8,  shadowDist: 40, texSize: 512,  texBudget: 300, bloomScale: 0.5,  minScale: 0.85, maxLights: 4, dropRoughIBL: true, cloudOctaves: 3 },
+  medium: { pixelRatio: 1.25, shadows: true,  shadowMap: 2048, gtao: false, bloom: true, aa: 'smaa', aniso: 16, shadowDist: 52, texSize: 512,  texBudget: 380, bloomScale: 0.5,  minScale: 0.85, maxLights: 6, cloudOctaves: 4 },
+  high:   { pixelRatio: 1.5,  shadows: true,  shadowMap: 2560, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 68, texSize: 768,  texBudget: 700, bloomScale: 0.75, minScale: 0.85, maxLights: 8, cloudOctaves: 4, superSample: 1.25 },
   /*
    * 最高はクオリティ最優先。
    * 動的解像度で解像度を落とさず（minScale 1.0）、環境遮蔽も
    * 半解像度ではなく等倍で掛ける。フレームレートより絵を優先する段。
+   * 等倍の画面でも 1.5 倍で描いてから縮める（SSAA）。
    */
-  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 4096, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 100, texSize: 1024, bloomScale: 1.0, minScale: 1.0,
-            gtaoScale: 1.0, gtaoSamples: 16, maxLights: 12 },
+  ultra:  { pixelRatio: 2.0,  shadows: true,  shadowMap: 4096, gtao: true,  bloom: true, aa: 'smaa', aniso: 16, shadowDist: 100, texSize: 1024, texBudget: 1200, bloomScale: 1.0, minScale: 1.0,
+            gtaoScale: 1.0, gtaoSamples: 16, maxLights: 12, superSample: 1.5 },
 
   /*
    * 内蔵 GPU 専用（Intel UHD / 第 10 世代 Core i5 相当）。
@@ -1013,13 +1028,27 @@ export class Engine {
 
   /* ================= 動的解像度 ================= */
 
-  /** 現在の解像度段階から実際のピクセル比を求める */
+  /**
+   * 現在の解像度段階から実際のピクセル比を求める。
+   *
+   * 以前は min(端末の画素密度, プリセットの上限) だった。
+   * つまり等倍の画面（普通の 1080p モニタ）では、どの画質段でも
+   * 1.0 止まり。最高画質を選んでも高画質と同じ解像度で描いていて、
+   * 輪郭の粗さが一切変わらなかった。pixelRatio 2.0 という指定が
+   * 効くのは Retina のような高密度画面だけ、という状態。
+   *
+   * superSample は「等倍の画面でも、これだけ大きく描いて縮める」倍率。
+   * 描いてから縮めるので、輪郭も текстур の細部も滑らかになる（SSAA）。
+   * 上限は 2.0。これ以上は画素数が 4 倍を超え、得るものより費用が勝つ。
+   */
   _targetPixelRatio() {
     const q = QUALITY[this.quality];
     const scale = SCALE_STEPS[this._scaleIdx];
     // 下限を下回るとさすがに眠い絵になるので、プリセットごとの最低値で止める
     const eff = Math.max(q.minScale ?? 0.5, scale);
-    return Math.max(0.5, Math.min(window.devicePixelRatio, q.pixelRatio) * eff);
+    const dpr = window.devicePixelRatio || 1;
+    const base = Math.min(Math.max(dpr, q.superSample ?? 1), q.pixelRatio, 2);
+    return Math.max(0.5, base * eff);
   }
 
   /** 解像度段階を変更して、レンダラとコンポーザに反映する */
@@ -1121,7 +1150,12 @@ export class Engine {
   }
 
   /** 実際に描画している解像度（デバッグ表示用） */
-  get renderScale() { return +(this._targetPixelRatio() / Math.min(window.devicePixelRatio, QUALITY[this.quality].pixelRatio)).toFixed(2); }
+  get renderScale() {
+    const q = QUALITY[this.quality];
+    const dpr = window.devicePixelRatio || 1;
+    const full = Math.min(Math.max(dpr, q.superSample ?? 1), q.pixelRatio, 2);
+    return +(this._targetPixelRatio() / full).toFixed(2);
+  }
   get renderSize() { return `${this.renderer.domElement.width}x${this.renderer.domElement.height}`; }
 
   /** 画質プリセットを切り替え（コンポーザを再構築） */

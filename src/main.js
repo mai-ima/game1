@@ -51,7 +51,14 @@ async function main() {
     settings.set('quality', 'low');
     showSoftwareWarning(container, engine.gpu.name);
   }
-  const mats = new MaterialLibrary(engine.renderer);
+  /*
+   * 材質テクスチャの解像度と総量の上限は、画質設定から決める。
+   * 工房を作るときにしか渡せない（途中で変えると全部焼き直しになる）。
+   */
+  const q0 = QUALITY[engine.quality] || {};
+  const mats = new MaterialLibrary(engine.renderer, {
+    texSize: q0.texSize, texBudget: q0.texBudget,
+  });
   /*
    * マテリアルを 1 つも作る前に決めておく。
    * 後から切り替えるとシェーダを全部組み直すことになり、
@@ -75,8 +82,8 @@ async function main() {
    */
   engine.tune({
     skyScale: 0.10,
-    exposure: 0.92 * settings.get('brightness'),
-    sunIntensity: 3.6, hemiIntensity: 0.26, fillIntensity: 0.22,
+    exposure: 0.98 * settings.get('brightness'),
+    sunIntensity: 3.6, hemiIntensity: 0.52, fillIntensity: 0.22,
   });
 
   // --- UI ---
@@ -343,7 +350,16 @@ function applySettings(engine, input, settings, game, key, val) {
     // 覗いていないときは即座に反映（覗き中は WeaponSystem が上書きする）
     if (game.weapons.adsProgress < 0.01) engine.setFov(s.fov);
   }
-  engine.renderer.toneMappingExposure = 0.95 * s.brightness;
+  /*
+   * 露出。
+   *
+   * 空の映り込みを意図どおりの強さへ戻したぶん全体が沈むので、
+   * わずかに持ち上げて釣り合わせる。
+   * 統合パスは自前でトーンマップするので、そちらにも同じ値を渡す
+   * （渡さないと、内蔵GPU設定でだけ明るさスライダーが効かない）。
+   */
+  engine.renderer.toneMappingExposure = 0.98 * s.brightness;
+  if (engine.fusedPass) engine.fusedPass.uniforms.uExposure.value = 0.98 * s.brightness;
 
   if (engine.compositePass) {
     engine.compositePass.uniforms.uGrain.value = s.filmGrain ? 0.016 : 0;

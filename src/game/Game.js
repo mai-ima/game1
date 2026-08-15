@@ -84,7 +84,7 @@ export class Game {
 
     // GPU コンテキストが復帰したら、自前で作った環境マップを貼り直す
     this.engine.onContextRestored = () => {
-      if (this.engine.envRT) this.mats.applyEnvironment(this.engine.envRT.texture, 1.0);
+      if (this.engine.envRT) this.mats.applyEnvironment(this.engine.envRT.texture, this._envIntensity ?? 0.40);
     };
   }
 
@@ -112,8 +112,23 @@ export class Game {
 
     this.engine.setSunAngle(this.mapInfo.sun.elevation, this.mapInfo.sun.azimuth);
     this.engine.refreshEnvironment();
-    // 環境マップ（青空）の効きを抑える。強いと全面が青みを帯びる。
-    this.engine.scene.environmentIntensity = this.mapInfo.light?.env ?? 0.26;
+    /*
+     * 空の映り込み（IBL）の強さ。
+     *
+     * ここを 0.26 に落とすつもりで scene.environmentIntensity を
+     * 使っていたが、これは scene.environment を読む材質にしか効かない。
+     * 工房は applyEnvironment で material.envMap を直に差しているので、
+     * 実際に使われるのは material.envMapIntensity のほうで、
+     * そちらは 1.0 のまま――つまり意図の 4 倍の強さで入っていた。
+     *
+     * 空は明るい青なので、直射の当たらない面がすべて青く染まる。
+     * 路面の白線が水色に、コンクリートが青灰色に見えていたのはこれが原因。
+     *
+     * 両方に同じ値を渡して、意図どおりの強さに戻す。
+     */
+    const envI = this.mapInfo.light?.env ?? 0.40;
+    this.engine.scene.environmentIntensity = envI;
+    this._envIntensity = envI;
 
     /*
      * 光の作りはレベルごとに変えられる。
@@ -121,21 +136,33 @@ export class Game {
      * 色が偏ると材質の色を読み違える。既定は共通の屋外設定のまま、
      * MAP_INFO.light が指定されていればそれで上書きする。
      */
+    /*
+     * 光の作りはレベルごとに変えられる。
+     * 砂漠の廃墟は夕方寄りの暖色が似合うが、検証用の場では
+     * 色が偏ると材質の色を読み違える。既定は共通の屋外設定のまま、
+     * MAP_INFO.light が指定されていればそれで上書きする。
+     *
+     * 半球光の既定を 0.26 から 0.52 へ上げてある。
+     * 空の映り込みを意図どおりの強さへ戻したぶん、日陰が暗くなる。
+     * その落ちた明るさを、青一色ではない光（上は淡い空色・
+     * 下は地面からの暖色）で埋め直す。
+     * 明るさは保ったまま、色だけが偏りから抜ける。
+     */
     const L = this.mapInfo.light;
     this.engine.tune(L ? {
       sunColor: L.sun ?? 0xffdcae,
       sunIntensity: L.sunIntensity ?? 3.6,
       hemiSky: L.hemiSky ?? 0xa9c2d8,
       hemiGround: L.hemiGround ?? 0x8a6f4a,
-      hemiIntensity: L.hemiIntensity ?? 0.26,
+      hemiIntensity: L.hemiIntensity ?? 0.52,
       fillColor: L.fillColor ?? 0xa6bacd,
       fillIntensity: L.fillIntensity ?? 0.22,
     } : {
       sunColor: 0xffdcae, sunIntensity: 3.6,
-      hemiSky: 0xa9c2d8, hemiGround: 0x8a6f4a, hemiIntensity: 0.26,
+      hemiSky: 0xa9c2d8, hemiGround: 0x8a6f4a, hemiIntensity: 0.52,
       fillColor: 0xa6bacd, fillIntensity: 0.22,
     });
-    this.mats.applyEnvironment(this.engine.envRT.texture, 1.0);
+    this.mats.applyEnvironment(this.engine.envRT.texture, envI);
     /*
      * 霧そのものは大気遠近（Atmosphere.js）が描く。
      * ここで Fog を置くのは USE_FOG を立てるためで、
